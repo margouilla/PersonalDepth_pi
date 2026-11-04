@@ -73,6 +73,7 @@ planned).
 
 The plugin also works without them: OpenCPN tide stations, and data already
 referenced to chart datum.
+**Where to get them and how to use them: [docs/external-data.md](docs/external-data.md).**
 
 ### Building from source
 
@@ -191,6 +192,7 @@ disponibles.
 
 Le plugin fonctionne sans elles : stations de marée d'OpenCPN, et données déjà
 au zéro hydrographique.
+**Où les récupérer et comment les utiliser : [docs/external-data.md](docs/external-data.md#français).**
 
 ### Compilation
 

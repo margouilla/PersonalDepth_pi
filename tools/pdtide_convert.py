@@ -17,7 +17,7 @@
 compact .pdtide lisible par PersonalDepth_pi (sans bibliothèque NetCDF).
 
 Usage :
-    python pdtide_convert.py <dossier ocean_tide_extrapolated> <sortie.pdtide> [--max-seconds N]
+    python pdtide_convert.py <dossier ocean_tide_extrapolated> <sortie.pdtide> [--max-seconds=N]
 
 La conversion reprend là où elle s'est arrêtée (parties dans <sortie>.parts),
 puis assemble le fichier final quand toutes les ondes sont prêtes.
