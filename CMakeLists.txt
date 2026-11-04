@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(PersonalDepth_pi VERSION 0.1.0 LANGUAGES C CXX)
 
+if(MSVC)
+  # OpenCPN 5.14 (Windows) livre une msvcp140.dll de 2017 (14.12), chargée en
+  # priorité : sans cette macro, un std::mutex compilé avec Visual Studio
+  # 2022 17.10+ plante au premier verrouillage (rupture d'ABI de Microsoft).
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
