@@ -601,10 +601,10 @@ bool FesTide::prepare(TideAtlas& atlas, double lonMin, double lonMax, double lat
   if (!nValid) { err = pd::tr("Zone hors du modèle de marée"); return false; }
   char b[200];
   auto pc = [&](size_t x) { return (int)std::lround(100.0 * x / nValid); };
-  std::snprintf(b, sizeof b, "Z0 : %s%s%s",
-                nUser ? (std::string("grille ") + std::to_string(pc(nUser)) + " % ").c_str() : "",
+  std::snprintf(b, sizeof b, pd::tr("Z0 : %s%s%s"),
+                nUser ? (std::string(pd::tr("grille ")) + std::to_string(pc(nUser)) + " % ").c_str() : "",
                 nEll ? (std::string("BathyElli ") + std::to_string(pc(nEll)) + " % ").c_str() : "",
-                nLat ? (std::string("PBMA FES ") + std::to_string(pc(nLat)) + " %").c_str() : "");
+                nLat ? (std::string(pd::tr("PBMA FES ")) + std::to_string(pc(nLat)) + " %").c_str() : "");
   info_ = b;
   if (nUser + nEll + nLat == 0) { err = pd::tr("Aucune référence ZH disponible pour la marée maillée"); return false; }
   region_ = std::move(r);

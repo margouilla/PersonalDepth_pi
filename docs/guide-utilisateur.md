@@ -102,7 +102,7 @@ Le panneau comprend cinq cadres, de haut en bas :
 | **Isobathes** | Intervalle, isobathes maîtresses, valeurs |
 | **Affichage** | Opacité, ombrage, sondes, lissage, légende |
 
-![Panneau principal](images/fr/03-main-panel.png)
+<img src="images/fr/03-main-panel_1.png" alt="Panneau principal (haut)" width="49%"> <img src="images/fr/03-main-panel_2.png" alt="Panneau principal (bas)" width="49%">
 
 Chaque réglage s'applique immédiatement sur la carte. Le panneau peut rester
 ouvert pendant l'utilisation d'OpenCPN ; le fermer conserve l'affichage.

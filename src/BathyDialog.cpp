@@ -224,9 +224,9 @@ struct CellItem : public wxClientData {
   std::string name;
 };
 wxString CellBytes(long long b) {
-  if (b >= (1LL << 30)) return wxString::Format("%.2f Go", b / double(1LL << 30));
-  if (b >= (1LL << 20)) return wxString::Format("%.0f Mo", b / double(1LL << 20));
-  return wxString::Format("%.0f ko", b / 1024.0);
+  if (b >= (1LL << 30)) return wxString::Format(U8("%.2f Go"), b / double(1LL << 30));
+  if (b >= (1LL << 20)) return wxString::Format(U8("%.0f Mo"), b / double(1LL << 20));
+  return wxString::Format(U8("%.0f ko"), b / 1024.0);
 }
 }  // namespace
 

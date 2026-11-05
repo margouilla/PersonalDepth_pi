@@ -96,7 +96,7 @@ The panel is divided into five sections, from top to bottom:
 | **Depth contours** | Isobaths: interval, major lines, labels |
 | **Display** | Opacity, relief shading, soundings, smoothing, legend |
 
-![Main panel](images/en/03-main-panel.png)
+<img src="images/en/03-main-panel_1.png" alt="Main panel (top)" width="49%"> <img src="images/en/03-main-panel_2.png" alt="Main panel (bottom)" width="49%">
 
 Every change is applied immediately on the chart. The panel can stay open
 while you use OpenCPN; closing it keeps the display.
