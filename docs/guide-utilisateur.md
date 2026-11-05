@@ -136,6 +136,7 @@ avec GDAL.
 | Décalage | Constante ajoutée aux profondeurs, dans l'unité de Z |
 | NODATA | Valeurs à ignorer (ex. `-9999 9999`), en plus du NODATA de l'entête des grilles |
 | Bornes de Z | Ne garder que les profondeurs entre Z1 et Z2 (ex. −200 à 200 m écarte les remplissages) |
+| Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : estimé (pas de la grille, ou espacement des sondes consécutives pour les lignes de sonde). Une valeur plus grande (ex. 10–20 m) donne une surface plus continue entre des lignes de sonde espacées |
 | Cache binaire | Fichier `.pdpc` à côté de la source pour un réimport rapide |
 
 **Système de coordonnées (X, Y)** — choisir dans la liste (WGS84, UTM,

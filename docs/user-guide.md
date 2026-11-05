@@ -129,6 +129,7 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Offset | Constant added to the depths, in the Z unit |
 | NODATA | Values to ignore (e.g. `-9999 9999`), in addition to the NODATA of the grid header |
 | Z bounds | Keep only depths between Z1 and Z2 (e.g. −200 to 200 m removes fill values) |
+| Fixed resolution | Horizontal step of the database for this survey. Unticked: estimated (grid step, or spacing between consecutive soundings for sounding lines). A larger value (e.g. 10–20 m) gives a more continuous surface between widely spaced sounding lines |
 | Binary cache | `.pdpc` file next to the source for a faster re-import |
 
 **Coordinate system (X, Y)** — choose from the list (WGS84, UTM, Lambert-93,

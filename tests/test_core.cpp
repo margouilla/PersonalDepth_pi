@@ -904,6 +904,29 @@ int main(int argc, char** argv) {
           db2.source(ida)->params == "zFeet=1\nvrefMode=2\n" && db2.source(idb)->params == "zFeet=0\n");
     std::printf("Date du levé et réglages d'import : OK\n");
   }
+  {  // résolution d'un levé en lignes (sondeur monofaisceau) : pas le long de la route
+    PointCloud tr, sh;
+    const double lat0 = 46.3, kx = 1.0 / (111320.0 * std::cos(lat0 * M_PI / 180)), ky = 1.0 / 110540.0;
+    std::mt19937 noise(3);
+    std::uniform_real_distribution<double> gps(-0.5, 0.5);  // bruit GPS (m)
+    for (int line = 0; line < 20; ++line)        // routes est-ouest espacées de 100 m
+      for (int i = 0; i < 1000; ++i)             // un point tous les 4 m
+        tr.add(-60.4 + (i * 4.0 + gps(noise)) * kx, lat0 + (line * 100.0 + gps(noise)) * ky, 10.f);
+    tr.computeBounds();
+    bool g = false;
+    const double rt = EstimateResolution(tr, g);
+    CHECK(!g && rt > 3.0 && rt < 5.0);
+    // même nuage en ordre aléatoire : estimation par la surface (bien plus grossière)
+    std::vector<size_t> ord(tr.size());
+    for (size_t i = 0; i < ord.size(); ++i) ord[i] = i;
+    std::mt19937 rng(7);
+    std::shuffle(ord.begin(), ord.end(), rng);
+    for (size_t i : ord) sh.add(tr.lon(i), tr.lat(i), tr.z[i]);
+    sh.computeBounds();
+    const double rs = EstimateResolution(sh, g);
+    CHECK(rs > 10.0);
+    std::printf("Résolution des levés en lignes : %.2f m (ordre aléatoire : %.1f m) OK\n", rt, rs);
+  }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;
 }

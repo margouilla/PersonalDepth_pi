@@ -86,6 +86,7 @@ struct DisplaySettings {
   int importSign = 0;               // LoadOptions::ZSign
   float importOffset = 0.f;         // décalage vertical (m)
   bool importZFeet = false;         // unité verticale des fichiers importés : pieds (sinon m)
+  float importRes = 0.f;            // résolution de stockage imposée (m), 0 = automatique
   bool importCache = true;          // cache binaire .pdpc
   bool importNodataOn = false;      // NODATA supplémentaires (Z brut du fichier)
   std::string importNodata = "-9999 9999 -99999 99999";

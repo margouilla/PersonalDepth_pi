@@ -55,6 +55,8 @@ struct LayerParams {
   // Import en base : date du levé imposée (sinon déduite du nom du fichier),
   // classe imposée, réglages d'import sérialisés (gardés avec la source)
   std::string surveyDate, group, importPrefs;
+  // Import en base : résolution de stockage imposée (m), 0 = estimée
+  double storeRes = 0;
 };
 
 class BathyLayer {

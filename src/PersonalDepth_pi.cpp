@@ -698,6 +698,7 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ImportSign", m_set.importSign);
   c->Write("ImportOffset", (double)m_set.importOffset);
   c->Write("ImportZFeet", m_set.importZFeet);
+  c->Write("ImportRes", (double)m_set.importRes);
   c->Write("ImportCache", m_set.importCache);
   c->Write("ImportNodataOn", m_set.importNodataOn);
   c->Write("ImportNodata", W8(m_set.importNodata.c_str()));
@@ -777,6 +778,10 @@ void PersonalDepth_pi::LoadConfig() {
   }
   c->Read("ImportCache", &m_set.importCache, m_set.importCache);
   c->Read("ImportZFeet", &m_set.importZFeet, m_set.importZFeet);
+  {
+    double v;
+    if (c->Read("ImportRes", &v)) m_set.importRes = (float)std::max(0.0, v);
+  }
   c->Read("ImportNodataOn", &m_set.importNodataOn, m_set.importNodataOn);
   if (c->Read("ImportNodata", &ws)) m_set.importNodata = ws.ToUTF8().data();
   c->Read("ImportBoundsOn", &m_set.importBoundsOn, m_set.importBoundsOn);
@@ -936,6 +941,7 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  m.name = name;
                  m.path = p.path;
                  m.res = EstimateResolution(L.cloud, gridded);
+                 if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
                  m.date = p.surveyDate.empty() ? GuessSurveyDate(p.path) : p.surveyDate;
                  m.params = p.importPrefs;
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
@@ -1289,6 +1295,7 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("sign", s.importSign);
   num("offset", s.importOffset);
   num("zFeet", s.importZFeet);
+  num("res", s.importRes);
   num("cache", s.importCache);
   num("nodataOn", s.importNodataOn);
   kv("nodata", s.importNodata);
@@ -1300,6 +1307,7 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
 
 bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
   if (text.empty()) return false;
+  s.importRes = 0.f;  // réglages enregistrés avant la résolution imposée : automatique
   std::istringstream in(text);
   std::string line;
   while (std::getline(in, line)) {
@@ -1327,6 +1335,7 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "sign") s.importSign = (int)d;
     else if (k == "offset") s.importOffset = (float)d;
     else if (k == "zFeet") s.importZFeet = d != 0;
+    else if (k == "res") s.importRes = (float)d;
     else if (k == "cache") s.importCache = d != 0;
     else if (k == "nodataOn") s.importNodataOn = d != 0;
     else if (k == "nodata") s.importNodata = v;

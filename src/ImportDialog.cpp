@@ -16,6 +16,8 @@
 #include "core/Lang.h"
 #include "ImportDialog.h"
 
+#include <wx/display.h>
+
 #include <cmath>
 #include <cstdlib>
 #include <sstream>
@@ -65,17 +67,20 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
     m_prefsKnown = ApplyImportPrefs(m_srcs[0].params, m_init);
   }
   m_initPrefs = SerializeImportPrefs(m_init);
+  // contenu défilant (petits écrans) ; boutons toujours visibles en bas
+  auto* sc = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+  sc->SetScrollRate(0, FromDIP(12));
   auto* col = new wxBoxSizer(wxVERTICAL);
-  col->Add(BuildFiles(this), 1, wxEXPAND | wxALL, 6);
-  col->Add(BuildReading(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildCrs(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildVref(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  col->Add(BuildFiles(sc), 1, wxEXPAND | wxALL, 6);
+  col->Add(BuildReading(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  col->Add(BuildCrs(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  col->Add(BuildVref(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
 
   // Date du levé : déduite du nom de fichier (AAAAMMJJ) ou de la date du
   // fichier, ou imposée
   auto* dr = new wxBoxSizer(wxHORIZONTAL);
-  m_dateOn = new wxCheckBox(this, wxID_ANY, U8("Date du levé imposée"));
-  m_datePick = new wxDatePickerCtrl(this, wxID_ANY, wxDateTime::Today(), wxDefaultPosition,
+  m_dateOn = new wxCheckBox(sc, wxID_ANY, U8("Date du levé imposée"));
+  m_datePick = new wxDatePickerCtrl(sc, wxID_ANY, wxDateTime::Today(), wxDefaultPosition,
                                     wxDefaultSize, wxDP_DROPDOWN | wxDP_SHOWCENTURY);
   m_dateOn->SetToolTip(U8("Sinon : date AAAAMMJJ trouvée dans le nom du fichier, à défaut date "
                           "du fichier. La date sert à la règle de priorité « plus récent »."));
@@ -93,27 +98,39 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
 
   // Classement dans la base
   auto* cr = new wxBoxSizer(wxHORIZONTAL);
-  m_class = new wxComboBox(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, nullptr,
+  m_class = new wxComboBox(sc, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, nullptr,
                            wxCB_DROPDOWN);
   std::set<std::string> seen;
   for (const auto& d : m_pi->DbSources())
     if (seen.insert(d.group).second) m_class->Append(W8(d.group.c_str()));
   m_class->SetHint(m_edit ? U8("vide : classe actuelle de chaque source")
                           : U8("vide : déduite du nom de chaque fichier (LITTO3D, PFE…)"));
-  cr->Add(new wxStaticText(this, wxID_ANY, U8("Classe")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  cr->Add(new wxStaticText(sc, wxID_ANY, U8("Classe")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
   cr->Add(m_class, 1);
   col->Add(cr, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  sc->SetSizer(col);
 
+  auto* top = new wxBoxSizer(wxVERTICAL);
+  top->Add(sc, 1, wxEXPAND);
   auto* btns = new wxStdDialogButtonSizer();
   auto* ok = new wxButton(this, wxID_OK, m_edit ? U8("Appliquer") : U8("Importer"));
   btns->AddButton(ok);
   btns->AddButton(new wxButton(this, wxID_CANCEL, U8("Annuler")));
   btns->Realize();
-  col->Add(btns, 0, wxEXPAND | wxALL, 8);
+  top->Add(btns, 0, wxEXPAND | wxALL, 8);
   ok->Bind(wxEVT_BUTTON, &ImportDialog::OnOk, this);
 
-  SetSizerAndFit(col);
-  SetSize(FromDIP(wxSize(560, -1)).x, GetSize().y);
+  // taille : tout le contenu si l'écran le permet, sinon 90 % de sa hauteur
+  // avec barre de défilement
+  SetSizer(top);
+  const wxSize want = col->GetMinSize();
+  const wxRect area = wxDisplay(wxDisplay::GetFromWindow(parent) == wxNOT_FOUND
+                                    ? 0u : (unsigned)wxDisplay::GetFromWindow(parent)).GetClientArea();
+  const int btnH = btns->GetMinSize().y + FromDIP(16);
+  const int h = std::min(want.y + btnH + FromDIP(40), area.height * 9 / 10);
+  const int w = std::min(std::max(FromDIP(560), want.x + FromDIP(30)), area.width * 9 / 10);
+  sc->SetMinSize(wxSize(-1, FromDIP(200)));
+  SetSize(w, h);
   UpdateSummary();
   CentreOnParent();
 }
@@ -281,11 +298,31 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   m_boundsU = L("m (profondeur ZH)");
   rr->Add(m_boundsU, 0, wxALIGN_CENTER_VERTICAL);
   g->Add(m_boundsOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(rr, 0);
+
+  // résolution de stockage (pas horizontal des tuiles) : estimée ou imposée
+  m_resOn = new wxCheckBox(sb, wxID_ANY, U8("Résolution imposée"));
+  m_resOn->SetValue(st.importRes > 0);
+  m_res = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                               wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
+  m_res->SetDigits(2);
+  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé : pas "
+                         "de la grille, ou espacement des sondes consécutives (lignes de "
+                         "sonde), ou surface / nombre de sondes. Une valeur plus grande donne une "
+                         "surface plus continue entre des lignes de sonde espacées ; dans chaque "
+                         "case, la sonde la plus faible est gardée.");
+  m_resOn->SetToolTip(rt);
+  m_res->SetToolTip(rt);
+  auto* resr = new wxBoxSizer(wxHORIZONTAL);
+  resr->Add(m_res, 0, wxRIGHT, 4);
+  resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
   auto sync = [this]() {
     m_nodata->Enable(m_nodataOn->GetValue());
     m_boundMin->Enable(m_boundsOn->GetValue());
     m_boundMax->Enable(m_boundsOn->GetValue());
+    m_res->Enable(m_resOn->GetValue());
   };
+  m_resOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
   m_boundsOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
@@ -619,6 +656,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importZFeet = m_zUnit->GetSelection() == 1;
   s.importOffset = toM(m_offset->GetValue(), s.importOffset, 100.0);
   s.importCache = m_cache->GetValue();
+  s.importRes = m_resOn->GetValue() ? (float)m_res->GetValue() : 0.f;
   // NODATA : liste de nombres
   std::vector<double> nodata;
   if (m_nodataOn->GetValue()) {
@@ -693,6 +731,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.depthMax = s.boundMax;
     p.useCache = s.importCache;
     p.importPrefs = prefs;
+    p.storeRes = s.importRes;
     p.surveyDate = m_date;
     if (m_edit && k < m_srcs.size()) {  // relecture : date et classe de la source gardées
       if (p.surveyDate.empty()) p.surveyDate = m_srcs[k].date;

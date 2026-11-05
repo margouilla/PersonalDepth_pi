@@ -80,6 +80,8 @@ class ImportDialog : public wxDialog {
   void OnZUnit();
   wxCheckBox* m_cache = nullptr;
   wxCheckBox *m_nodataOn = nullptr, *m_boundsOn = nullptr;
+  wxCheckBox* m_resOn = nullptr;          // résolution de stockage imposée
+  wxSpinCtrlDouble* m_res = nullptr;
   wxComboBox* m_nodata = nullptr;
   wxSpinCtrlDouble *m_boundMin = nullptr, *m_boundMax = nullptr;
   // Coordonnées

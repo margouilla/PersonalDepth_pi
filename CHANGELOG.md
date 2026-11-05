@@ -4,7 +4,18 @@
 
 ## English
 
-### 0.1.0-beta.4 (in preparation)
+### 0.1.0-beta.5 (in preparation)
+
+- **Sounding lines** (single-beam echo sounder, GPS tracks): the storage
+  resolution is now estimated from the spacing of consecutive soundings
+  (a few metres) instead of the covered area (often 50–100 m). Re-import the
+  sources (*Edit…*) to benefit from it.
+- **Fixed resolution** at import (*Edit…* for existing sources).
+- Import window: scroll bar on small screens.
+- English: spaces restored in the cursor readout and messages; file sizes
+  in KB / MB / GB; FES2022 Z0 line translated.
+
+### 0.1.0-beta.4
 
 - **New platforms**: packages for macOS 11+ (Intel and Apple Silicon),
   Debian 12 / 13 and Ubuntu 24.04 (64-bit PC), Raspberry Pi OS 64-bit
@@ -42,7 +53,18 @@ crash of OpenCPN when opening the plugin panel.
 
 ## Français
 
-### 0.1.0-beta.4 (en préparation)
+### 0.1.0-beta.5 (en préparation)
+
+- **Lignes de sonde** (sondeur monofaisceau, traces GPS) : la résolution de
+  stockage est maintenant estimée d'après l'espacement des sondes
+  consécutives (quelques mètres) et non plus la surface couverte (souvent
+  50 à 100 m). Réimporter les sources (*Modifier…*) pour en profiter.
+- **Résolution imposée** à l'import (*Modifier…* pour les sources existantes).
+- Fenêtre d'import : barre de défilement sur les petits écrans.
+- Anglais : espaces rétablies dans la lecture curseur et les messages,
+  tailles de fichiers en KB / MB / GB, ligne Z0 de FES2022 traduite.
+
+### 0.1.0-beta.4
 
 - **Nouvelles plateformes** : paquets pour macOS 11+ (Intel et Apple
   Silicon), Debian 12 / 13 et Ubuntu 24.04 (PC 64 bits), Raspberry Pi OS

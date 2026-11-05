@@ -260,7 +260,33 @@ double EstimateResolution(const PointCloud& pc, bool& gridded) {
   }
   const double area = std::max(1.0, (pc.lonMax - pc.lonMin) * 111320.0 * cosL *
                                         (pc.latMax - pc.latMin) * 110540.0);
-  return std::sqrt(area / (double)pc.size());
+  const double byArea = std::sqrt(area / (double)pc.size());
+  // Semis non quadrillé : la surface / le nombre de points surestime le pas
+  // des levés en lignes (sondeur monofaisceau : un point tous les quelques
+  // mètres le long de la route, routes espacées de 100 m) ou à grandes zones
+  // vides. Les sondes consécutives d'un fichier sont en général voisines
+  // (route, profil, fauchée) : la médiane de leur espacement donne le pas
+  // réel. Fichier en ordre aléatoire : médiane grande, la surface l'emporte.
+  const size_t n = pc.size();
+  if (n >= 64) {
+    const size_t step = std::max<size_t>(1, n / 1000000);
+    std::vector<double> d;
+    d.reserve(n / step);
+    const double kx = PointCloud::kQ * 111320.0 * cosL, ky = PointCloud::kQ * 110540.0;
+    for (size_t i = 0; i + 1 < n; i += step) {
+      const double dx = (double)(pc.qlon[i + 1] - pc.qlon[i]) * kx;
+      const double dy = (double)(pc.qlat[i + 1] - pc.qlat[i]) * ky;
+      const double v = std::hypot(dx, dy);
+      if (v > 0.01) d.push_back(v);  // doublons (bateau arrêté) ignorés
+    }
+    if (d.size() >= 32) {
+      auto mid = d.begin() + d.size() / 2;
+      std::nth_element(d.begin(), mid, d.end());
+      const double med = std::max(0.05, *mid);
+      if (med < byArea) return med;
+    }
+  }
+  return byArea;
 }
 
 // Ordre de priorité des sources pour une règle donnée (la première l'emporte)

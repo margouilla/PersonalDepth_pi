@@ -523,3 +523,6 @@
 {"Z0 : %s%s%s", "Z0: %s%s%s"},
 {"grille ", "grid "},
 {"PBMA FES ", "FES LAT "},
+{"Résolution imposée", "Fixed resolution"},
+{"m (automatique si décoché)", "m (automatic if unticked)"},
+{"Pas horizontal de stockage des sondes dans la base. Sinon estimé : pas de la grille, ou espacement des sondes consécutives (lignes de sonde), ou surface / nombre de sondes. Une valeur plus grande donne une surface plus continue entre des lignes de sonde espacées ; dans chaque case, la sonde la plus faible est gardée.", "Horizontal step used to store the soundings in the database. Otherwise estimated: grid step, or spacing of consecutive soundings (sounding lines), or area / number of soundings. A larger value gives a more continuous surface between widely spaced sounding lines; in each cell the shoalest sounding is kept."},
