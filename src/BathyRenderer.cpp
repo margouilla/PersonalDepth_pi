@@ -26,6 +26,7 @@
 
 #ifdef __WXOSX__
 #include <OpenGL/gl.h>
+#include <dlfcn.h>
 #else
 #ifdef _WIN32
 #include <windows.h>
@@ -98,8 +99,8 @@ void* GLProc(const char* name) {
 #ifdef _WIN32
   return (void*)wglGetProcAddress(name);
 #elif defined(__WXOSX__)
-  (void)name;
-  return nullptr;  // macOS : contexte de compatibilité sans shaders imposés
+  // macOS : fonctions OpenGL 2.x exportées directement par OpenGL.framework
+  return dlsym(RTLD_DEFAULT, name);
 #else
   return (void*)glXGetProcAddressARB((const GLubyte*)name);
 #endif

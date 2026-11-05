@@ -4,6 +4,16 @@
 
 ## English
 
+### 0.1.0-beta.4 (in preparation)
+
+- **New platforms**: packages for macOS 11+ (Intel and Apple Silicon),
+  Debian 12 / 13 and Ubuntu 24.04 (64-bit PC), Raspberry Pi OS 64-bit
+  (bookworm, trixie) and 32-bit (bookworm), built automatically by GitHub
+  Actions. Not yet tested on real systems: feedback welcome.
+- macOS: GLSL shaders enabled (live palette, gridded tide).
+- Default folder of the vertical references outside Windows: OpenCPN's
+  private data folder.
+
 ### 0.1.0-beta.3
 
 - **Language**: the user interface is now available in English as well as French.
@@ -29,6 +39,17 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.4 (en préparation)
+
+- **Nouvelles plateformes** : paquets pour macOS 11+ (Intel et Apple
+  Silicon), Debian 12 / 13 et Ubuntu 24.04 (PC 64 bits), Raspberry Pi OS
+  64 bits (bookworm, trixie) et 32 bits (bookworm), compilés automatiquement
+  par GitHub Actions. Pas encore testés sur de vrais systèmes : retours
+  bienvenus.
+- macOS : shaders GLSL activés (palette en direct, marée maillée).
+- Dossier par défaut des références verticales hors Windows : dossier de
+  données privé d'OpenCPN.
 
 ### 0.1.0-beta.3
 

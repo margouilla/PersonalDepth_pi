@@ -10,7 +10,7 @@
 
 ## English
 
-PersonalDepth is an OpenCPN plugin (API 1.18, OpenCPN ≥ 5.8) inspired by
+PersonalDepth is an OpenCPN plugin (OpenCPN ≥ 5.14) inspired by
 TimeZero's PBG module. Large personal surveys (XYZ point clouds, grids, TIN)
 are imported **once** into a local database. The colour ramp, depth
 thresholds, safety depth and hillshading can then be changed **instantly**,
@@ -48,11 +48,24 @@ grids are never recomputed.
 
 ### Installation (testers)
 
-Requirements: **Windows, OpenCPN 5.14 32-bit**, OpenGL enabled. Other
-platforms (64-bit Windows, Linux, macOS) are not available yet.
+Requirements: **OpenCPN 5.14 or newer**, OpenGL enabled. Pick the file for
+your system in [Releases](https://github.com/margouilla/PersonalDepth_pi/releases):
 
-1. Download `PersonalDepth-<version>_msvc-wx32-10.tar.gz` from
-   [Releases](https://github.com/margouilla/PersonalDepth_pi/releases).
+| System | File `PersonalDepth-<version>_…` |
+|---|---|
+| Windows (OpenCPN 32-bit) | `msvc-wx32-10.tar.gz` |
+| macOS 11 or newer, Intel and Apple Silicon | `darwin-wx32-10-universal.tar.gz` |
+| Debian 12, Ubuntu 24.04 (OpenCPN PPA) — 64-bit PC | `debian-x86_64-12-x86_64.tar.gz` |
+| Debian 13 — 64-bit PC | `debian-x86_64-13-x86_64.tar.gz` |
+| Raspberry Pi OS 64-bit bookworm, Debian 12 ARM 64-bit | `debian-arm64-12-arm64.tar.gz` |
+| Raspberry Pi OS 64-bit trixie, Debian 13 ARM 64-bit | `debian-arm64-13-arm64.tar.gz` |
+| Raspberry Pi OS 32-bit bookworm, Debian 12 armhf | `debian-armhf-12-armhf.tar.gz` |
+
+The Linux and macOS packages are new (beta.4) and **not tested on real
+systems yet**: feedback welcome. Flatpak OpenCPN (Flathub) is not supported
+yet.
+
+1. Download the file for your system.
 2. OpenCPN: *Options › Plugins › Import plugin…*, select the file.
 3. Enable **PersonalDepth**, then click its toolbar icon.
 
@@ -107,11 +120,20 @@ Windows (validated: OpenCPN 5.14 32-bit, Visual Studio 2026, wxWidgets
 (`-Clean`, `-NoInstall`, `-Package` builds the importable `.tar.gz` in
 `dist\`).
 
-Linux:
+Linux / macOS:
 ```
 sudo apt install build-essential cmake libwxgtk3.2-dev libgl-dev libgdal-dev
 cmake -S . -B build && cmake --build build -j
+cmake --build build --target pd-package   # dist/PersonalDepth-<version>_<target>.tar.gz
 ```
+The package target defaults to the build system (`/etc/os-release`); set it
+with `-DPD_TARGET=… -DPD_TARGET_VERSION=… -DPD_TARGET_ARCH=…` and the
+pre-release suffix with `-DPD_PRE=beta.N`.
+
+Continuous integration (`.github/workflows/build.yml`, GitHub Actions):
+every push builds and tests the Linux (Debian 12/13, x86_64, arm64, armhf)
+and macOS (universal) packages; a `v*` tag also creates a draft release with
+all of them. The Windows package is still built locally with `build.ps1`.
 
 Translations: every English text is in `src/core/LangTable.inc`, one line
 `{"French text", "English text"}` per text, looked up at run time — a
@@ -119,23 +141,26 @@ missing line simply leaves the French text.
 
 ### Known limitations
 
-- Validated on Windows only, OpenCPN 5.14 32-bit, OpenGL mode; the non-GL
-  renderer is written but little tested.
+- Validated on Windows, OpenCPN 5.14 32-bit, OpenGL mode; Linux, Raspberry Pi
+  and macOS builds still to be tested; the non-GL renderer is written but
+  little tested.
+- Raspberry Pi: large imports are slow and limited by memory (32-bit systems
+  in particular).
 - Fixed-function OpenGL: not compatible with Android / GLES.
 - Mercator screen projection assumed; antimeridian not handled.
 - Older datums (NTF, ED50, OSGB36…) use mean Helmert parameters (~1–2 m).
 
 ### Roadmap
 
-Other user interface languages, builds for other platforms
-(OpenCPN plugin catalog), live echo-sounder input, export of the merged
+Other user interface languages, Flatpak build and OpenCPN plugin catalog
+(Cloudsmith), live echo-sounder input, export of the merged
 surface.
 
 ---
 
 ## Français
 
-PersonalDepth est un plugin OpenCPN (API 1.18, OpenCPN ≥ 5.8) inspiré du
+PersonalDepth est un plugin OpenCPN (OpenCPN ≥ 5.14) inspiré du
 module PBG de TimeZero. De gros levés personnels (nuages XYZ, grilles, TIN)
 sont importés **une seule fois** dans une base locale ; la palette, les seuils
 de profondeur, la zone dangereuse et l'ombrage se règlent ensuite **en
@@ -177,12 +202,25 @@ grilles de profondeur ne sont jamais recalculées.
 
 ### Installation (testeurs)
 
-Configuration requise : **Windows, OpenCPN 5.14 32 bits**, OpenGL activé. Les
-autres plateformes (Windows 64 bits, Linux, macOS) ne sont pas encore
-disponibles.
+Configuration requise : **OpenCPN 5.14 ou plus récent**, OpenGL activé.
+Choisir le fichier de son système dans
+[Releases](https://github.com/margouilla/PersonalDepth_pi/releases) :
 
-1. Télécharger `PersonalDepth-<version>_msvc-wx32-10.tar.gz` dans
-   [Releases](https://github.com/margouilla/PersonalDepth_pi/releases).
+| Système | Fichier `PersonalDepth-<version>_…` |
+|---|---|
+| Windows (OpenCPN 32 bits) | `msvc-wx32-10.tar.gz` |
+| macOS 11 ou plus récent, Intel et Apple Silicon | `darwin-wx32-10-universal.tar.gz` |
+| Debian 12, Ubuntu 24.04 (PPA OpenCPN) — PC 64 bits | `debian-x86_64-12-x86_64.tar.gz` |
+| Debian 13 — PC 64 bits | `debian-x86_64-13-x86_64.tar.gz` |
+| Raspberry Pi OS 64 bits bookworm, Debian 12 ARM 64 bits | `debian-arm64-12-arm64.tar.gz` |
+| Raspberry Pi OS 64 bits trixie, Debian 13 ARM 64 bits | `debian-arm64-13-arm64.tar.gz` |
+| Raspberry Pi OS 32 bits bookworm, Debian 12 armhf | `debian-armhf-12-armhf.tar.gz` |
+
+Les paquets Linux et macOS sont nouveaux (beta.4) et **pas encore testés sur
+de vrais systèmes** : retours bienvenus. OpenCPN en Flatpak (Flathub) n'est
+pas encore pris en charge.
+
+1. Télécharger le fichier de son système.
 2. OpenCPN : *Options › Plugins › Importer un plugin…*, choisir le fichier.
 3. Activer **PersonalDepth**, puis cliquer sur son icône dans la barre d'outils.
 
@@ -266,12 +304,21 @@ Remarques Windows :
   `C:\ProgramData\opencpn\opencpn.log`.
 - `small`/`near`/`far` sont des macros de `windows.h`.
 
-Linux :
+Linux / macOS :
 ```
 sudo apt install build-essential cmake libwxgtk3.2-dev libgl-dev libgdal-dev
 cmake -S . -B build && cmake --build build -j
-sudo cmake --install build
+cmake --build build --target pd-package   # dist/PersonalDepth-<version>_<cible>.tar.gz
 ```
+La cible du paquet est par défaut le système de compilation
+(`/etc/os-release`) ; la préciser avec `-DPD_TARGET=… -DPD_TARGET_VERSION=…
+-DPD_TARGET_ARCH=…`, et le suffixe de pré-version avec `-DPD_PRE=beta.N`.
+
+Compilation automatique (`.github/workflows/build.yml`, GitHub Actions) :
+chaque push compile et teste les paquets Linux (Debian 12/13, x86_64, arm64,
+armhf) et macOS (universel) ; un tag `v*` crée en plus un brouillon de release
+avec tous les paquets. Le paquet Windows reste compilé localement par
+`build.ps1`.
 
 Traductions : tous les textes anglais sont dans `src/core/LangTable.inc`, une
 ligne `{"texte français", "English text"}` par texte, cherchée à l'exécution —
@@ -304,14 +351,21 @@ src/ImportDialog.*       fenêtre d'import / de modification des sources
 src/TideChart.*          fenêtre « Courbe de marée »
 src/core/Lang.*          langue de l'interface ; LangTable.inc : table français -> anglais
 tools/pdtide_convert.py  conversion FES2022 NetCDF -> .pdtide
+tools/ci/                compilation Linux en conteneur (GitHub Actions)
+cmake/                   paquet OpenCPN (PdPackage), correctif wxWidgets macOS
+packaging/               modèle de metadata.xml
+.github/workflows/       compilation automatique Linux / Raspberry Pi / macOS
 tests/test_core.cpp      tests du cœur
 third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
 ```
 
 ### Limites connues
 
-- Validé sous Windows avec OpenCPN 5.14 (32 bits), en mode OpenGL ; le rendu
-  non-OpenGL (wxDC) est écrit mais peu testé.
+- Validé sous Windows avec OpenCPN 5.14 (32 bits), en mode OpenGL ; versions
+  Linux, Raspberry Pi et macOS à tester ; le rendu non-OpenGL (wxDC) est
+  écrit mais peu testé.
+- Raspberry Pi : gros imports lents et limités par la mémoire (surtout en
+  32 bits).
 - Rendu GL en pipeline fixe : pas compatible Android / GLES.
 - Projection écran supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36, DHDN, BD72…) : paramètres de Helmert
@@ -322,8 +376,8 @@ third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
 
 ### Pistes suivantes
 
-Autres langues d'interface, compilation pour les autres plateformes
-(catalogue de plugins OpenCPN), intégration d'un sondeur en direct, export de
+Autres langues d'interface, paquet Flatpak et catalogue de plugins OpenCPN
+(Cloudsmith), intégration d'un sondeur en direct, export de
 la surface fusionnée.
 
 ---

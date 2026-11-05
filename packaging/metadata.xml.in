@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin version="1">
+  <name>PersonalDepth</name>
+  <version>@PD_VERSION@</version>
+  <release>1</release>
+  <summary>Personal bathymetry: XYZ, grids and TIN with a live colour ramp</summary>
+  <api-version>1.18</api-version>
+  <open-source>yes</open-source>
+  <author>Marcaurelio Franzetti (margouilla)</author>
+  <source>https://github.com/margouilla/PersonalDepth_pi</source>
+  <info-url>https://github.com/margouilla/PersonalDepth_pi</info-url>
+  <description>
+Displays large personal bathymetric
+surveys (XYZ, ESRI ASCII, LandXML) as
+a shaded coloured surface with exact
+soundings. Palette, depth thresholds
+and safety contour change instantly.
+Surveys are merged in a local database
+by priority; tide from OpenCPN
+stations or FES2022.
+Beta test version, English or French
+interface.
+  </description>
+  <target>@PD_TARGET@</target>
+  <target-version>@PD_TARGET_VERSION@</target-version>
+  <target-arch>@PD_TARGET_ARCH@</target-arch>
+</plugin>

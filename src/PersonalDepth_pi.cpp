@@ -332,9 +332,13 @@ wxString PersonalDepth_pi::DefaultReferenceDir() {
   const wxString sep = wxFileName::GetPathSeparator();
   wxString a = GetPluginDataDir("PersonalDepth_pi") + sep + "references";
   if (wxDirExists(a)) return a;
-  wxString local;
+  wxString local;  // Windows : dossier des plugins de l'utilisateur
   if (wxGetEnv("LOCALAPPDATA", &local))
     return local + sep + "opencpn" + sep + "plugins" + sep + "PersonalDepth_pi" + sep + "references";
+  // Linux, Flatpak, macOS : dossier de données privé d'OpenCPN
+  const wxString* priv = GetpPrivateApplicationDataLocation();
+  if (priv && !priv->empty())
+    return *priv + sep + "plugins" + sep + "PersonalDepth_pi" + sep + "references";
   return a;
 }
 

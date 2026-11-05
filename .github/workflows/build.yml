@@ -1,0 +1,170 @@
+# PersonalDepth_pi - compilation Linux / Raspberry Pi / macOS
+#
+# - à chaque push sur main (ou à la main, onglet Actions › Run workflow) :
+#   compilation + tests ; les paquets sont téléchargeables dans « Artifacts »
+#   en bas de la page du run ;
+# - à chaque tag v* (ex. v0.1.0-beta.4) : en plus, brouillon de release GitHub
+#   avec tous les paquets. Ajouter le paquet Windows (build.ps1 -Package), le
+#   texte, puis publier.
+#
+# Le paquet Windows reste compilé localement (build.ps1).
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12 / Ubuntu 24.04 x86_64
+            runner: ubuntu-24.04
+            image: debian:bookworm
+            platform: linux/amd64
+            target: debian-x86_64
+            tversion: '12'
+            arch: x86_64
+            tests: 1
+          - name: Debian 13 x86_64
+            runner: ubuntu-24.04
+            image: debian:trixie
+            platform: linux/amd64
+            target: debian-x86_64
+            tversion: 'n/a'
+            arch: x86_64
+            tests: 1
+          - name: Debian 12 / Raspberry Pi OS bookworm arm64
+            runner: ubuntu-24.04-arm
+            image: debian:bookworm
+            platform: linux/arm64
+            target: debian-arm64
+            tversion: '12'
+            arch: arm64
+            tests: 1
+          - name: Debian 13 / Raspberry Pi OS trixie arm64
+            runner: ubuntu-24.04-arm
+            image: debian:trixie
+            platform: linux/arm64
+            target: debian-arm64
+            tversion: 'n/a'
+            arch: arm64
+            tests: 1
+          - name: Debian 12 / Raspberry Pi OS bookworm armhf (32 bits)
+            runner: ubuntu-24.04
+            image: debian:bookworm
+            platform: linux/arm/v7
+            target: debian-armhf
+            tversion: '12'
+            arch: armhf
+            tests: 0   # émulation qemu : lente, tests omis
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pré-version (tag v0.1.0-beta.4 -> beta.4)
+        id: ver
+        shell: bash
+        run: |
+          pre="dev.${GITHUB_RUN_NUMBER}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"; pre=""; [[ "$v" == *-* ]] && pre="${v#*-}"
+          fi
+          echo "pre=$pre" >> "$GITHUB_OUTPUT"
+      - name: Émulation ARM 32 bits
+        if: matrix.platform == 'linux/arm/v7'
+        uses: docker/setup-qemu-action@v3
+      - name: Compilation dans ${{ matrix.image }}
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} \
+            bash tools/ci/build-linux.sh "${{ matrix.target }}" "${{ matrix.tversion }}" \
+            "${{ matrix.arch }}" "${{ steps.ver.outputs.pre }}" "${{ matrix.tests }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-${{ strategy.job-index }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  macos:
+    name: macOS 11+ (Intel et Apple Silicon)
+    runs-on: macos-14
+    env:
+      WX_VERSION: 3.2.6
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pré-version
+        id: ver
+        shell: bash
+        run: |
+          pre="dev.${GITHUB_RUN_NUMBER}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"; pre=""; [[ "$v" == *-* ]] && pre="${v#*-}"
+          fi
+          echo "pre=$pre" >> "$GITHUB_OUTPUT"
+      - name: Cache wxWidgets
+        id: wxcache
+        uses: actions/cache@v4
+        with:
+          path: ~/wx-universal
+          key: wx-${{ env.WX_VERSION }}-universal-macos11-v1
+      - name: wxWidgets universel (arm64 + x86_64, macOS 11)
+        if: steps.wxcache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL -o wx.tar.bz2 \
+            https://github.com/wxWidgets/wxWidgets/releases/download/v$WX_VERSION/wxWidgets-$WX_VERSION.tar.bz2
+          tar xjf wx.tar.bz2
+          mkdir wxbuild && cd wxbuild
+          ../wxWidgets-$WX_VERSION/configure --prefix="$HOME/wx-universal" \
+            --with-osx_cocoa --enable-universal_binary=arm64,x86_64 \
+            --with-macosx-version-min=11.0 --with-opengl \
+            --with-libpng=builtin --with-libjpeg=builtin --with-libtiff=builtin \
+            --with-zlib=builtin --with-expat=builtin --with-regex=builtin \
+            --without-liblzma --disable-webview --disable-mediactrl
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
+      - name: Compilation
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPD_WITH_GDAL=OFF \
+            -DwxWidgets_CONFIG_EXECUTABLE="$HOME/wx-universal/bin/wx-config" \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DPD_PRE="${{ steps.ver.outputs.pre }}"
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+          (cd build && ctest --output-on-failure)
+          lipo -info build/libPersonalDepth_pi.dylib
+          otool -L build/libPersonalDepth_pi.dylib
+          cmake --build build --target pd-package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darwin-wx32
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Brouillon de release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Sommes de contrôle
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: true
+          name: PersonalDepth ${{ github.ref_name }}
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt

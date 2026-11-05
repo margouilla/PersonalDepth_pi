@@ -6,3 +6,4 @@ dist/
 *.pdtide
 __pycache__/
 .vs/
+build-ci/
