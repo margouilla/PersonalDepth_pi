@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyGrid.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cmath>
@@ -134,7 +135,7 @@ bool BathyGrid::build(const PointCloud& pc, const GridParams& p,
   nativeLattice = false;
   filledGaps = 0;
   mode = p.mode;
-  if (pc.empty()) { err = "Nuage vide"; return false; }
+  if (pc.empty()) { err = pd::tr("Nuage vide"); return false; }
   const double midLat = 0.5 * (pc.latMin + pc.latMax);
   const double cosL = std::max(0.01, std::cos(midLat * M_PI / 180.0));
   const double spanLon = std::max(pc.lonMax - pc.lonMin, 1e-9);

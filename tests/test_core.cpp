@@ -722,6 +722,15 @@ int main(int argc, char** argv) {
     double cl, ca;
     CHECK(LoadESRIAscii(asc, lo, pc, cl, ca, err));
     CHECK(pc.size() == 395 && std::fabs(pc.zMin + 999.f) < 1e-3 && pc.zMax < 5.2f);
+    {  // fichier en pieds : converti en mètres dans le nuage (base toujours en m)
+      LoadOptions lf = lo;
+      lf.zToMeters = 0.3048;
+      PointCloud pf;
+      CHECK(LoadESRIAscii(asc, lf, pf, cl, ca, err) && pf.size() == pc.size() &&
+            std::fabs(pf.zMin - pc.zMin * 0.3048f) < 1e-3f && std::fabs(pf.zMax - pc.zMax * 0.3048f) < 1e-3f);
+      lf.zOffset = 1.f;  // décalage en mètres, après conversion
+      CHECK(LoadESRIAscii(asc, lf, pf, cl, ca, err) && std::fabs(pf.zMax - (pc.zMax * 0.3048f + 1.f)) < 1e-3f);
+    }
     lo.nodata = {-9999, 999};  // NODATA de l'utilisateur, en Z brut
     CHECK(LoadESRIAscii(asc, lo, pc, cl, ca, err) && pc.size() == 392 && pc.zMin >= 5.f);
     // bornes d'import sur la profondeur finale (couche complète)
@@ -862,6 +871,38 @@ int main(int argc, char** argv) {
             !std::filesystem::exists(folder + "/_redecoupage"));
     }
     std::printf("Découpage, redécoupage, masquage, arrêt d'import : OK\n");
+  }
+  // 21) Date du levé modifiable, réglages d'import gardés avec la source
+  {
+    const std::string folder = Tmp("pd_testdb_meta");
+    std::filesystem::remove_all(folder);
+    BathyDb db;
+    CHECK(db.open(folder, err));
+    auto grid = [](double lo0, double lo1, float z, double step) {
+      PointCloud pc;
+      const double dla = step / 110540.0, dlo = step / (111320.0 * std::cos(48.3 * M_PI / 180));
+      for (double la = 48.30; la <= 48.305; la += dla)
+        for (double lo = lo0; lo <= lo1; lo += dlo) pc.add(lo, la, z);
+      pc.computeBounds();
+      return pc;
+    };
+    PointCloud A = grid(-4.50, -4.49, 10.f, 2.0), B = grid(-4.495, -4.485, 8.f, 2.0);
+    bool g = false;
+    DbSource ma, mb;
+    ma.name = "A"; ma.date = "2010-01-01"; ma.res = EstimateResolution(A, g); ma.params = "zFeet=1\nvrefMode=2\n";
+    mb.name = "B"; mb.date = "2020-01-01"; mb.res = EstimateResolution(B, g);
+    int64_t ida = 0, idb = 0;
+    CHECK(db.importCloud(A, ma, g, DbPriority::Newest, err, nullptr, nullptr, &ida));
+    CHECK(db.importCloud(B, mb, g, DbPriority::Newest, err, nullptr, nullptr, &idb));
+    const double plo = -4.4925, pla = 48.3025;  // recouvrement
+    CHECK(db.sourceAt(plo, pla, 18) == idb);     // B plus récent
+    CHECK(db.setDates({ida}, "2024-06-01", DbPriority::Newest, err));
+    CHECK(db.sourceAt(plo, pla, 18) == ida);     // A devient le plus récent : refusion
+    CHECK(db.setParams({idb}, "zFeet=0\n", err) && db.source(idb)->params == "zFeet=0\n");
+    BathyDb db2;
+    CHECK(db2.open(folder, err) && db2.source(ida)->date == "2024-06-01" &&
+          db2.source(ida)->params == "zFeet=1\nvrefMode=2\n" && db2.source(idb)->params == "zFeet=0\n");
+    std::printf("Date du levé et réglages d'import : OK\n");
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;

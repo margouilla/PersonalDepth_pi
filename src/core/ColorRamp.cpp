@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "ColorRamp.h"
+#include "Lang.h"
 #include "TideField.h"
 
 #include <algorithm>
@@ -117,7 +118,7 @@ bool ColorRamp::deserialize(const std::string& s) {
 // GMT .cpt : "z0 r g b z1 r g b" ou "z0 r/g/b z1 r/g/b"
 bool ColorRamp::loadCPT(const std::string& path, std::string& err) {
   std::ifstream in(path);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::vector<ColorStop> st;
   bool allFlat = true;
   std::string line;
@@ -134,7 +135,7 @@ bool ColorRamp::loadCPT(const std::string& path, std::string& err) {
     else st.push_back({z0, c0});
     st.push_back({z1, c1});
   }
-  if (st.size() < 2) { err = "Palette CPT vide"; return false; }
+  if (st.size() < 2) { err = pd::tr("Palette CPT vide"); return false; }
   mode = allFlat ? Mode::Stepped : Mode::Continuous;
   if (mode == Mode::Stepped) st.pop_back();  // la borne haute ne porte pas de couleur
   stops = st;

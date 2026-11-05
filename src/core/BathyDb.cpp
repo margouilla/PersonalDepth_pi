@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyDb.h"
+#include "Lang.h"
 
 #include <sys/stat.h>
 
@@ -57,7 +58,7 @@ class DbCell {
     path = p;
     const int flags = SQLITE_OPEN_READWRITE | (create ? SQLITE_OPEN_CREATE : 0) | SQLITE_OPEN_NOMUTEX;
     if (sqlite3_open_v2(fs::u8path(p).u8string().c_str(), &db, flags, nullptr) != SQLITE_OK) {
-      err = "Base : ouverture impossible de " + p + (db ? std::string(" (") + sqlite3_errmsg(db) + ")" : "");
+      err = pd::tr("Base : ouverture impossible de ") + p + (db ? std::string(" (") + sqlite3_errmsg(db) + ")" : "");
       if (db) { sqlite3_close(db); db = nullptr; }
       return false;
     }
@@ -69,7 +70,7 @@ class DbCell {
         "CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, name TEXT, path TEXT, date TEXT,"
         " level INTEGER, res REAL, rank INTEGER, visible INTEGER, crs TEXT, vref TEXT, zmin REAL,"
         " zmax REAL, count INTEGER, lonmin REAL, lonmax REAL, latmin REAL, latmax REAL, imported TEXT,"
-        " grp TEXT);"
+        " grp TEXT, params TEXT);"
         "CREATE TABLE IF NOT EXISTS src_tiles(src INTEGER, z INTEGER, x INTEGER, y INTEGER,"
         " data BLOB, PRIMARY KEY(src, z, x, y));"
         "CREATE TABLE IF NOT EXISTS merged(z INTEGER, x INTEGER, y INTEGER, zmin REAL, zmax REAL,"
@@ -82,20 +83,23 @@ class DbCell {
       if (!exec(m, err)) return false;
     }
     // bases plus anciennes : colonne « classe » ajoutée
-    bool hasGrp = false;
+    bool hasGrp = false, hasParams = false;
     sqlite3_stmt* q = nullptr;
     sqlite3_prepare_v2(db, "PRAGMA table_info(sources)", -1, &q, nullptr);
     while (q && sqlite3_step(q) == SQLITE_ROW) {
       const unsigned char* n = sqlite3_column_text(q, 1);
       if (n && std::strcmp((const char*)n, "grp") == 0) hasGrp = true;
+      if (n && std::strcmp((const char*)n, "params") == 0) hasParams = true;
     }
     sqlite3_finalize(q);
-    return hasGrp || exec("ALTER TABLE sources ADD COLUMN grp TEXT", err);
+    // bases plus anciennes : paramètres d'import de chaque source (relecture)
+    return (hasGrp || exec("ALTER TABLE sources ADD COLUMN grp TEXT", err)) &&
+           (hasParams || exec("ALTER TABLE sources ADD COLUMN params TEXT", err));
   }
   bool exec(const char* sql, std::string& err) {
     char* msg = nullptr;
     if (sqlite3_exec(db, sql, nullptr, nullptr, &msg) != SQLITE_OK) {
-      err = std::string("Base : ") + (msg ? msg : "erreur SQL") + " (" + path + ")";
+      err = std::string(pd::tr("Base : ")) + (msg ? msg : pd::tr("erreur SQL")) + " (" + path + ")";
       sqlite3_free(msg);
       return false;
     }
@@ -292,7 +296,7 @@ bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
   std::error_code ec;
   fs::create_directories(fs::u8path(folder), ec);
   if (!fs::is_directory(fs::u8path(folder), ec)) {
-    err = "Dossier de base inaccessible : " + folder;
+    err = pd::tr("Dossier de base inaccessible : ") + folder;
     return false;
   }
   // découpage du dossier : 1° pour les anciennes bases, sinon celui inscrit
@@ -403,7 +407,7 @@ bool BathyDb::reloadSources(std::string& err) {
     sqlite3_stmt* s = nullptr;
     if (sqlite3_prepare_v2(c->db,
                            "SELECT id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,count,"
-                           "lonmin,lonmax,latmin,latmax,imported,grp FROM sources",
+                           "lonmin,lonmax,latmin,latmax,imported,grp,params FROM sources",
                            -1, &s, nullptr) != SQLITE_OK)
       continue;
     while (sqlite3_step(s) == SQLITE_ROW) {
@@ -426,6 +430,7 @@ bool BathyDb::reloadSources(std::string& err) {
       d.latMin = sqlite3_column_double(s, 15); d.latMax = sqlite3_column_double(s, 16);
       d.imported = txt(17);
       d.group = txt(18);
+      d.params = txt(19);
       if (d.group.empty()) d.group = GuessSourceGroup(d.name);  // bases antérieures aux classes
       m[d.id] = d;  // même ligne dans chaque fichier touché
     }
@@ -558,7 +563,7 @@ bool BathyDb::flushWrites(std::string& err) {
       sqlite3_bind_int(s, 2, w.z); sqlite3_bind_int(s, 3, w.x); sqlite3_bind_int(s, 4, w.y);
       sqlite3_bind_blob(s, 5, blobs[k].data(), (int)blobs[k].size(), SQLITE_STATIC);
     }
-    if (sqlite3_step(s) != SQLITE_DONE) { err = std::string("Base : ") + sqlite3_errmsg(c->db); ok = false; }
+    if (sqlite3_step(s) != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); ok = false; }
     sqlite3_reset(s);
   }
   pending_.clear();
@@ -591,7 +596,7 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(c->db,
                        "INSERT OR REPLACE INTO sources (id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,"
-                       "count,lonmin,lonmax,latmin,latmax,imported,grp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
+                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
                        &s, nullptr);
     int k = 1;
     sqlite3_bind_int64(s, k++, d.id);
@@ -613,9 +618,10 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_bind_double(s, k++, d.latMax);
     sqlite3_bind_text(s, k++, d.imported.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(s, k++, d.group.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(s, k++, d.params.c_str(), -1, SQLITE_TRANSIENT);
     const int rc = sqlite3_step(s);
     sqlite3_finalize(s);
-    if (rc != SQLITE_DONE) { err = std::string("Base : ") + sqlite3_errmsg(c->db); return false; }
+    if (rc != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); return false; }
   }
   return true;
 }
@@ -702,7 +708,7 @@ bool BathyDb::remergeSet(const std::set<Key>& keys, DbPriority prio, std::string
     if (cancel && *cancel) { err = "Annulé"; return false; }
     if (!remergeTile(std::get<0>(key), std::get<1>(key), std::get<2>(key), prio, err)) return false;
     if (progress && (++k % 64 == 0 || k == keys.size()))
-      progress((float)k / keys.size(), "Fusion des tuiles");
+      progress((float)k / keys.size(), pd::tr("Fusion des tuiles"));
   }
   return true;
 }
@@ -752,7 +758,7 @@ bool BathyDb::importCloud(const PointCloud& pc, DbSource meta, bool gridded, DbP
 bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded, DbPriority prio,
                               std::string& err, const DbProgress& progress,
                               const std::atomic<bool>* cancel, int64_t* newId) {
-  if (pc.empty()) { err = "Source vide"; return false; }
+  if (pc.empty()) { err = pd::tr("Source vide"); return false; }
   const double midLat = 0.5 * (pc.latMin + pc.latMax);
   const int zs = meta.level > 0 ? meta.level : LevelForResolution(meta.res, midLat);
   std::mt19937_64 rng((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count() ^
@@ -825,7 +831,7 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
     }
     if ((k & 0xFFFFF) == 0) {
       if (cancel && *cancel) { err = "Annulé"; return false; }
-      if (progress) progress(0.4f * k / n, "Répartition des sondes");
+      if (progress) progress(0.4f * k / n, pd::tr("Répartition des sondes"));
     }
   }
   if (!inMemory) {
@@ -888,7 +894,7 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
           if (best != DepthTile::kEmpty) { out[j * 256 + i] = best; changed = true; }
         }
       if (changed) filled[key].swap(out);  // appliqué après le parcours (voisins inchangés)
-      if (progress && (++q % 32 == 0)) progress(0.4f + 0.1f * q / keysZs.size(), "Comblement des trous");
+      if (progress && (++q % 32 == 0)) progress(0.4f + 0.1f * q / keysZs.size(), pd::tr("Comblement des trous"));
     }
     for (auto& kv : filled) {
       if (inMemory) {
@@ -915,14 +921,14 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
     if (inMemory && !writeSrc(meta.id, zs, key.first, key.second, *t, err)) return false;
     touched.insert(Key(zs, key.first, key.second));
   }
-  if (!count) { err = "Aucune sonde importée"; return false; }
+  if (!count) { err = pd::tr("Aucune sonde importée"); return false; }
   meta.count = count;
   meta.zmin = lo / 1000.f;
   meta.zmax = hi / 1000.f;
   std::map<TK, DepthTile> level;  // niveau courant (enfants) en mémoire si possible
   if (inMemory) level.swap(mem);
   if (!buildPyramid(meta.id, zs, keysZs, level, inMemory, touched, err,
-                    [&](float f) { if (progress) progress(0.5f + 0.1f * f, "Pyramide de la source"); },
+                    [&](float f) { if (progress) progress(0.5f + 0.1f * f, pd::tr("Pyramide de la source")); },
                     cancel))
     return false;
 
@@ -936,14 +942,14 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
     return false;
   if (!commitAll(err)) return false;
   if (newId) *newId = meta.id;
-  if (progress) progress(1.f, "Import terminé");
+  if (progress) progress(1.f, pd::tr("Import terminé"));
   return true;
 }
 
 // ------------------------------------------------------------- découpage
 bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
                       const std::atomic<bool>* cancel) {
-  if (!(deg >= 0.05 && deg <= 1.0)) { err = "Taille de cellule invalide"; return false; }
+  if (!(deg >= 0.05 && deg <= 1.0)) { err = pd::tr("Taille de cellule invalide"); return false; }
   if (!commitAll(err)) return false;
   const fs::path dir = fs::u8path(folder_), tmp = dir / "_redecoupage";
   std::error_code ec;
@@ -967,7 +973,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
     auto copy = [&](DbCell* c, const char* sel, bool merged) -> bool {
       sqlite3_stmt* q = nullptr;
       if (sqlite3_prepare_v2(c->db, sel, -1, &q, nullptr) != SQLITE_OK) {
-        err = std::string("Base : ") + sqlite3_errmsg(c->db);
+        err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db);
         return false;
       }
       const int zc = merged ? 0 : 1;  // colonne de z
@@ -984,13 +990,13 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
         const int rc = sqlite3_step(w);
         sqlite3_reset(w);
         if (rc != SQLITE_DONE) {
-          err = std::string("Base : ") + sqlite3_errmsg(o->db);
+          err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(o->db);
           sqlite3_finalize(q);
           return false;
         }
         if ((++done & 1023) == 0) {
           if (cancel && *cancel) { err = "Annulé"; sqlite3_finalize(q); return false; }
-          if (progress) progress(0.95f * done / std::max(1LL, total), "Copie des tuiles");
+          if (progress) progress(0.95f * done / std::max(1LL, total), pd::tr("Copie des tuiles"));
         }
       }
       sqlite3_finalize(q);
@@ -1013,7 +1019,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
     fs::remove_all(tmp, ec);
     return false;
   }
-  if (progress) progress(0.97f, "Remplacement des fichiers");
+  if (progress) progress(0.97f, pd::tr("Remplacement des fichiers"));
   cells_.clear();  // anciens fichiers fermés
   std::vector<fs::path> olds, news;
   for (auto& e : fs::directory_iterator(dir, ec)) olds.push_back(e.path());
@@ -1031,7 +1037,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
       if (!gone) std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
     if (!gone) {
-      err = "Impossible de supprimer " + n + " (fichier ouvert ?) ; la nouvelle base est dans " +
+      err = pd::tr("Impossible de supprimer ") + n + pd::tr(" (fichier ouvert ?) ; la nouvelle base est dans ") +
             tmp.u8string();
       return false;
     }
@@ -1044,7 +1050,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
     bool lg;
     if (!ParseCellFileName(n, lw, ls, lg)) continue;
     fs::rename(ep, dir / ep.filename(), ec);
-    if (ec) { err = "Déplacement impossible : " + n + " (" + ec.message() + ")"; return false; }
+    if (ec) { err = pd::tr("Déplacement impossible : ") + n + " (" + ec.message() + ")"; return false; }
   }
   fs::remove_all(tmp, ec);
   return open(folder_, err);
@@ -1139,7 +1145,7 @@ bool BathyDb::cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, floa
                             [&](const DbSource& d) { return d.id == ids[n]; });
     if (sit == sources_.end()) continue;
     DbSource& d = *sit;
-    const std::string label = "Nettoyage " + std::to_string(n + 1) + "/" + std::to_string(ids.size());
+    const std::string label = pd::tr("Nettoyage ") + std::to_string(n + 1) + "/" + std::to_string(ids.size());
     auto prog = [&](float f, const char* what) {
       if (progress) progress(0.8f * (n + f) / ids.size(), label + " : " + what);
     };
@@ -1194,12 +1200,12 @@ bool BathyDb::cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, floa
       if (!writeSrc(d.id, d.level, t.first, t.second, tile, err)) return false;
       (void)changed;
       kept.insert(t);
-      if ((k & 31) == 0) prog(0.5f * k / std::max<size_t>(1, native.size()), "tuiles natives");
+      if ((k & 31) == 0) prog(0.5f * k / std::max<size_t>(1, native.size()), pd::tr("tuiles natives"));
     }
     std::map<TK, DepthTile> none;
     std::set<Key> touched;
     if (!buildPyramid(d.id, d.level, kept, none, false, touched, err,
-                      [&](float f) { prog(0.5f + 0.5f * f, "pyramide"); }, cancel))
+                      [&](float f) { prog(0.5f + 0.5f * f, pd::tr("pyramide")); }, cancel))
       return false;
     keys.insert(touched.begin(), touched.end());
     if (count) { d.count = count; d.zmin = zlo / 1000.f; d.zmax = zhi / 1000.f; }
@@ -1219,7 +1225,7 @@ bool BathyDb::removeSources(const std::vector<int64_t>& ids, DbPriority prio, st
   std::vector<DbSource> gone;
   for (int64_t id : ids)
     if (const DbSource* sp = source(id)) gone.push_back(*sp);
-  if (gone.empty()) { err = "Source inconnue"; return false; }
+  if (gone.empty()) { err = pd::tr("Source inconnue"); return false; }
   std::set<Key> keys;
   auto cells = allCells(err);
   for (const DbSource& s : gone) {
@@ -1280,9 +1286,53 @@ bool BathyDb::setGroup(const std::vector<int64_t>& ids, const std::string& group
       sqlite3_bind_int64(q, 2, id);
       const int rc = sqlite3_step(q);
       sqlite3_finalize(q);
-      if (rc != SQLITE_DONE) { err = std::string("Base : ") + sqlite3_errmsg(c->db); return false; }
+      if (rc != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); return false; }
     }
   }
+  return commitAll(err);
+}
+
+bool BathyDb::setParams(const std::vector<int64_t>& ids, const std::string& params,
+                        std::string& err) {
+  if (!flushWrites(err)) return false;
+  for (DbCell* c : allCells(err)) {
+    if (!c->begin(err)) return false;
+    for (int64_t id : ids) {
+      sqlite3_stmt* q = nullptr;
+      sqlite3_prepare_v2(c->db, "UPDATE sources SET params=? WHERE id=?", -1, &q, nullptr);
+      sqlite3_bind_text(q, 1, params.c_str(), -1, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(q, 2, id);
+      sqlite3_step(q);
+      sqlite3_finalize(q);
+    }
+  }
+  for (auto& d : sources_)
+    if (std::find(ids.begin(), ids.end(), d.id) != ids.end()) d.params = params;
+  return commitAll(err);
+}
+
+// Date du levé (AAAA-MM-JJ) : métadonnée ; la fusion n'est refaite, sur les
+// seules tuiles des sources concernées, que si la règle de priorité utilise la date
+bool BathyDb::setDates(const std::vector<int64_t>& ids, const std::string& date, DbPriority prio,
+                       std::string& err, const DbProgress& progress) {
+  if (!flushWrites(err)) return false;
+  std::vector<DbCell*> cells = allCells(err);
+  std::set<Key> keys;
+  for (int64_t id : ids) {
+    for (DbCell* c : cells) {
+      sqlite3_stmt* q = nullptr;
+      sqlite3_prepare_v2(c->db, "UPDATE sources SET date=? WHERE id=?", -1, &q, nullptr);
+      sqlite3_bind_text(q, 1, date.c_str(), -1, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(q, 2, id);
+      if (!c->begin(err)) { sqlite3_finalize(q); return false; }
+      sqlite3_step(q);
+      sqlite3_finalize(q);
+    }
+    for (auto& d : sources_)
+      if (d.id == id) d.date = date;
+    if (prio == DbPriority::ResolutionDate || prio == DbPriority::Newest) SourceKeys(cells, id, keys);
+  }
+  if (!keys.empty() && !remergeSet(keys, prio, err, progress, nullptr)) return false;
   return commitAll(err);
 }
 
@@ -1351,7 +1401,7 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   out.clear();
   if (srcIds) srcIds->clear();
   const int zmax = maxMergedLevel(lonMin, lonMax, latMin, latMax);
-  if (zmax < kDbMinLevel) { err = "Base vide dans cette zone"; return false; }
+  if (zmax < kDbMinLevel) { err = pd::tr("Base vide dans cette zone"); return false; }
   int zz = std::max(kDbMinLevel, std::min(z, zmax));
   const double midLat = 0.5 * (latMin + latMax);
   const double cosL = std::max(0.05, std::cos(midLat * M_PI / 180.0));
@@ -1422,7 +1472,7 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
     }
     if (tiles.size() > 600) tiles.clear();  // mémoire bornée (vues très larges)
   }
-  if (out.empty()) { err = "Aucune donnée de la base dans cette zone"; return false; }
+  if (out.empty()) { err = pd::tr("Aucune donnée de la base dans cette zone"); return false; }
   out.computeBounds();
   return true;
 }

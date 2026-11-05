@@ -57,11 +57,12 @@ ReferenceElevation\
 IGN geodesy website. Only needed for surveys in Corsica.
 
 **In PersonalDepth**
-- *Gestion des données… › Importer…*, section "Référence verticale des Z":
-  - **IGN69 / IGN78C → ZH**: choose the reference folder. It must contain
+- *Data management… › Import…*, section "Vertical reference of Z and
+  transformation to chart datum":
+  - **IGN69 / IGN78C → CD**: choose the reference folder. It must contain
     `*ZH*.glhi` and `RAF20.tac`. `RAC23.mnt` is used automatically in
     Corsica.
-  - **Ellipsoidal heights → ZH** (GNSS survey without geoid): only the
+  - **Ellipsoidal heights → CD** (GNSS survey without geoid): only the
     `*ZH*.glhi` files are needed.
 - The folder is remembered for the next imports.
 
@@ -93,16 +94,17 @@ The conversion takes a long time but can be resumed. Add
 `--max-seconds=1800` to work in batches and run the same command again to
 continue: finished constituents are kept in `FES2022b_ocean.pdtide.parts`.
 
-**In PersonalDepth**, *Marée* (tide) section:
-1. Source: **FES2022 maillé** (gridded).
+**In PersonalDepth**, *Tide* section:
+1. Source: **Gridded FES2022**.
 2. *Atlas*: choose `FES2022b_ocean.pdtide`.
 3. Chart datum (Z0), by priority:
-   - an optional user grid (*Grille Z0*);
+   - an optional user grid (*Z0 grid*);
    - BathyElli NM/ell − ZH/ell: tick the box. The `*NM*.glhi` and
      `*ZH*.glhi` files must be in the reference folder chosen at import;
    - otherwise the lowest astronomical tide computed from FES2022 over
      19 years (approximation of chart datum).
-4. Mode: current time or chosen date and time.
+4. Mode: current time or chosen date and time. *Tide curve…* plots the
+   height versus time at up to 9 points spread over the data.
 
 ---
 
@@ -187,4 +189,5 @@ commande. Les ondes terminées sont gardées dans `FES2022b_ocean.pdtide.parts`.
      l'import ;
    - sinon la plus basse mer astronomique calculée par FES2022 sur 19 ans
      (approximation du ZH).
-4. Mode : heure actuelle, ou date et heure choisies.
+4. Mode : heure actuelle, ou date et heure choisies. *Courbe de marée…* trace
+   la hauteur en fonction du temps en 9 points au plus, répartis sur les données.

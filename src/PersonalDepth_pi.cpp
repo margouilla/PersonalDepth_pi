@@ -13,6 +13,7 @@
 //
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/Lang.h"
 #include "PersonalDepth_pi.h"
 
 #include <wx/dir.h>
@@ -20,6 +21,8 @@
 #include <wx/filename.h>
 #include <wx/time.h>
 #include <wx/tokenzr.h>
+
+#include <sstream>
 #include <wx/utils.h>
 
 #include <algorithm>
@@ -30,10 +33,17 @@
 #include <ctime>
 
 #include "BathyDialog.h"
+#include "TideChart.h"
 #include "BathyRenderer.h"
 #include "core/WebMerc.h"
 
-#define U8(s) wxString::FromUTF8(s)
+#define U8(s) wxString::FromUTF8(pd::tr(s))
+#define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
+
+// libellé de tâche traduit avec un nombre (« Retrait de %d source(s) »…)
+static std::string JobLabel(const char* fmt, size_t n) {
+  return wxString::Format(U8(fmt), (int)n).ToStdString(wxConvUTF8);
+}
 
 using namespace pd;
 
@@ -88,6 +98,8 @@ wxString PersonalDepth_pi::GetLongDescription() {
 int PersonalDepth_pi::Init() {
   m_renderer = std::make_unique<BathyRenderer>();
   LoadConfig();
+  UpdateLanguage();  // langue de l'interface d'OpenCPN
+  UpdateUnits();  // unités d'affichage d'OpenCPN (m / ft)
   if (m_set.vrefFranceDir.empty()) m_set.vrefFranceDir = DefaultReferenceDir().ToUTF8().data();
   DbOpen();
 
@@ -120,6 +132,7 @@ bool PersonalDepth_pi::DeInit() {
   if (m_dbViewNext) m_dbViewNext->cancel();
   m_dbViewNext.reset();
   m_dbView.reset();
+  if (m_chart) { m_chart->Destroy(); m_chart = nullptr; }
   if (m_dlg) { m_dlg->Destroy(); m_dlg = nullptr; }
   for (auto& l : m_layers) l->cancel();
   m_layers.clear();  // attend la fin des threads de chargement
@@ -201,7 +214,59 @@ void PersonalDepth_pi::ViewChanged() {
   RequestRefresh(GetOCPNCanvasWindow());
 }
 
+// Unités choisies dans Options › Affichage › Unités d'OpenCPN. Les brasses ne
+// sont pas gérées : une profondeur en brasses est affichée en pieds.
+bool PersonalDepth_pi::UpdateUnits() {
+  const double kd = toUsrDepth_Plugin(1.0), kh = toUsrHeight_Plugin(1.0);
+  const bool depthFeet = std::fabs(kd - 1.0) > 1e-3, heightFeet = std::fabs(kh - 1.0) > 1e-3;
+  const float dK = depthFeet ? 1.f / 0.3048f : 1.f, hK = heightFeet ? 1.f / 0.3048f : 1.f;
+  if (dK == m_set.depthK && hK == m_set.heightK) return false;
+  m_set.depthK = dK;
+  m_set.depthUnit = depthFeet ? "ft" : "m";
+  m_set.heightK = hK;
+  m_set.heightUnit = heightFeet ? "ft" : "m";
+  return true;
+}
+
+// Langue choisie dans Options › Utilisateur › Options générales › Langue
+// d'OpenCPN : français si la locale commence par « fr », anglais sinon.
+bool PersonalDepth_pi::UpdateLanguage() {
+  const wxString loc = GetLocaleCanonicalName().Lower();
+  const int lang = (loc.empty() || loc.StartsWith("fr")) ? 0 : 1;
+  if (lang == m_lang) return false;
+  m_lang = lang;
+  pd::SetEnglish(lang == 1);
+  return true;
+}
+
 void PersonalDepth_pi::OnTick() {
+  if (UpdateLanguage()) {  // langue changée : fenêtres reconstruites dans la nouvelle langue
+    const bool dlgShown = m_dlg && m_dlg->IsShown(), chartShown = m_chart && m_chart->IsShown();
+    wxPoint pos = m_dlg ? m_dlg->GetPosition() : wxDefaultPosition;
+    if (m_chart) { m_chart->Destroy(); m_chart = nullptr; }
+    if (m_dlg) { m_dlg->Destroy(); m_dlg = nullptr; }
+    ++m_set.version;
+    m_renderer->Invalidate();
+    UpdateAutoPalette(true);
+    UpdateTide(false);
+    UpdateCursorText();
+    if (dlgShown) {
+      m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
+      m_dlg->Move(pos);
+      m_dlg->Show();
+    }
+    if (chartShown) ShowTideChart();
+    RequestRefresh(GetOCPNCanvasWindow());
+  }
+  if (UpdateUnits()) {  // unités changées dans les options d'OpenCPN
+    ++m_set.version;
+    m_renderer->Invalidate();
+    UpdateAutoPalette(true);
+    UpdateTide(false);
+    UpdateCursorText();
+    if (m_dlg) m_dlg->RefreshUnits();
+    RequestRefresh(GetOCPNCanvasWindow());
+  }
   bool changed = false, loading = false;
   for (size_t i = 0; i < m_layers.size(); ++i) {
     int st = (int)m_layers[i]->state();
@@ -355,25 +420,26 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
         la0 = std::min(la0, d.latMin); la1 = std::max(la1, d.latMax);
         lo0 = std::min(lo0, d.lonMin); lo1 = std::max(lo1, d.lonMax);
       }
-    if (la0 > la1) return U8("En attente d'une couche chargée");
+    if (la0 > la1) { m_tideBoxOk = false; return U8("En attente d'une couche chargée"); }
+    m_tideBox[0] = lo0; m_tideBox[1] = lo1; m_tideBox[2] = la0; m_tideBox[3] = la1;
+    m_tideBoxOk = true;
     const double clat = 0.5 * (la0 + la1), clon = 0.5 * (lo0 + lo1);
-    const time_t t = s.tideMode == 1 ? std::time(nullptr)
-                                     : (time_t)(s.tideTime + (long long)s.tideShiftMin * 60);
+    const time_t t = TideChartTime();
     const wxString when = wxDateTime((time_t)t).Format("%d/%m %H:%M");
 
     if (s.tideSource == 1) {  // ------------------------------- FES2022 maillé
-      if (s.tideAtlas.empty() || !wxFileExists(U8(s.tideAtlas.c_str())))
+      if (s.tideAtlas.empty() || !wxFileExists(W8(s.tideAtlas.c_str())))
         return U8("Choisir le fichier de marée FES2022 (.pdtide)");
       // emprise arrondie au 1/50° : pas de recalcul pour un simple décalage
       const double bb[4] = {std::floor(lo0 * 50) / 50, std::ceil(lo1 * 50) / 50,
                             std::floor(la0 * 50) / 50, std::ceil(la1 * 50) / 50};
       TideZ0Params z0;
-      wxStringTokenizer tk(U8(s.tideZ0Files.c_str()), ";");
+      wxStringTokenizer tk(W8(s.tideZ0Files.c_str()), ";");
       while (tk.HasMoreTokens()) {
         const wxString f = tk.GetNextToken().Trim().Trim(false);
         if (!f.empty()) z0.userFiles.push_back(f.ToUTF8().data());
       }
-      const wxString dir = U8(s.vrefFranceDir.c_str());
+      const wxString dir = W8(s.vrefFranceDir.c_str());
       if (s.tideUseBathyElli && wxDirExists(dir)) {
         wxArrayString nm, zh;
         wxDir::GetAllFiles(dir, &nm, "*NM*.glhi");
@@ -416,12 +482,15 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
       const double nm = m_fes->heightNM(clon, clat, (double)t), z = m_fes->z0At(clon, clat);
       s.tideH = hc;
       s.tideOk = true;
-      s.tideLegend = AsciiOnly(wxString::Format("Maree FES %+.2f m (%+.2f a %+.2f) %s", hc,
-                                                F.hMin, F.hMax, when));
+      const float hk = s.heightK;
+      const wxString hu = s.heightUnit;
+      s.tideLegend = AsciiOnly(wxString::Format(U8("Maree FES %+.2f %s (%+.2f a %+.2f) %s"), hc * hk, hu,
+                                                F.hMin * hk, F.hMax * hk, when));
       wxString info = wxString::Format(
-          U8("FES2022 le %s : hauteur d'eau %+.2f m au centre (FES %+.2f m sur le NM, "
-             "Z0 %.2f m), de %+.2f à %+.2f m sur la zone\n%s"),
-          when, hc, nm, z, F.hMin, F.hMax, U8(m_fes->info().c_str()));
+          U8("FES2022 le %s : hauteur d'eau %+.2f %s au centre (FES %+.2f %s sur le NM, "
+             "Z0 %.2f %s), de %+.2f à %+.2f %s sur la zone\n%s"),
+          when, hc * hk, hu, nm * hk, hu, z * hk, hu, F.hMin * hk, F.hMax * hk, hu,
+          U8(m_fes->info().c_str()));
       if (m_fesBusy) info += U8(" — nouvelle zone en préparation");
       return info;
     }
@@ -445,6 +514,7 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
       m_tideStationName.Trim().Trim(false);
       const double dy = (st.lat - clat) * 111.32, dx = (st.lon - clon) * 111.32 * std::cos(clat * M_PI / 180);
       m_tideStationDistKm = std::hypot(dx, dy);
+      m_tideStationLat = st.lat; m_tideStationLon = st.lon;
       m_tideRefLat = clat; m_tideRefLon = clon;
     }
     float h = 0;
@@ -453,13 +523,16 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
     s.tideH = h;
     s.tideOk = true;
     setUniform(h);
-    s.tideLegend = AsciiOnly(wxString::Format("Maree %+.2f m %s %s", h, when, m_tideStationName));
-    wxString info = wxString::Format(U8("Station %s (%.1f km) : hauteur d'eau %+.2f m le %s"),
-                                     m_tideStationName, m_tideStationDistKm, h, when);
+    s.tideLegend = AsciiOnly(wxString::Format(U8("Maree %+.2f %s %s %s"), h * s.heightK, s.heightUnit,
+                                              when, m_tideStationName));
+    wxString info = wxString::Format(U8("Station %s (%.1f km) : hauteur d'eau %+.2f %s le %s"),
+                                     m_tideStationName, m_tideStationDistKm, h * s.heightK,
+                                     s.heightUnit, when);
     if (m_tideStationDistKm > 30) info += U8(" — station éloignée, à vérifier");
     return info;
   };
   s.tideInfo = compute();
+  if (m_chart && m_chart->IsShown()) m_chart->TideUpdated();  // marqueur, points
   if (!s.tideOk) s.tide.reset();
   if (m_dlg) m_dlg->SetTideInfo(s.tideInfo);
   if (s.tideH != oldH || s.tideOk != oldOk || s.tide != oldTide)
@@ -564,14 +637,16 @@ void PersonalDepth_pi::UpdateCursorText() {
     if (!(*it)->probe(m_curLon, m_curLat, radiusDeg, gz, sz, dist, &sid)) continue;
     // Texte ASCII (atlas de glyphes OpenGL)
     const float v = !std::isnan(sz) ? sz : gz;
-    wxString base = !std::isnan(sz) ? wxString::Format("Sonde %.2f m", sz)
-                                    : wxString::Format("Grille %.2f m", gz);
+    const float dk = m_set.depthK;
+    const wxString du = m_set.depthUnit;
+    wxString base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") + wxString::Format("%.2f %s", v * dk, du);
     if (m_set.tideOk && m_set.tide) {  // profondeur au ZH puis profondeur du moment
       const float th = m_set.tide->at(m_curLon, m_curLat);
-      base = (!std::isnan(sz) ? "Sonde " : "Grille ") +
-             wxString::Format("%.2f m ZH -> %.2f m (maree %+.2f)", v, v + th, th);
+      base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") +
+             wxString::Format(U8("%.2f %s ZH -> %.2f %s (maree %+.2f %s)"), v * dk, du, (v + th) * dk, du,
+                              th * m_set.heightK, m_set.heightUnit);
     }
-    if (!std::isnan(sz)) base += wxString::Format("  (a %.1f m)", dist);
+    if (!std::isnan(sz)) base += wxString::Format(U8("  (a %.1f m)"), dist);
     if (sid)  // vue de la base : source retenue pour ce pixel
       for (const auto& d : m_dbSources)
         if (d.id == sid) {
@@ -590,7 +665,7 @@ void PersonalDepth_pi::SaveConfig() {
   if (!c) return;
   c->DeleteGroup("/PlugIns/PersonalDepth");
   c->SetPath("/PlugIns/PersonalDepth");
-  c->Write("Ramp", U8(m_set.ramp.serialize().c_str()));
+  c->Write("Ramp", W8(m_set.ramp.serialize().c_str()));
   c->Write("Opacity", m_set.opacity);
   c->Write("Hillshade", m_set.hillshade);
   c->Write("ShadeStrength", (double)m_set.shadeStrength);
@@ -609,39 +684,40 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ContourLabels", m_set.contourLabels);
   c->Write("ContourSmooth", m_set.contourSmooth);
   c->Write("ContourColor", (long)m_set.contourColor);
-  c->Write("CrsCode", U8(m_set.crsCode.c_str()));
+  c->Write("CrsCode", W8(m_set.crsCode.c_str()));
   c->Write("CrsZone", m_set.crsZone);
   c->Write("CrsSouth", m_set.crsSouth);
-  c->Write("CrsCustom", U8(m_set.crsCustom.c_str()));
+  c->Write("CrsCustom", W8(m_set.crsCustom.c_str()));
   c->Write("ReadPrj", m_set.readPrj);
   c->Write("VrefChoice", m_set.vrefMode);
   c->Write("ImportOrder", m_set.importOrder);
   c->Write("ImportSign", m_set.importSign);
   c->Write("ImportOffset", (double)m_set.importOffset);
+  c->Write("ImportZFeet", m_set.importZFeet);
   c->Write("ImportCache", m_set.importCache);
   c->Write("ImportNodataOn", m_set.importNodataOn);
-  c->Write("ImportNodata", U8(m_set.importNodata.c_str()));
+  c->Write("ImportNodata", W8(m_set.importNodata.c_str()));
   c->Write("ImportBoundsOn", m_set.importBoundsOn);
   c->Write("BoundMin", (double)m_set.boundMin);
   c->Write("BoundMax", (double)m_set.boundMax);
-  c->Write("VrefFranceDir", U8(m_set.vrefFranceDir.c_str()));
-  c->Write("VrefZh", U8(m_set.vrefZh.c_str()));
-  c->Write("VrefGeoid", U8(m_set.vrefGeoid.c_str()));
-  c->Write("VrefDirect", U8(m_set.vrefDirect.c_str()));
+  c->Write("VrefFranceDir", W8(m_set.vrefFranceDir.c_str()));
+  c->Write("VrefZh", W8(m_set.vrefZh.c_str()));
+  c->Write("VrefGeoid", W8(m_set.vrefGeoid.c_str()));
+  c->Write("VrefDirect", W8(m_set.vrefDirect.c_str()));
   c->Write("VrefInvert", m_set.vrefInvert);
   c->Write("TideMode", m_set.tideMode);
   c->Write("TideTime", wxString::Format("%lld", m_set.tideTime));
   c->Write("TideShift", m_set.tideShiftMin);
   c->Write("TideSource", m_set.tideSource);
-  c->Write("TideAtlas", U8(m_set.tideAtlas.c_str()));
-  c->Write("TideZ0", U8(m_set.tideZ0Files.c_str()));
+  c->Write("TideAtlas", W8(m_set.tideAtlas.c_str()));
+  c->Write("TideZ0", W8(m_set.tideZ0Files.c_str()));
   c->Write("TideBathyElli", m_set.tideUseBathyElli);
-  c->Write("DbFolder", U8(m_set.dbFolder.c_str()));
+  c->Write("DbFolder", W8(m_set.dbFolder.c_str()));
   c->Write("AutoPalette", m_set.autoPalette);
   c->Write("AutoSource", m_set.autoSource);
   c->Write("AutoCount", m_set.autoCount);
   c->Write("AutoNice", m_set.autoNice);
-  c->Write("AutoBase", U8(m_set.autoBase.c_str()));
+  c->Write("AutoBase", W8(m_set.autoBase.c_str()));
   c->Write("AutoMinOn", m_set.autoMinOn);
   c->Write("AutoMaxOn", m_set.autoMaxOn);
   c->Write("AutoMin", (double)m_set.autoMin);
@@ -650,7 +726,7 @@ void PersonalDepth_pi::SaveConfig() {
   {
     std::string h;
     for (const auto& n : m_set.dbHidden) h += (h.empty() ? "" : ";") + n;
-    c->Write("DbHidden", U8(h.c_str()));
+    c->Write("DbHidden", W8(h.c_str()));
   }
   c->Write("LayerCount", 0);  // couches « fichiers » supprimées : tout passe par la base
   c->SetPath("/");
@@ -696,6 +772,7 @@ void PersonalDepth_pi::LoadConfig() {
     if (c->Read("ImportOffset", &v)) m_set.importOffset = (float)v;
   }
   c->Read("ImportCache", &m_set.importCache, m_set.importCache);
+  c->Read("ImportZFeet", &m_set.importZFeet, m_set.importZFeet);
   c->Read("ImportNodataOn", &m_set.importNodataOn, m_set.importNodataOn);
   if (c->Read("ImportNodata", &ws)) m_set.importNodata = ws.ToUTF8().data();
   c->Read("ImportBoundsOn", &m_set.importBoundsOn, m_set.importBoundsOn);
@@ -805,12 +882,12 @@ void PersonalDepth_pi::StartDbJob(
       m_dbStep = step;
     };
     bool ok = db.open(folder, err) && job(db, err, prog);
-    if (!ok && err.empty()) err = "échec";
+    if (!ok && err.empty()) err = pd::tr("échec");
     std::string e2;
     db.reloadSources(e2);
     {
       std::lock_guard<std::mutex> lk(m_dbMx);
-      m_dbErr = ok ? std::string() : (err == "Annulé" ? std::string("arrêté") : err);
+      m_dbErr = ok ? std::string() : (err == "Annulé" ? std::string(pd::tr("arrêté")) : err);
       m_dbSourcesNew = db.sources();
       m_dbCellsNew = db.cellInfo();
       m_dbCellDegNew = db.cellDeg();
@@ -824,8 +901,7 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                                 const std::vector<std::vector<int64_t>>& replace) {
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
-  StartDbJob(U8("Import").ToStdString(wxConvUTF8) + " (" + std::to_string(files.size()) + " fichier" +
-                 (files.size() > 1 ? "s)" : ")"),
+  StartDbJob(JobLabel("Import (%d fichier(s))", files.size()),
              [files, prio, cancel, group, replace](BathyDb& db, std::string& err, const DbProgress& prog) {
                std::string errors;
                size_t done = 0;
@@ -843,12 +919,12 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  const std::string name = std::filesystem::u8path(p.path).filename().u8string();
                  const float f0 = (float)i / files.size(), f1 = (float)(i + 1) / files.size();
                  const std::string tag = "[" + std::to_string(i + 1) + "/" + std::to_string(files.size()) + "] ";
-                 prog(f0, tag + name + " : lecture");
+                 prog(f0, tag + name + pd::tr(" : lecture"));
                  BathyLayer L(p);
                  L.loadSync();
                  if (*cancel) return stopped();
                  if (L.state() != BathyLayer::Ready || L.cloud.empty()) {
-                   errors += name + " : " + (L.error().empty() ? "lecture impossible" : L.error()) + "\n";
+                   errors += name + " : " + (L.error().empty() ? std::string(pd::tr("lecture impossible")) : L.error()) + "\n";
                    continue;
                  }
                  bool gridded = false;
@@ -856,10 +932,11 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  m.name = name;
                  m.path = p.path;
                  m.res = EstimateResolution(L.cloud, gridded);
-                 m.date = GuessSurveyDate(p.path);
+                 m.date = p.surveyDate.empty() ? GuessSurveyDate(p.path) : p.surveyDate;
+                 m.params = p.importPrefs;
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
                  m.vref = p.vref.active() ? (p.vref.label.empty() ? "converti" : p.vref.label) : "ZH";
-                 m.group = group.empty() ? GuessSourceGroup(p.path) : group;
+                 m.group = !p.group.empty() ? p.group : (group.empty() ? GuessSourceGroup(p.path) : group);
                  std::string e;
                  const bool rep = i < replace.size() && !replace[i].empty();
                  auto sub = [&](float f, const std::string& step) {
@@ -873,7 +950,7 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  // réimport : l'ancienne version de ce fichier est retirée de la base
                  if (rep) {
                    prog(f0 + (f1 - f0) * 0.7f, tag + name + U8(" : retrait de l'ancienne version").ToStdString(wxConvUTF8));
-                   if (!db.removeSources(replace[i], prio, e)) errors += name + " (ancienne version) : " + e + "\n";
+                   if (!db.removeSources(replace[i], prio, e)) errors += name + pd::tr(" (ancienne version) : ") + e + "\n";
                  }
                  ++done;
                }
@@ -882,6 +959,24 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  return false;
                }
                return true;
+             });
+}
+
+void PersonalDepth_pi::DbEditMeta(const std::vector<int64_t>& ids, const std::string& date,
+                                  const std::string& group, const std::string& params) {
+  if (ids.empty() || (date.empty() && group.empty() && params.empty())) return;
+  const DbPriority prio = (DbPriority)m_set.dbPriority;
+  StartDbJob(JobLabel("Modification (%d source(s))", ids.size()),
+             [ids, date, group, params, prio](BathyDb& db, std::string& err, const DbProgress& prog) {
+               if (!params.empty()) {  // seulement les sources sans réglages enregistrés
+                 std::vector<int64_t> unknown;
+                 for (int64_t id : ids)
+                   if (const DbSource* d = db.source(id))
+                     if (d->params.empty()) unknown.push_back(id);
+                 if (!unknown.empty() && !db.setParams(unknown, params, err)) return false;
+               }
+               if (!date.empty() && !db.setDates(ids, date, prio, err, prog)) return false;
+               return group.empty() || db.setGroup(ids, group, err);
              });
 }
 
@@ -924,7 +1019,7 @@ void PersonalDepth_pi::DbResplit(double deg) {
 void PersonalDepth_pi::DbRemove(const std::vector<int64_t>& ids) {
   if (ids.empty()) return;
   const DbPriority prio = (DbPriority)m_set.dbPriority;
-  StartDbJob("Retrait de " + std::to_string(ids.size()) + " source" + (ids.size() > 1 ? "s" : ""),
+  StartDbJob(JobLabel("Retrait de %d source(s)", ids.size()),
              [ids, prio](BathyDb& db, std::string& err, const DbProgress& prog) {
                return db.removeSources(ids, prio, err, prog);
              });
@@ -937,7 +1032,7 @@ void PersonalDepth_pi::DbClean(const std::vector<int64_t>& ids, float zMin, floa
   SaveConfig();
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
-  StartDbJob("Nettoyage de " + std::to_string(ids.size()) + " source" + (ids.size() > 1 ? "s" : ""),
+  StartDbJob(JobLabel("Nettoyage de %d source(s)", ids.size()),
              [ids, zMin, zMax, prio, cancel](BathyDb& db, std::string& err, const DbProgress& prog) {
                return db.cleanSources(ids, zMin, zMax, prio, err, prog, cancel);
              });
@@ -946,8 +1041,7 @@ void PersonalDepth_pi::DbClean(const std::vector<int64_t>& ids, float zMin, floa
 void PersonalDepth_pi::DbSetVisible(const std::vector<int64_t>& ids, bool visible) {
   if (ids.empty()) return;
   const DbPriority prio = (DbPriority)m_set.dbPriority;
-  StartDbJob(std::string(visible ? "Affichage" : "Masquage") + " de " + std::to_string(ids.size()) +
-                 " source" + (ids.size() > 1 ? "s" : ""),
+  StartDbJob(JobLabel(visible ? "Affichage de %d source(s)" : "Masquage de %d source(s)", ids.size()),
              [ids, visible, prio](BathyDb& db, std::string& err, const DbProgress& prog) {
                return db.setVisible(ids, visible, prio, err, prog);
              });
@@ -977,7 +1071,7 @@ void PersonalDepth_pi::DbMove(const std::vector<int64_t>& ids, int delta) {
 
 void PersonalDepth_pi::DbSetGroup(const std::vector<int64_t>& ids, const std::string& group) {
   if (ids.empty() || group.empty()) return;
-  StartDbJob("Classe " + group,
+  StartDbJob(U8("Classe ").ToStdString(wxConvUTF8) + group,
              [ids, group](BathyDb& db, std::string& err, const DbProgress&) {
                return db.setGroup(ids, group, err);
              });
@@ -1109,13 +1203,17 @@ void PersonalDepth_pi::UpdateAutoPalette(bool force) {
   if (s.autoMaxOn) hi = s.autoMax;
   if (!(hi > lo)) hi = lo + 1.f;
   char key[256];
-  std::snprintf(key, sizeof key, "%.1f %.1f %.1f %d %d %d %zu", lo, hi, dataLo, s.autoCount,
-                s.autoNice ? 1 : 0, s.autoSource, std::hash<std::string>()(s.autoBase));
+  std::snprintf(key, sizeof key, "%.1f %.1f %.1f %d %d %d %zu %.4f", lo, hi, dataLo, s.autoCount,
+                s.autoNice ? 1 : 0, s.autoSource, std::hash<std::string>()(s.autoBase), s.depthK);
   if (!force && key == m_autoKey) return;
   m_autoKey = key;
   ColorRamp base;
   if (s.autoBase.empty() || !base.deserialize(s.autoBase)) base = ColorRamp::Preset("TimeZero PBG (bleus)");
-  ColorRamp r = AutoRamp(base, s.ramp, lo, hi, s.autoCount, s.autoNice);
+  // seuils ronds dans l'unité affichée (m ou ft), ramenés en mètres
+  const float k = s.depthK > 0 ? s.depthK : 1.f;
+  ColorRamp r = AutoRamp(base, s.ramp, lo * k, hi * k, s.autoCount, s.autoNice);
+  for (auto& st : r.stops) st.depth /= k;
+  if (r.safetyOn) r.safetyDepth = s.ramp.safetyDepth;
   // estran sous la borne minimale : couleur « terre » de la palette de référence
   // (celle la plus proche de 0), si elle en a une
   const ColorStop* land = nullptr;
@@ -1125,8 +1223,8 @@ void PersonalDepth_pi::UpdateAutoPalette(bool force) {
       dataLo < r.stops.front().depth) {
     r.stops.insert(r.stops.begin(), ColorStop{r.stops.front().depth - 0.01f, land->rgba});
   }
-  m_autoInfo = wxString::Format(U8("Automatique : %d seuils de %.1f à %.1f m (%s%s)"),
-                                (int)r.stops.size(), lo, hi,
+  m_autoInfo = wxString::Format(U8("Automatique : %d seuils de %.1f à %.1f %s (%s%s)"),
+                                (int)r.stops.size(), lo * k, hi * k, s.depthUnit,
                                 s.autoSource == 1 ? U8("zone affichée") : U8("toutes les données"),
                                 s.autoMinOn || s.autoMaxOn ? U8(", bornes imposées") : wxString());
   if (r.stops.size() >= 2 && !(r == s.ramp)) {
@@ -1151,4 +1249,163 @@ void PersonalDepth_pi::DbZoomTo(const std::vector<int64_t>& ids) {
   wxWindow* cv = GetOCPNCanvasWindow();
   const wxSize sz = cv ? cv->GetClientSize() : wxSize(1000, 800);
   JumpToPosition(lat, lon, 0.9 * std::min(sz.x / std::max(wm, 1.0), sz.y / std::max(hm, 1.0)));
+}
+
+// ------------------------------------------------- réglages d'import d'une source
+static std::string EscPref(const std::string& v) {
+  std::string o;
+  for (char c : v) {
+    if (c == '\\') o += "\\\\";
+    else if (c == '\n') o += "\\n";
+    else o += c;
+  }
+  return o;
+}
+
+std::string SerializeImportPrefs(const DisplaySettings& s) {
+  std::ostringstream o;
+  auto kv = [&](const char* k, const std::string& v) { o << k << '=' << EscPref(v) << '\n'; };
+  auto num = [&](const char* k, double v) {
+    char b[48];
+    std::snprintf(b, sizeof b, "%.9g", v);
+    kv(k, b);
+  };
+  kv("crsCode", s.crsCode);
+  num("crsZone", s.crsZone);
+  num("crsSouth", s.crsSouth);
+  kv("crsCustom", s.crsCustom);
+  num("readPrj", s.readPrj);
+  num("vrefMode", s.vrefMode);
+  kv("vrefFranceDir", s.vrefFranceDir);
+  kv("vrefZh", s.vrefZh);
+  kv("vrefGeoid", s.vrefGeoid);
+  kv("vrefDirect", s.vrefDirect);
+  num("vrefInvert", s.vrefInvert);
+  num("order", s.importOrder);
+  num("sign", s.importSign);
+  num("offset", s.importOffset);
+  num("zFeet", s.importZFeet);
+  num("cache", s.importCache);
+  num("nodataOn", s.importNodataOn);
+  kv("nodata", s.importNodata);
+  num("boundsOn", s.importBoundsOn);
+  num("boundMin", s.boundMin);
+  num("boundMax", s.boundMax);
+  return o.str();
+}
+
+bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
+  if (text.empty()) return false;
+  std::istringstream in(text);
+  std::string line;
+  while (std::getline(in, line)) {
+    const size_t e = line.find('=');
+    if (e == std::string::npos) continue;
+    const std::string k = line.substr(0, e);
+    std::string v;
+    for (size_t i = e + 1; i < line.size(); ++i) {
+      if (line[i] == '\\' && i + 1 < line.size()) { v += line[i + 1] == 'n' ? '\n' : line[i + 1]; ++i; }
+      else v += line[i];
+    }
+    const double d = std::atof(v.c_str());
+    if (k == "crsCode") s.crsCode = v;
+    else if (k == "crsZone") s.crsZone = (int)d;
+    else if (k == "crsSouth") s.crsSouth = d != 0;
+    else if (k == "crsCustom") s.crsCustom = v;
+    else if (k == "readPrj") s.readPrj = d != 0;
+    else if (k == "vrefMode") s.vrefMode = (int)d;
+    else if (k == "vrefFranceDir") s.vrefFranceDir = v;
+    else if (k == "vrefZh") s.vrefZh = v;
+    else if (k == "vrefGeoid") s.vrefGeoid = v;
+    else if (k == "vrefDirect") s.vrefDirect = v;
+    else if (k == "vrefInvert") s.vrefInvert = d != 0;
+    else if (k == "order") s.importOrder = (int)d;
+    else if (k == "sign") s.importSign = (int)d;
+    else if (k == "offset") s.importOffset = (float)d;
+    else if (k == "zFeet") s.importZFeet = d != 0;
+    else if (k == "cache") s.importCache = d != 0;
+    else if (k == "nodataOn") s.importNodataOn = d != 0;
+    else if (k == "nodata") s.importNodata = v;
+    else if (k == "boundsOn") s.importBoundsOn = d != 0;
+    else if (k == "boundMin") s.boundMin = (float)d;
+    else if (k == "boundMax") s.boundMax = (float)d;
+  }
+  return true;
+}
+
+// ------------------------------------------------------------ courbe de marée
+time_t PersonalDepth_pi::TideChartTime() const {
+  return m_set.tideMode == 1 ? std::time(nullptr)
+                             : (time_t)(m_set.tideTime + (long long)m_set.tideShiftMin * 60);
+}
+
+std::vector<TideChartPoint> PersonalDepth_pi::TideChartPoints(wxString& source, wxString& why) {
+  std::vector<TideChartPoint> pts;
+  source.clear();
+  why.clear();
+  if (m_set.tideMode == 0) { why = U8("Marée désactivée (profondeurs au zéro hydrographique)"); return pts; }
+  if (!m_tideBoxOk) { why = U8("En attente de données affichées"); return pts; }
+  if (m_set.tideSource == 1) {  // FES2022 : 9 points répartis sur l'emprise des données
+    if (!m_fes) { why = U8("Marée FES2022 en préparation"); return pts; }
+    source = U8("FES2022 maillé");
+    static const char* names[3][3] = {{"NO", "N", "NE"}, {"O", "Centre", "E"}, {"SO", "S", "SE"}};
+    const double fx[3] = {0.1, 0.5, 0.9}, fy[3] = {0.9, 0.5, 0.1};
+    for (int j = 0; j < 3; ++j)
+      for (int i = 0; i < 3; ++i) {
+        TideChartPoint p;
+        p.lon = m_tideBox[0] + fx[i] * (m_tideBox[1] - m_tideBox[0]);
+        p.lat = m_tideBox[2] + fy[j] * (m_tideBox[3] - m_tideBox[2]);
+        // hors du modèle (à terre) ou sans référence : point écarté
+        if (std::isnan(m_fes->z0At(p.lon, p.lat)) ||
+            std::isnan(m_fes->heightNM(p.lon, p.lat, (double)TideChartTime())))
+          continue;
+        p.name = U8(names[j][i]);
+        pts.push_back(p);
+      }
+    if (pts.empty()) why = U8("Aucun point de l'emprise dans le modèle FES2022");
+    // le centre en premier
+    std::stable_sort(pts.begin(), pts.end(), [](const TideChartPoint& a, const TideChartPoint& b) {
+      return a.name == "Centre" && b.name != "Centre";
+    });
+    return pts;
+  }
+  if (m_tideStation < 0) { why = U8("Aucune station de marée"); return pts; }
+  source = U8("Station OpenCPN");
+  TideChartPoint p;
+  p.name = m_tideStationName;
+  p.lon = m_tideStationLon;  // position de la station
+  p.lat = m_tideStationLat;
+  pts.push_back(p);
+  return pts;
+}
+
+void PersonalDepth_pi::TideChartSeries(const std::vector<TideChartPoint>& pts,
+                                       const std::vector<time_t>& t,
+                                       std::vector<std::vector<double>>& h) {
+  h.assign(pts.size(), std::vector<double>(t.size(), NAN));
+  if (pts.empty() || t.empty()) return;
+  if (m_set.tideSource == 1) {
+    if (!m_fes) return;
+    for (size_t k = 0; k < pts.size(); ++k) {
+      const double z0 = m_fes->z0At(pts[k].lon, pts[k].lat);
+      for (size_t i = 0; i < t.size(); ++i)
+        h[k][i] = m_fes->heightNM(pts[k].lon, pts[k].lat, (double)t[i]) + z0;  // au-dessus du ZH
+    }
+    return;
+  }
+  std::unique_ptr<HostApi> api;
+  try { api = GetHostApi(); } catch (...) {}
+  HostApi121* a = dynamic_cast<HostApi121*>(api.get());
+  if (!a || m_tideStation < 0) return;
+  for (size_t i = 0; i < t.size(); ++i) {
+    float v = 0;
+    if (a->GetTideHeight(m_tideStation, t[i], &v) && std::isfinite(v)) h[0][i] = v;
+  }
+}
+
+void PersonalDepth_pi::ShowTideChart() {
+  if (!m_chart) m_chart = new TideChartDialog(GetOCPNCanvasWindow(), this);
+  m_chart->Show();
+  m_chart->Raise();
+  m_chart->TideUpdated();
 }

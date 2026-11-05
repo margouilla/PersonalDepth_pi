@@ -68,6 +68,7 @@ struct DbSource {
   double lonMin = 0, lonMax = 0, latMin = 0, latMax = 0;
   std::string imported;          // date d'import
   std::string group;             // classe (Litto3D, PFE…)
+  std::string params;            // réglages d'import (relecture avec d'autres paramètres)
 };
 
 using DbProgress = std::function<void(float, const std::string&)>;
@@ -121,6 +122,10 @@ class BathyDb {
   bool setVisible(const std::vector<int64_t>& ids, bool visible, DbPriority prio,
                   std::string& err, const DbProgress& progress = nullptr);
   bool setGroup(const std::vector<int64_t>& ids, const std::string& group, std::string& err);
+  bool setDates(const std::vector<int64_t>& ids, const std::string& date, DbPriority prio,
+                std::string& err, const DbProgress& progress = nullptr);
+  // réglages d'import déclarés (sources importées avant leur enregistrement)
+  bool setParams(const std::vector<int64_t>& ids, const std::string& params, std::string& err);
   // Rangs manuels (ordre de la liste) ; refusionne si la règle est « manuelle »
   bool setRanks(const std::vector<int64_t>& order, DbPriority prio, std::string& err,
                 const DbProgress& progress = nullptr);

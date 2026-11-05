@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "TideFES.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cmath>
@@ -274,11 +275,11 @@ bool TideAtlas::open(const std::string& path, std::string& err) {
   if (f_) { std::fclose(f_); f_ = nullptr; }
   names_.clear();
   FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   uint8_t h[80];
   if (std::fread(h, 1, 80, f) != 80 || std::memcmp(h, "PDTIDE01", 8) != 0) {
     std::fclose(f);
-    err = "Fichier de marée .pdtide invalide : " + path;
+    err = pd::tr("Fichier de marée .pdtide invalide : ") + path;
     return false;
   }
   W_ = (int)Get<uint32_t>(h + 8);
@@ -291,12 +292,12 @@ bool TideAtlas::open(const std::string& path, std::string& err) {
   periodic_ = (Get<uint32_t>(h + 72) & 1) != 0;
   if (W_ <= 0 || W_ > 256 || T_ <= 0 || T_ > 1024 || nx_ <= 0 || ny_ <= 0) {
     std::fclose(f);
-    err = "Entête .pdtide incohérent : " + path;
+    err = pd::tr("Entête .pdtide incohérent : ") + path;
     return false;
   }
   for (int w = 0; w < W_; ++w) {
     char nm[17] = {0};
-    if (std::fread(nm, 1, 16, f) != 16) { std::fclose(f); err = "Fichier .pdtide tronqué"; return false; }
+    if (std::fread(nm, 1, 16, f) != 16) { std::fclose(f); err = pd::tr("Fichier .pdtide tronqué"); return false; }
     names_.push_back(nm);
   }
   indexPos_ = 80 + 16LL * W_;
@@ -311,7 +312,7 @@ bool TideAtlas::readTile(int w, int tj, int ti, std::vector<int16_t>& re, std::v
   uint8_t e[16];
   if (!Seek(f_, indexPos_ + 16LL * (((long long)w * nty_ + tj) * ntx_ + ti)) ||
       std::fread(e, 1, 16, f_) != 16) {
-    err = "Lecture de l'index .pdtide impossible";
+    err = pd::tr("Lecture de l'index .pdtide impossible");
     return false;
   }
   const uint64_t off = Get<uint64_t>(e);
@@ -320,13 +321,13 @@ bool TideAtlas::readTile(int w, int tj, int ti, std::vector<int16_t>& re, std::v
   if (kind == 0) return true;
   std::vector<uint8_t> comp(size), raw;
   if (!Seek(f_, (long long)off) || std::fread(comp.data(), 1, size, f_) != size) {
-    err = "Lecture d'une tuile .pdtide impossible";
+    err = pd::tr("Lecture d'une tuile .pdtide impossible");
     return false;
   }
   const size_t TT = (size_t)T_ * T_;
   const size_t mbytes = kind == 2 ? (TT + 7) / 8 : 0;
   if (!ZlibInflate(comp.data(), comp.size(), raw, mbytes + 4 * TT) || raw.size() != mbytes + 4 * TT) {
-    err = "Tuile .pdtide corrompue";
+    err = pd::tr("Tuile .pdtide corrompue");
     return false;
   }
   mask.assign(TT, 1);
@@ -353,7 +354,7 @@ bool TideAtlas::readTile(int w, int tj, int ti, std::vector<int16_t>& re, std::v
 bool TideAtlas::loadRegion(double lonMin, double lonMax, double latMin, double latMax,
                            TideRegion& r, std::string& err) {
   r = TideRegion();
-  if (!f_) { err = "Atlas de marée non ouvert"; return false; }
+  if (!f_) { err = pd::tr("Atlas de marée non ouvert"); return false; }
   // nœuds couverts (+1 de marge de chaque côté)
   double lo0 = lonMin;
   while (periodic_ && lo0 < lon0_) lo0 += 360.0;
@@ -362,8 +363,8 @@ bool TideAtlas::loadRegion(double lonMin, double lonMax, double latMin, double l
   long j0 = std::max(0L, (long)std::floor((latMin - lat0_) / dlat_) - 1);
   long j1 = std::min((long)ny_ - 1, (long)std::ceil((latMax - lat0_) / dlat_) + 1);
   if (!periodic_) { i0 = std::max(0L, i0); i1 = std::min((long)nx_ - 1, i1); }
-  if (i1 < i0 || j1 < j0) { err = "Zone hors de l'atlas de marée"; return false; }
-  if ((i1 - i0 + 1) * (j1 - j0 + 1) > 4000000) { err = "Zone trop grande pour la marée maillée"; return false; }
+  if (i1 < i0 || j1 < j0) { err = pd::tr("Zone hors de l'atlas de marée"); return false; }
+  if ((i1 - i0 + 1) * (j1 - j0 + 1) > 4000000) { err = pd::tr("Zone trop grande pour la marée maillée"); return false; }
   r.nx = (int)(i1 - i0 + 1);
   r.ny = (int)(j1 - j0 + 1);
   r.lon0 = lon0_ + i0 * dlon_;
@@ -372,7 +373,7 @@ bool TideAtlas::loadRegion(double lonMin, double lonMax, double latMin, double l
   std::vector<int> wid;
   for (int w = 0; w < W_; ++w)
     if (const TideWave* tw = FindTideWave(names_[w])) { r.waves.push_back(tw); wid.push_back(w); }
-  if (r.waves.empty()) { err = "Aucune onde connue dans " + path_; return false; }
+  if (r.waves.empty()) { err = pd::tr("Aucune onde connue dans ") + path_; return false; }
   const size_t n = (size_t)r.nx * r.ny;
   r.re.assign(n * r.waves.size(), 0.f);
   r.im.assign(n * r.waves.size(), 0.f);
@@ -597,7 +598,7 @@ bool FesTide::prepare(TideAtlas& atlas, double lonMin, double lonMax, double lat
       }
     }
   }
-  if (!nValid) { err = "Zone hors du modèle de marée"; return false; }
+  if (!nValid) { err = pd::tr("Zone hors du modèle de marée"); return false; }
   char b[200];
   auto pc = [&](size_t x) { return (int)std::lround(100.0 * x / nValid); };
   std::snprintf(b, sizeof b, "Z0 : %s%s%s",
@@ -605,7 +606,7 @@ bool FesTide::prepare(TideAtlas& atlas, double lonMin, double lonMax, double lat
                 nEll ? (std::string("BathyElli ") + std::to_string(pc(nEll)) + " % ").c_str() : "",
                 nLat ? (std::string("PBMA FES ") + std::to_string(pc(nLat)) + " %").c_str() : "");
   info_ = b;
-  if (nUser + nEll + nLat == 0) { err = "Aucune référence ZH disponible pour la marée maillée"; return false; }
+  if (nUser + nEll + nLat == 0) { err = pd::tr("Aucune référence ZH disponible pour la marée maillée"); return false; }
   region_ = std::move(r);
   z0_ = std::move(z0);
   if (progress) *progress = 1.f;

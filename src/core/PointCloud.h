@@ -33,7 +33,10 @@ struct LoadOptions {
   enum class ZSign { Auto, DepthPositive, Elevation };
   Order order = Order::LonLatZ;
   ZSign zsign = ZSign::Auto;  // Auto : si >60 % des z sont négatifs -> altitudes
-  float zOffset = 0.f;        // décalage vertical éventuel (ex. passage ZH/IGN)
+  float zOffset = 0.f;        // décalage vertical éventuel (m), ajouté après conversion
+  // Unité verticale du fichier : facteur vers le mètre (1 = m, 0.3048 = pieds).
+  // Les bases et l'affichage interne restent toujours en mètres.
+  double zToMeters = 1.0;
   // Valeurs NODATA supplémentaires (Z brut du fichier, tous formats), en plus
   // de celle de l'entête : 9999, -9999, 99999… Les valeurs non finies ou de
   // module >= 1e20 sont toujours ignorées.

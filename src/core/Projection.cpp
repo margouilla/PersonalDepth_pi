@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Projection.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cctype>
@@ -96,7 +97,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     if (u.rfind("EPSG:", 0) == 0) t = t.substr(5);
     if (!t.empty() && std::all_of(t.begin(), t.end(), ::isdigit)) {
       def = EpsgToProj(std::atoi(t.c_str()));
-      if (def.empty()) { err = "Code EPSG:" + t + " non pris en charge (utiliser une chaîne PROJ)"; return false; }
+      if (def.empty()) { err = pd::tr("Code EPSG:") + t + pd::tr(" non pris en charge (utiliser une chaîne PROJ)"); return false; }
     }
   }
   std::map<std::string, std::string> kv;
@@ -109,7 +110,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     if (eq == std::string::npos) kv[tok] = "";
     else kv[tok.substr(0, eq)] = tok.substr(eq + 1);
   }
-  if (!kv.count("proj")) { err = "Définition sans +proj"; return false; }
+  if (!kv.count("proj")) { err = pd::tr("Définition sans +proj"); return false; }
   Crs c;
   c.def_ = def;
   auto num = [&](const char* k, double dflt) {
@@ -126,12 +127,12 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
   else if (datum == "NAD27") { ell = "clrk66"; if (tw.empty()) tw = "-8,160,176"; }
   else if (datum == "OSGB36") { ell = "airy"; if (tw.empty()) tw = "446.448,-125.157,542.06,0.15,0.247,0.842,-20.489"; }
   else if (datum == "potsdam") { ell = "bessel"; if (tw.empty()) tw = "598.1,73.7,418.2,0.202,0.045,-2.455,6.7"; }
-  else if (!datum.empty()) { err = "Datum +datum=" + datum + " non reconnu (utiliser +towgs84)"; return false; }
+  else if (!datum.empty()) { err = pd::tr("Datum +datum=") + datum + pd::tr(" non reconnu (utiliser +towgs84)"); return false; }
   if (!ell.empty()) {
     bool found = false;
     for (const Ellps& E : kEllps)
       if (ell == E.name) { a = E.a; f = E.rf > 0 ? 1 / E.rf : 0; found = true; }
-    if (!found) { err = "Ellipsoïde +ellps=" + ell + " inconnu"; return false; }
+    if (!found) { err = pd::tr("Ellipsoïde +ellps=") + ell + pd::tr(" inconnu"); return false; }
   }
   if (kv.count("a")) {
     a = num("a", a);
@@ -147,7 +148,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     std::istringstream ts(tw);
     std::string p;
     while (n < 7 && std::getline(ts, p, ',')) v[n++] = std::atof(p.c_str());
-    if (n != 3 && n != 7) { err = "+towgs84 doit avoir 3 ou 7 valeurs"; return false; }
+    if (n != 3 && n != 7) { err = pd::tr("+towgs84 doit avoir 3 ou 7 valeurs"); return false; }
     bool nz = false;
     for (double x : v) nz |= (x != 0);
     c.hasHelmert_ = nz;
@@ -170,7 +171,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     else if (u == "ft") c.unit_ = 0.3048;
     else if (u == "us-ft") c.unit_ = 1200.0 / 3937.0;
     else if (u == "km") c.unit_ = 1000;
-    else { err = "Unité +units=" + u + " inconnue"; return false; }
+    else { err = pd::tr("Unité +units=") + u + pd::tr(" inconnue"); return false; }
   }
   // projection
   const std::string& pj = kv["proj"];
@@ -183,7 +184,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     c.kind_ = Kind::LongLat;
   } else if (pj == "utm") {
     int zone = (int)num("zone", 0);
-    if (zone < 1 || zone > 60) { err = "+zone UTM invalide"; return false; }
+    if (zone < 1 || zone > 60) { err = pd::tr("+zone UTM invalide"); return false; }
     c.kind_ = Kind::TMerc;
     c.lon0_ = (-183.0 + 6.0 * zone) * D2R;
     c.lat0_ = 0; c.k0_ = 0.9996; c.x0_ = 500000;
@@ -200,7 +201,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
       c.k0_ = 0.994; c.x0_ = 2000000; c.y0_ = 2000000; c.lon0_ = 0;
     }
     if (std::fabs(std::fabs(c.lat0_) - M_PI / 2) > 1e-9) {
-      err = "Stéréographique non polaire : utiliser +proj=sterea"; return false;
+      err = pd::tr("Stéréographique non polaire : utiliser +proj=sterea"); return false;
     }
     c.south_ = c.lat0_ < 0;
     c.latts_ = kv.count("lat_ts") ? num("lat_ts", 90) * D2R : c.lat0_;
@@ -214,7 +215,7 @@ bool Crs::Parse(const std::string& defIn, Crs& o, std::string& err) {
     c.latts_ = num("lat_ts", 0) * D2R;
     c.lat1_ = kv.count("lat_ts") ? 1 : 0;  // drapeau : k0 issu de lat_ts
   } else {
-    err = "Projection +proj=" + pj + " non prise en charge";
+    err = pd::tr("Projection +proj=") + pj + pd::tr(" non prise en charge");
     return false;
   }
   c.init();
@@ -770,19 +771,19 @@ int EpsgFromWkt(const std::string& wkt) {
 std::string GuessCrsHint(double x, double y) {
   char b[200];
   if (x > 50000 && x < 1300000 && y > 6000000 && y < 7200000)
-    return "les coordonnées ressemblent à du Lambert-93 (EPSG:2154)";
+    return pd::tr("les coordonnées ressemblent à du Lambert-93 (EPSG:2154)");
   if (x > 50000 && x < 1250000 && y > 1600000 && y < 2800000)
-    return "les coordonnées ressemblent à du Lambert II étendu (EPSG:27572)";
+    return pd::tr("les coordonnées ressemblent à du Lambert II étendu (EPSG:27572)");
   if (x > 1000000 && x < 2400000 && y > 1000000 && y < 9400000) {
     int z = (int)std::lround((y - 200000) / 1000000.0) + 41;
     if (z >= 42 && z <= 50) {
-      std::snprintf(b, sizeof b, "les coordonnées ressemblent à une zone conique conforme (CC%d, EPSG:%d)", z, 3900 + z);
+      std::snprintf(b, sizeof b, pd::tr("les coordonnées ressemblent à une zone conique conforme (CC%d, EPSG:%d)"), z, 3900 + z);
       return b;
     }
   }
   if (x > 160000 && x < 840000 && y > 0 && y < 10000000)
-    return "les coordonnées ressemblent à de l'UTM (choisir le fuseau : 30, 31 ou 32 N en France métropolitaine)";
-  return "coordonnées projetées : choisir le système de coordonnées du fichier";
+    return pd::tr("les coordonnées ressemblent à de l'UTM (choisir le fuseau : 30, 31 ou 32 N en France métropolitaine)");
+  return pd::tr("coordonnées projetées : choisir le système de coordonnées du fichier");
 }
 
 }  // namespace pd

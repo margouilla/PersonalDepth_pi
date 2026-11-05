@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyRenderer.h"
+#include "core/Lang.h"
 
 #include <wx/dcmemory.h>
 #include <wx/image.h>
@@ -394,6 +395,11 @@ bool BathyRenderer::FitMapper(PlugIn_ViewPort* vp, ScreenMapper& sm) {
   return true;
 }
 
+// Profondeur (m) dans l'unité d'affichage d'OpenCPN, arrondie au centième
+static wxString DepthText(const DisplaySettings& s, double m) {
+  return wxString::Format("%g", std::round(m * s.depthK * 100.0) / 100.0);
+}
+
 void BathyRenderer::FormatDepth(float z, int decimals, wxString& ip, wxString& dp) {
   // Usage hydrographique : troncature vers la valeur la moins profonde
   double v = std::fabs((double)z), p = std::pow(10.0, decimals);
@@ -704,8 +710,8 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
     m_labels = CollectLabels(vp, sm, layers, s);
     AddContourLabels(vp, sm, layers, s, m_labels);
     for (Label& L : m_labels) {
-      if (L.contour) { L.w = GLTextWidth(wxString::Format("%g", L.depth), 1.f) + 4; continue; }
-      FormatDepth(L.depth, s.decimals, ip, dp);
+      if (L.contour) { L.w = GLTextWidth(DepthText(s, L.depth), 1.f) + 4; continue; }
+      FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);
       L.w = GLTextWidth(ip, 1.f) + GLTextWidth(dp, 0.72f);
     }
     Declutter(m_labels, (float)m_glyphs->lineH, 4.f);
@@ -716,10 +722,10 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
       uint32_t c = IsSafety(s, L.depth) ? s.ramp.safetyColor : s.contourColor;
       glColor4f(0.35f + 0.65f * R_(c) / 255.f, 0.35f + 0.65f * G_(c) / 255.f,
                 0.35f + 0.65f * B_(c) / 255.f, 1.f);
-      DrawGLText(L.x, L.y, wxString::Format("%g", L.depth), 1.f, true);
+      DrawGLText(L.x, L.y, DepthText(s, L.depth), 1.f, true);
       continue;
     }
-    FormatDepth(L.depth, s.decimals, ip, dp);
+    FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);
     if (L.fromGrid) glColor4f(0.55f, 0.6f, 0.7f, 1.f); else glColor4f(1, 1, 1, 1);
     float wi = GLTextWidth(ip, 1.f), wd = GLTextWidth(dp, 0.72f);
     float x0 = L.x - (wi + wd) / 2;
@@ -748,7 +754,10 @@ std::vector<float> ContourLevels(const DisplaySettings& s, float zMin, float zMa
     for (const auto& st : s.ramp.stops)
       if (st.depth > zMin && st.depth <= zMax) lv.push_back(st.depth);
   } else {
-    lv = RegularLevels(zMin, zMax, s.contourStep);
+    // valeurs rondes dans l'unité affichée (ex. tous les 10 ft), converties en m
+    const float k = s.depthK > 0 ? s.depthK : 1.f;
+    lv = RegularLevels(zMin * k, zMax * k, s.contourStep * k);
+    for (float& z : lv) z /= k;
   }
   if (s.ramp.safetyOn && s.ramp.safetyDepth > zMin && s.ramp.safetyDepth <= zMax)
     lv.push_back(s.ramp.safetyDepth);
@@ -762,8 +771,11 @@ static bool IsSafety(const DisplaySettings& s, float level) {
 }
 static bool IsMajor(const DisplaySettings& s, float level) {
   if (!(s.contourMajor > 0)) return false;
-  double r = std::fmod((double)level, (double)s.contourMajor);
-  return std::fabs(r) < 1e-3 || std::fabs(r - s.contourMajor) < 1e-3;
+  const double k = s.depthK > 0 ? s.depthK : 1.0;  // en unité affichée
+  const double lv = std::round(level * k * 1000.0) / 1000.0, mj = std::round(s.contourMajor * k * 1000.0) / 1000.0;
+  if (!(mj > 0)) return false;
+  double r = std::fmod(lv, mj);
+  return std::fabs(r) < 1e-3 || std::fabs(r - mj) < 1e-3;
 }
 
 int BathyRenderer::ContourLevelIndex(const BathyLayer& l) const {
@@ -998,7 +1010,7 @@ void BathyRenderer::DrawLegendGL(PlugIn_ViewPort* vp, const DisplaySettings& s,
   glEnable(GL_TEXTURE_2D);
   glColor4f(1, 1, 1, 1);
   if (!cursorText.empty()) { DrawGLText(x + pad, cy + lh / 2.f, cursorText, 1.f, false); cy += lh; }
-  DrawGLText(x + pad, cy + lh / 2.f, "Prof. (m)", 1.f, false);
+  DrawGLText(x + pad, cy + lh / 2.f, wxString::FromUTF8(pd::tr("Prof. (")) + s.depthUnit + ")", 1.f, false);
   cy += lh;
   glDisable(GL_TEXTURE_2D);
   glBegin(GL_QUADS);
@@ -1014,7 +1026,7 @@ void BathyRenderer::DrawLegendGL(PlugIn_ViewPort* vp, const DisplaySettings& s,
   glColor4f(1, 1, 1, 1);
   for (int k = 0; k < n; ++k)
     DrawGLText(x + pad + bw + 6, cy + k * band + (s.ramp.mode == ColorRamp::Mode::Stepped ? 0 : 1),
-               wxString::Format("%g", st[k].depth), 1.f, false);
+               DepthText(s, st[k].depth), 1.f, false);
   if (s.ramp.safetyOn) {
     float yy = cy + n * band + lh / 2.f;
     glDisable(GL_TEXTURE_2D);
@@ -1026,7 +1038,7 @@ void BathyRenderer::DrawLegendGL(PlugIn_ViewPort* vp, const DisplaySettings& s,
     glEnd();
     glEnable(GL_TEXTURE_2D);
     glColor4f(1, 1, 1, 1);
-    DrawGLText(x + pad + bw + 6, yy, wxString::Format("< %g m", s.ramp.safetyDepth), 1.f, false);
+    DrawGLText(x + pad + bw + 6, yy, "< " + DepthText(s, s.ramp.safetyDepth) + " " + s.depthUnit, 1.f, false);
   }
 }
 
@@ -1131,10 +1143,10 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
     for (Label& L : m_labels) {
       if (L.contour) {
         dc.SetFont(fontBig);
-        L.w = (float)dc.GetTextExtent(wxString::Format("%g", L.depth)).x + 4;
+        L.w = (float)dc.GetTextExtent(DepthText(s, L.depth)).x + 4;
         continue;
       }
-      FormatDepth(L.depth, s.decimals, ip, dp);
+      FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);
       dc.SetFont(fontBig);
       wxSize a = dc.GetTextExtent(ip);
       dc.SetFont(fontSmall);
@@ -1148,13 +1160,13 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
   for (const Label& L : m_labels) {
     if (L.contour) {
       uint32_t c = IsSafety(s, L.depth) ? s.ramp.safetyColor : s.contourColor;
-      wxString t = wxString::Format("%g", L.depth);
+      wxString t = DepthText(s, L.depth);
       dc.SetFont(fontBig);
       wxSize e = dc.GetTextExtent(t);
       halo(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2, wxColour(R_(c), G_(c), B_(c)));
       continue;
     }
-    FormatDepth(L.depth, s.decimals, ip, dp);
+    FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);
     dc.SetFont(fontBig);
     wxSize si = dc.GetTextExtent(ip);
     dc.SetFont(fontSmall);
@@ -1187,7 +1199,7 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
   dc.SetTextForeground(ink);
   int cy = y + pad;
   if (tl) { dc.DrawText(s.tideLegend, x + pad, cy); cy += lh; }
-  dc.DrawText("Prof. (m)", x + pad, cy);
+  dc.DrawText(wxString::FromUTF8(pd::tr("Prof. (")) + s.depthUnit + ")", x + pad, cy);
   cy += lh;
   for (int k = 0; k < n; ++k) {
     uint32_t a = st[k].rgba;
@@ -1199,13 +1211,13 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
       dc.SetBrush(wxBrush(wxColour(R_(a), G_(a), B_(a))));
       dc.DrawRectangle(x + pad, cy + k * band, bw, band);
     }
-    dc.DrawText(wxString::Format("%g", st[k].depth), x + pad + bw + 6, cy + k * band);
+    dc.DrawText(DepthText(s, st[k].depth), x + pad + bw + 6, cy + k * band);
   }
   if (s.ramp.safetyOn) {
     uint32_t c = s.ramp.safetyColor;
     int yy = cy + n * band;
     dc.SetBrush(wxBrush(wxColour(R_(c), G_(c), B_(c))));
     dc.DrawRectangle(x + pad, yy + 2, bw, lh - 4);
-    dc.DrawText(wxString::Format("< %g m", s.ramp.safetyDepth), x + pad + bw + 6, yy);
+    dc.DrawText("< " + DepthText(s, s.ramp.safetyDepth) + " " + s.depthUnit, x + pad + bw + 6, yy);
   }
 }

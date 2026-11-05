@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VerticalRef.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cctype>
@@ -72,7 +73,7 @@ double Grid2D::sample(double lon, double lat) const {
 // code de précision suit les valeurs. Seule la première valeur est retenue.
 bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
   std::ifstream in(path);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::string head;
   std::getline(in, head);
   std::istringstream hs(head);
@@ -80,7 +81,7 @@ bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
   int nh = 0;
   while (nh < 16 && hs >> h[nh]) ++nh;  // s'arrête au texte libre
   if (nh < 6 || h[4] <= 0 || h[5] <= 0) {
-    err = "Entête de grille IGN illisible : " + path;
+    err = pd::tr("Entête de grille IGN illisible : ") + path;
     return false;
   }
   const double lo0 = h[0], lo1 = h[1], la0 = h[2], la1 = h[3], dlo = h[4], dla = h[5];
@@ -90,7 +91,7 @@ bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
   const int nval = full ? std::max(1, (int)h[8]) : 0;
   const bool prec = full && h[9] != 0;
   const double trans = (full && nh > 10) ? h[10] : 0.0;
-  if (order < 1 || order > 4) { err = "Ordre de grille IGN inconnu dans " + path; return false; }
+  if (order < 1 || order > 4) { err = pd::tr("Ordre de grille IGN inconnu dans ") + path; return false; }
   g.nx = (int)std::lround((lo1 - lo0) / dlo) + 1;
   g.ny = (int)std::lround((la1 - la0) / dla) + 1;
   g.lonW = lo0; g.latN = la1; g.dlon = dlo; g.dlat = dla;
@@ -105,7 +106,7 @@ bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
     else stride = vals.size() / n;
   }
   if (!stride || vals.size() < n * stride) {
-    err = "Nombre de valeurs incohérent avec l'entête : " + path;
+    err = pd::tr("Nombre de valeurs incohérent avec l'entête : ") + path;
     return false;
   }
   g.v.assign(n, NAN);
@@ -133,7 +134,7 @@ bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
 
 bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
   std::ifstream in(path);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   long ncols = 0, nrows = 0;
   double xll = 0, yll = 0, cs = 0, nodata = -9999;
   bool center = false;
@@ -153,7 +154,7 @@ bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
     else if (lk == "nodata_value") in >> nodata;
     else { in.seekg(pos); break; }
   }
-  if (ncols < 2 || nrows < 2 || cs <= 0) { err = "Entête ASC invalide : " + path; return false; }
+  if (ncols < 2 || nrows < 2 || cs <= 0) { err = pd::tr("Entête ASC invalide : ") + path; return false; }
   const double off = center ? 0 : cs / 2;  // nœuds = centres de cellules
   g.nx = (int)ncols; g.ny = (int)nrows; g.dlon = g.dlat = cs;
   g.lonW = xll + off;
@@ -161,7 +162,7 @@ bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
   g.v.resize((size_t)ncols * nrows);
   for (auto& f : g.v) {
     double x;
-    if (!(in >> x)) { err = "Fichier ASC tronqué : " + path; return false; }
+    if (!(in >> x)) { err = pd::tr("Fichier ASC tronqué : ") + path; return false; }
     f = (x == nodata) ? NAN : (float)x;
   }
   return true;
@@ -171,7 +172,7 @@ bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
 // puis des float32 du sud vers le nord ; -88.8888 = absent
 bool LoadGtxGrid(const std::string& path, Grid2D& g, std::string& err) {
   FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   auto be64 = [](const unsigned char* b) {
     uint64_t u = 0;
     for (int i = 0; i < 8; ++i) u = (u << 8) | b[i];
@@ -181,16 +182,16 @@ bool LoadGtxGrid(const std::string& path, Grid2D& g, std::string& err) {
     return (uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | b[3];
   };
   unsigned char h[40];
-  if (std::fread(h, 1, 40, f) != 40) { std::fclose(f); err = "Fichier .gtx tronqué"; return false; }
+  if (std::fread(h, 1, 40, f) != 40) { std::fclose(f); err = pd::tr("Fichier .gtx tronqué"); return false; }
   const double lat0 = be64(h), lon0 = be64(h + 8), dla = be64(h + 16), dlo = be64(h + 24);
   const int nr = (int)be32(h + 32), nc = (int)be32(h + 36);
   if (nr < 2 || nc < 2 || nr > 100000 || nc > 100000 || dla <= 0 || dlo <= 0) {
-    std::fclose(f); err = "Entête .gtx invalide"; return false;
+    std::fclose(f); err = pd::tr("Entête .gtx invalide"); return false;
   }
   std::vector<unsigned char> raw((size_t)nr * nc * 4);
   const bool ok = std::fread(raw.data(), 1, raw.size(), f) == raw.size();
   std::fclose(f);
-  if (!ok) { err = "Fichier .gtx tronqué"; return false; }
+  if (!ok) { err = pd::tr("Fichier .gtx tronqué"); return false; }
   g.nx = nc; g.ny = nr; g.dlon = dlo; g.dlat = dla;
   g.lonW = lon0 > 180 ? lon0 - 360 : lon0;
   g.latN = lat0 + (nr - 1) * dla;
@@ -209,13 +210,13 @@ bool LoadAnyGrid(const std::string& path, Grid2D& g, std::string& err) {
   if (e == ".tac" || e == ".mnt") return LoadTacGrid(path, g, err);
   if (e == ".asc") return LoadAscGrid(path, g, err);
   if (e == ".gtx") return LoadGtxGrid(path, g, err);
-  err = "Format de grille non reconnu (" + e + ") : .tac, .mnt, .asc ou .gtx attendu";
+  err = pd::tr("Format de grille non reconnu (") + e + pd::tr(") : .tac, .mnt, .asc ou .gtx attendu");
   return false;
 }
 
 bool LoadPointSurface(const std::string& path, std::vector<GeoPoint>& pts, std::string& err) {
   std::ifstream in(path);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::string line;
   const size_t before = pts.size();
   while (std::getline(in, line)) {
@@ -225,7 +226,7 @@ bool LoadPointSurface(const std::string& path, std::vector<GeoPoint>& pts, std::
     if (a < -180 || a > 360 || b < -90 || b > 90) continue;
     pts.push_back({a > 180 ? a - 360 : a, b, c});
   }
-  if (pts.size() == before) { err = "Aucun point « lon lat valeur » dans " + path; return false; }
+  if (pts.size() == before) { err = pd::tr("Aucun point « lon lat valeur » dans ") + path; return false; }
   return true;
 }
 
@@ -346,12 +347,12 @@ bool VerticalCorrection::build(const VerticalRefParams& p, double lonMin, double
   g.latN = std::ceil((latMax + m) / step) * step;
   g.nx = (int)std::ceil((lonMax + m - g.lonW) / step) + 1;
   g.ny = (int)std::ceil((g.latN - (latMin - m)) / step) + 1;
-  if ((double)g.nx * g.ny > 4e7) { err = "Emprise trop grande pour la référence verticale"; return false; }
+  if ((double)g.nx * g.ny > 4e7) { err = pd::tr("Emprise trop grande pour la référence verticale"); return false; }
   g.v.assign((size_t)g.nx * g.ny, NAN);
 
   if (p.mode == VerticalRefParams::Mode::Surfaces) {
     if (p.zhFiles.empty()) {  // sans grille de référence : hauteurs ellipsoïdales (N = 0)
-      err = "Référence verticale : surface ZH requise";
+      err = pd::tr("Référence verticale : surface ZH requise");
       return false;
     }
     if (!SurfaceOnGrid(p.zhFiles, g, err)) return false;
@@ -380,9 +381,9 @@ bool VerticalCorrection::build(const VerticalRefParams& p, double lonMin, double
       c = (std::isnan(c) || std::isnan(N.v[k])) ? NAN : c - N.v[k];  // C = h_ZH - N
       valid += !std::isnan(c);
     }
-    if (!valid) { err = "Le levé est hors de la couverture des surfaces de référence"; return false; }
+    if (!valid) { err = pd::tr("Le levé est hors de la couverture des surfaces de référence"); return false; }
   } else {
-    if (p.directFile.empty()) { err = "Référence verticale : grille d'écart requise"; return false; }
+    if (p.directFile.empty()) { err = pd::tr("Référence verticale : grille d'écart requise"); return false; }
     if (!SurfaceOnGrid({p.directFile}, g, err)) return false;
     if (p.directInvert)
       for (auto& c : g.v) c = -c;

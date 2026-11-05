@@ -13,8 +13,10 @@
 //
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/Lang.h"
 #include "ImportDialog.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <sstream>
 
@@ -30,7 +32,8 @@
 #include "PersonalDepth_pi.h"
 #include "core/Projection.h"
 
-#define U8(s) wxString::FromUTF8(s)
+#define U8(s) wxString::FromUTF8(pd::tr(s))
+#define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
 
 using namespace pd;
 
@@ -40,15 +43,53 @@ static const char* kBathyFilter =
     "Tous les fichiers|*";
 static const char* kBathyExt[] = {"xyz", "txt", "csv", "dat", "asc", "xml", "landxml", "tif", "tiff", "bag"};
 
-ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi)
-    : wxDialog(parent, wxID_ANY, U8("Importer dans la base de bathymétrie"), wxDefaultPosition,
-               wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+// libellé d'un système du catalogue dans la langue de l'interface
+static wxString CrsLabel(const CrsEntry& e) {
+  wxString n = U8(e.name.c_str());
+  n.Replace(W8("(conique conforme)"), U8("(conique conforme)"));  // RGF93 / CCnn
+  return U8(e.group.c_str()) + W8(" — ") + n;
+}
+
+ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
+                           const std::vector<DbSource>* edit)
+    : wxDialog(parent, wxID_ANY,
+               edit ? U8("Modifier les sources") : U8("Importer dans la base de bathymétrie"),
+               wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       m_pi(pi) {
+  m_init = m_pi->Settings();
+  if (edit && !edit->empty()) {
+    m_edit = true;
+    m_srcs = *edit;
+    // réglages d'import de la première source (bases antérieures : inconnus,
+    // on part alors des réglages du dernier import)
+    m_prefsKnown = ApplyImportPrefs(m_srcs[0].params, m_init);
+  }
+  m_initPrefs = SerializeImportPrefs(m_init);
   auto* col = new wxBoxSizer(wxVERTICAL);
   col->Add(BuildFiles(this), 1, wxEXPAND | wxALL, 6);
   col->Add(BuildReading(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
   col->Add(BuildCrs(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
   col->Add(BuildVref(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+
+  // Date du levé : déduite du nom de fichier (AAAAMMJJ) ou de la date du
+  // fichier, ou imposée
+  auto* dr = new wxBoxSizer(wxHORIZONTAL);
+  m_dateOn = new wxCheckBox(this, wxID_ANY, U8("Date du levé imposée"));
+  m_datePick = new wxDatePickerCtrl(this, wxID_ANY, wxDateTime::Today(), wxDefaultPosition,
+                                    wxDefaultSize, wxDP_DROPDOWN | wxDP_SHOWCENTURY);
+  m_dateOn->SetToolTip(U8("Sinon : date AAAAMMJJ trouvée dans le nom du fichier, à défaut date "
+                          "du fichier. La date sert à la règle de priorité « plus récent »."));
+  if (m_edit) {
+    wxDateTime d;
+    if (d.ParseISODate(W8(m_srcs[0].date.c_str()))) m_datePick->SetValue(d);
+    m_dateOn->SetValue(true);
+    m_dateOn->SetLabel(U8("Date du levé"));
+  }
+  m_datePick->Enable(m_dateOn->GetValue());
+  m_dateOn->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { m_datePick->Enable(m_dateOn->GetValue()); });
+  dr->Add(m_dateOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  dr->Add(m_datePick, 0);
+  col->Add(dr, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
   // Classement dans la base
   auto* cr = new wxBoxSizer(wxHORIZONTAL);
@@ -56,14 +97,15 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi)
                            wxCB_DROPDOWN);
   std::set<std::string> seen;
   for (const auto& d : m_pi->DbSources())
-    if (seen.insert(d.group).second) m_class->Append(U8(d.group.c_str()));
-  m_class->SetHint(U8("vide : déduite du nom de chaque fichier (LITTO3D, PFE…)"));
+    if (seen.insert(d.group).second) m_class->Append(W8(d.group.c_str()));
+  m_class->SetHint(m_edit ? U8("vide : classe actuelle de chaque source")
+                          : U8("vide : déduite du nom de chaque fichier (LITTO3D, PFE…)"));
   cr->Add(new wxStaticText(this, wxID_ANY, U8("Classe")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
   cr->Add(m_class, 1);
   col->Add(cr, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 10);
 
   auto* btns = new wxStdDialogButtonSizer();
-  auto* ok = new wxButton(this, wxID_OK, U8("Importer"));
+  auto* ok = new wxButton(this, wxID_OK, m_edit ? U8("Appliquer") : U8("Importer"));
   btns->AddButton(ok);
   btns->AddButton(new wxButton(this, wxID_CANCEL, U8("Annuler")));
   btns->Realize();
@@ -78,11 +120,28 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi)
 
 // ---------------------------------------------------------------- fichiers
 wxSizer* ImportDialog::BuildFiles(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Fichiers à importer"));
+  auto* box = new wxStaticBoxSizer(
+      wxVERTICAL, p, m_edit ? U8("Sources à modifier (fichiers d'origine)") : U8("Fichiers à importer"));
   wxWindow* sb = box->GetStaticBox();
-  m_files = new wxListBox(sb, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(130)), 0, nullptr,
-                          wxLB_EXTENDED | wxLB_HSCROLL);
+  m_files = new wxListBox(sb, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(m_edit ? 90 : 130)), 0,
+                          nullptr, wxLB_EXTENDED | wxLB_HSCROLL);
   box->Add(m_files, 1, wxEXPAND | wxALL, 4);
+  if (m_edit) {  // pas d'ajout ni de retrait : ce sont les sources choisies
+    for (const auto& d : m_srcs) m_files->Append(W8(d.path.c_str()));
+    m_count = new wxStaticText(sb, wxID_ANY, "");
+    wxString t = U8("La date et la classe se changent sans relire les données. Un changement de "
+                    "lecture, de système de coordonnées, de référence verticale ou d'unité relit "
+                    "les fichiers d'origine (même durée qu'un import).");
+    if (!m_prefsKnown)
+      t += U8("\nRéglages d'import d'origine inconnus (source importée avant l'enregistrement des réglages) : "
+              "les réglages affichés sont ceux du dernier import, à vérifier.");
+    if (m_srcs.size() > 1)
+      t += U8("\nRéglages affichés : ceux de la première source ; ils s'appliquent à toutes.");
+    m_count->SetLabel(t);
+    m_count->Wrap(FromDIP(520));
+    box->Add(m_count, 0, wxALL, 4);
+    return box;
+  }
   auto* r = new wxBoxSizer(wxHORIZONTAL);
   auto* addF = new wxButton(sb, wxID_ANY, U8("Ajouter des fichiers…"));
   auto* addD = new wxButton(sb, wxID_ANY, U8("Ajouter un dossier…"));
@@ -136,6 +195,7 @@ void ImportDialog::AddPaths(const wxArrayString& paths) {
 }
 
 void ImportDialog::UpdateSummary() {
+  if (m_edit) return;
   const unsigned n = m_files->GetCount();
   m_count->SetLabel(n == 0 ? U8("aucun fichier") : wxString::Format(U8("%u fichier%s"), n, n > 1 ? "s" : ""));
   if (wxWindow* ok = FindWindow(wxID_OK)) ok->Enable(n > 0);
@@ -145,7 +205,7 @@ void ImportDialog::UpdateSummary() {
 wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Lecture des valeurs"));
   wxWindow* sb = box->GetStaticBox();
-  const DisplaySettings& st = m_pi->Settings();
+  const DisplaySettings& st = m_init;
   wxString orders[] = {U8("X Y Z (lon lat z / Est Nord z)"), U8("Y X Z (lat lon z / Nord Est z)")};
   wxString signs[] = {U8("Automatique (majorité négative = altitudes)"),
                       U8("Profondeurs positives vers le bas"),
@@ -155,10 +215,19 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   m_order->SetSelection(std::max(0, std::min(1, st.importOrder)));
   m_sign->SetSelection(std::max(0, std::min(2, st.importSign)));
   m_sign->SetToolTip(U8("Sens des valeurs Z du fichier. Les rasters (.asc, .tif) suivent la même règle."));
+  // unité verticale des valeurs du fichier ; décalage et bornes s'expriment
+  // dans cette unité, la base reste en mètres
+  m_unitF = st.importZFeet ? 0.3048 : 1.0;
+  wxString units[] = {U8("Mètres"), U8("Pieds")};
+  m_zUnit = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, units);
+  m_zUnit->SetSelection(st.importZFeet ? 1 : 0);
+  m_zUnit->SetToolTip(U8("Unité des valeurs Z du fichier. Les profondeurs sont converties en "
+                         "mètres dans la base ; l'affichage suit ensuite l'unité de profondeur "
+                         "choisie dans OpenCPN (Options › Affichage › Unités)."));
   m_offset = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                  wxSP_ARROW_KEYS, -100, 100, st.importOffset, 0.01);
+                                  wxSP_ARROW_KEYS, -400, 400, st.importOffset / m_unitF, 0.01);
   m_offset->SetDigits(2);
-  m_offset->SetToolTip(U8("Décalage constant ajouté aux profondeurs après conversion (m), "
+  m_offset->SetToolTip(U8("Décalage constant ajouté aux profondeurs (dans l'unité de Z), "
                           "en plus de la transformation verticale ci-dessous"));
   m_cache = new wxCheckBox(sb, wxID_ANY, U8("Cache binaire (.pdpc) à côté des fichiers (réimport rapide)"));
   m_cache->SetValue(st.importCache);
@@ -167,13 +236,15 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
   g->Add(L("Colonnes"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_order, 0, wxEXPAND);
   g->Add(L("Sens de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_sign, 0, wxEXPAND);
-  g->Add(L("Décalage (m)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_offset, 0);
+  g->Add(L("Unité de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_zUnit, 0);
+  m_offsetL = L("Décalage (m)");
+  g->Add(m_offsetL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_offset, 0);
   // valeurs absentes : NODATA de l'utilisateur (Z brut du fichier)
   wxString nds[] = {"-9999", "9999", "-99999", "99999", "-9999 9999", "-99999 99999",
                     "-9999 9999 -99999 99999", "999 -999"};
   m_nodataOn = new wxCheckBox(sb, wxID_ANY, U8("NODATA"));
   m_nodataOn->SetValue(st.importNodataOn);
-  m_nodata = new wxComboBox(sb, wxID_ANY, U8(st.importNodata.c_str()), wxDefaultPosition,
+  m_nodata = new wxComboBox(sb, wxID_ANY, W8(st.importNodata.c_str()), wxDefaultPosition,
                             wxDefaultSize, 8, nds, wxCB_DROPDOWN);
   const wxString nt = U8("Valeurs Z du fichier à traiter comme absentes, séparées par des "
                          "espaces ou des « ; » (ex. -9999 9999 -99999 99999). Elles s'ajoutent "
@@ -187,13 +258,14 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   m_boundsOn = new wxCheckBox(sb, wxID_ANY, U8("Bornes de Z"));
   m_boundsOn->SetValue(st.importBoundsOn);
   m_boundMin = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                    wxSP_ARROW_KEYS, -12000, 12000, st.boundMin, 1);
+                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMin / m_unitF, 1);
   m_boundMax = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                    wxSP_ARROW_KEYS, -12000, 12000, st.boundMax, 1);
+                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMax / m_unitF, 1);
   m_boundMin->SetDigits(1);
   m_boundMax->SetDigits(1);
-  const wxString bt = U8("Seules les sondes dont la profondeur finale (m, ZH, positive vers le "
-                         "bas, après signe, décalage et transformation verticale) est comprise "
+  const wxString bt = U8("Seules les sondes dont la profondeur finale (ZH, positive vers le "
+                         "bas, après signe, décalage et transformation verticale ; dans "
+                         "l'unité de Z choisie) est comprise "
                          "entre Z1 et Z2 sont importées. Exemple : -200 à 200 m garde l'estran "
                          "jusqu'à 200 m d'altitude et écarte les remplissages. Ce sont les mêmes "
                          "bornes que le bouton « Nettoyer » de la base. Au-delà de ±12 km, une "
@@ -206,7 +278,8 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   rr->Add(m_boundMin, 0, wxRIGHT, 4);
   rr->Add(L("à"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   rr->Add(m_boundMax, 0, wxRIGHT, 4);
-  rr->Add(L("m (profondeur ZH)"), 0, wxALIGN_CENTER_VERTICAL);
+  m_boundsU = L("m (profondeur ZH)");
+  rr->Add(m_boundsU, 0, wxALIGN_CENTER_VERTICAL);
   g->Add(m_boundsOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(rr, 0);
   auto sync = [this]() {
     m_nodata->Enable(m_nodataOn->GetValue());
@@ -214,8 +287,14 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
     m_boundMax->Enable(m_boundsOn->GetValue());
   };
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
   m_boundsOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   sync();
+  {  // libellés d'unité
+    const wxString u = m_unitF == 1.0 ? "m" : "ft";
+    m_offsetL->SetLabel(U8("Décalage (") + u + ")");
+    m_boundsU->SetLabel(u + U8(" (profondeur ZH)"));
+  }
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   box->Add(m_cache, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
   return box;
@@ -225,9 +304,9 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
 wxSizer* ImportDialog::BuildCrs(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Système de coordonnées (X, Y)"));
   wxWindow* sb = box->GetStaticBox();
-  const DisplaySettings& st = m_pi->Settings();
+  const DisplaySettings& st = m_init;
   m_crs = new wxChoice(sb, wxID_ANY);
-  for (const CrsEntry& e : CrsCatalog()) m_crs->Append(U8((e.group + " — " + e.name).c_str()));
+  for (const CrsEntry& e : CrsCatalog()) m_crs->Append(CrsLabel(e));
   m_crs->Append(U8("Autre — code EPSG ou chaîne PROJ"));
   m_zone = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(70), -1),
                           wxSP_ARROW_KEYS, 1, 60, 31);
@@ -256,7 +335,7 @@ wxSizer* ImportDialog::BuildCrs(wxWindow* p) {
   m_crs->SetSelection(sel);
   m_zone->SetValue(st.crsZone);
   m_hemi->SetSelection(st.crsSouth ? 1 : 0);
-  m_crsCustom->SetValue(U8(st.crsCustom.c_str()));
+  m_crsCustom->SetValue(W8(st.crsCustom.c_str()));
   m_prj->SetValue(st.readPrj);
   UpdateCrsControls();
   m_crs->Bind(wxEVT_CHOICE, &ImportDialog::OnCrsChoice, this);
@@ -311,7 +390,7 @@ bool ImportDialog::CurrentCrs(std::string& def, std::string& name) {
   Crs test;
   std::string err;
   if (!Crs::Parse(def, test, err)) {
-    wxMessageBox(U8(("Système de coordonnées invalide : " + err).c_str()), "PersonalDepth",
+    wxMessageBox(U8("Système de coordonnées invalide : ") + U8(err.c_str()), "PersonalDepth",
                  wxICON_WARNING, this);
     return false;
   }
@@ -322,7 +401,7 @@ bool ImportDialog::CurrentCrs(std::string& def, std::string& name) {
 wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale des Z et transformation vers le ZH"));
   wxWindow* sb = box->GetStaticBox();
-  const DisplaySettings& st = m_pi->Settings();
+  const DisplaySettings& st = m_init;
   wxString vrefs[] = {
       U8("Zéro hydrographique — aucune transformation"),
       U8("IGN69 (continent) / IGN78C (Corse) → ZH : BathyElli v2.1 + RAF20 + RAC23"),
@@ -363,10 +442,10 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   box->Add(m_vrHelp, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
 
   m_vref->SetSelection(std::max(0, std::min(4, st.vrefMode)));
-  m_vrFrance->SetValue(U8(st.vrefFranceDir.c_str()));
-  m_vrZh->SetValue(U8(st.vrefZh.c_str()));
-  m_vrGeoid->SetValue(U8(st.vrefGeoid.c_str()));
-  m_vrDirect->SetValue(U8(st.vrefDirect.c_str()));
+  m_vrFrance->SetValue(W8(st.vrefFranceDir.c_str()));
+  m_vrZh->SetValue(W8(st.vrefZh.c_str()));
+  m_vrGeoid->SetValue(W8(st.vrefGeoid.c_str()));
+  m_vrDirect->SetValue(W8(st.vrefDirect.c_str()));
   m_vrInvert->SetValue(st.vrefInvert);
   UpdateVrefControls();
   m_vref->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { UpdateVrefControls(); });
@@ -492,6 +571,21 @@ bool ImportDialog::CurrentVref(VerticalRefParams& v) {
 }
 
 // ------------------------------------------------------------- validation
+// Changement d'unité de Z : décalage et bornes affichés sont convertis
+void ImportDialog::OnZUnit() {
+  const double f = m_zUnit->GetSelection() == 1 ? 0.3048 : 1.0;
+  if (f == m_unitF) return;
+  const double r = m_unitF / f;
+  m_offset->SetValue(std::round(m_offset->GetValue() * r * 100.0) / 100.0);
+  m_boundMin->SetValue(std::round(m_boundMin->GetValue() * r * 10.0) / 10.0);
+  m_boundMax->SetValue(std::round(m_boundMax->GetValue() * r * 10.0) / 10.0);
+  m_unitF = f;
+  const wxString u = f == 1.0 ? "m" : "ft";
+  m_offsetL->SetLabel(U8("Décalage (") + u + ")");
+  m_boundsU->SetLabel(u + U8(" (profondeur ZH)"));
+  Layout();
+}
+
 void ImportDialog::OnOk(wxCommandEvent&) {
   if (m_files->GetCount() == 0) return;
   std::string crsDef, crsName;
@@ -499,8 +593,8 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   VerticalRefParams vref;
   if (!CurrentVref(vref)) return;
 
-  // réglages mémorisés pour le prochain import
-  DisplaySettings& s = m_pi->Settings();
+  // réglages mémorisés pour le prochain import (modification : copie locale)
+  DisplaySettings& s = m_edit ? m_init : m_pi->Settings();
   const auto& cat = CrsCatalog();
   const int sel = m_crs->GetSelection();
   s.crsCode = sel == (int)cat.size() ? "CUSTOM" : (sel >= 0 ? cat[sel].code : "EPSG:4326");
@@ -516,7 +610,14 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.vrefInvert = m_vrInvert->GetValue();
   s.importOrder = m_order->GetSelection();
   s.importSign = m_sign->GetSelection();
-  s.importOffset = (float)m_offset->GetValue();
+  // valeurs affichées dans l'unité de Z -> mètres (une valeur inchangée garde
+  // sa valeur exacte, sans dérive d'arrondi)
+  auto toM = [&](double ui, float stored, double p) {
+    return std::fabs(ui - std::round(stored / m_unitF * p) / p) < 0.5 / p ? stored
+                                                                       : (float)(ui * m_unitF);
+  };
+  s.importZFeet = m_zUnit->GetSelection() == 1;
+  s.importOffset = toM(m_offset->GetValue(), s.importOffset, 100.0);
   s.importCache = m_cache->GetValue();
   // NODATA : liste de nombres
   std::vector<double> nodata;
@@ -530,7 +631,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
       char* end = nullptr;
       const double v = std::strtod(tok.c_str(), &end);
       if (end == tok.c_str() || *end) {
-        wxMessageBox(U8(("Valeur NODATA illisible : « " + tok + " »").c_str()), "PersonalDepth",
+        wxMessageBox(U8("Valeur NODATA illisible : « ") + W8(tok.c_str()) + U8(" »"), "PersonalDepth",
                      wxOK | wxICON_WARNING, this);
         return;
       }
@@ -550,9 +651,29 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importNodataOn = m_nodataOn->GetValue();
   s.importNodata = m_nodata->GetValue().ToUTF8().data();
   s.importBoundsOn = m_boundsOn->GetValue();
-  s.boundMin = (float)m_boundMin->GetValue();
-  s.boundMax = (float)m_boundMax->GetValue();
-  m_pi->SaveConfig();
+  s.boundMin = toM(m_boundMin->GetValue(), s.boundMin, 10.0);
+  s.boundMax = toM(m_boundMax->GetValue(), s.boundMax, 10.0);
+  if (!m_edit) m_pi->SaveConfig();
+  const std::string prefs = SerializeImportPrefs(s);
+  m_prefs = prefs;
+  m_date = m_dateOn->GetValue() ? std::string(m_datePick->GetValue().FormatISODate().ToUTF8().data())
+                                : std::string();
+  m_group = m_class->GetValue().Trim().Trim(false).ToUTF8().data();
+  if (m_edit) {
+    m_reread = prefs != m_initPrefs;
+    if (!m_reread) { EndModal(wxID_OK); return; }  // date / classe seulement
+    wxString missing;
+    int nm = 0;
+    for (const auto& d : m_srcs)
+      if (!wxFileExists(W8(d.path.c_str())) && nm++ < 8) missing += "\n  " + W8(d.path.c_str());
+    if (nm) {
+      wxMessageBox(wxString::Format(U8("%d fichier(s) d'origine introuvable(s) :"), nm) + missing +
+                       U8("\n\nRelecture impossible : remettre les fichiers à leur place, ou ne "
+                          "changer que la date et la classe."),
+                   "PersonalDepth", wxOK | wxICON_WARNING, this);
+      return;
+    }
+  }
 
   m_out.clear();
   for (unsigned k = 0; k < m_files->GetCount(); ++k) {
@@ -565,13 +686,19 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.load.order = (LoadOptions::Order)s.importOrder;
     p.load.zsign = (LoadOptions::ZSign)s.importSign;
     p.load.zOffset = s.importOffset;
+    p.load.zToMeters = s.importZFeet ? 0.3048 : 1.0;
     p.load.nodata = nodata;
     p.depthBounds = s.importBoundsOn;
     p.depthMin = s.boundMin;
     p.depthMax = s.boundMax;
     p.useCache = s.importCache;
+    p.importPrefs = prefs;
+    p.surveyDate = m_date;
+    if (m_edit && k < m_srcs.size()) {  // relecture : date et classe de la source gardées
+      if (p.surveyDate.empty()) p.surveyDate = m_srcs[k].date;
+      p.group = m_group.empty() ? m_srcs[k].group : m_group;
+    }
     m_out.push_back(p);
   }
-  m_group = m_class->GetValue().Trim().Trim(false).ToUTF8().data();
   EndModal(wxID_OK);
 }

@@ -52,6 +52,9 @@ struct LayerParams {
                      std::string& err)> custom;
   std::string label;          // nom affiché d'une couche calculée
   const std::atomic<bool>* stop = nullptr;  // arrêt externe (import en base)
+  // Import en base : date du levé imposée (sinon déduite du nom du fichier),
+  // classe imposée, réglages d'import sérialisés (gardés avec la source)
+  std::string surveyDate, group, importPrefs;
 };
 
 class BathyLayer {

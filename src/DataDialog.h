@@ -40,6 +40,7 @@ class DataDialog : public wxDialog {
   void UpdateSplitInfo();
   void OnImport();
   void OnClean();
+  void OnEdit();
   void OnResplit();
 
   PersonalDepth_pi* m_pi;
@@ -49,7 +50,7 @@ class DataDialog : public wxDialog {
   wxTreeListCtrl* m_tree = nullptr;
   wxTextCtrl* m_details = nullptr;
   wxButton *m_import = nullptr, *m_up = nullptr, *m_down = nullptr, *m_del = nullptr,
-           *m_clean = nullptr, *m_zoom = nullptr, *m_setClass = nullptr, *m_stop = nullptr;
+           *m_clean = nullptr, *m_zoom = nullptr, *m_edit = nullptr, *m_setClass = nullptr, *m_stop = nullptr;
   wxComboBox* m_class = nullptr;
   wxStaticText* m_status = nullptr;
   wxGauge* m_gauge = nullptr;

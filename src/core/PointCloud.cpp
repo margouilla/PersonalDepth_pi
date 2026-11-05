@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "PointCloud.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cctype>
@@ -82,8 +83,9 @@ void PointCloud::applySign(const LoadOptions& o, std::vector<uint32_t>* tris) {
     for (float v : z) neg += (v < 0.f);
     negate = neg > (size() * 6) / 10;
   }
-  if (negate || o.zOffset != 0.f)
-    for (float& v : z) v = (negate ? -v : v) + o.zOffset;
+  const double k = (negate ? -1.0 : 1.0) * o.zToMeters;  // unité du fichier -> m
+  if (k != 1.0 || o.zOffset != 0.f)
+    for (float& v : z) v = (float)(v * k) + o.zOffset;
   computeBounds();
 }
 
@@ -250,11 +252,11 @@ struct ParseState {
   std::string emptyMessage() const {
     if (outOfRange && haveSample) {
       char b[160];
-      std::snprintf(b, sizeof b, "Coordonnées hors plage lon/lat (ex. %.2f %.2f) : ", sampleX, sampleY);
+      std::snprintf(b, sizeof b, pd::tr("Coordonnées hors plage lon/lat (ex. %.2f %.2f) : "), sampleX, sampleY);
       return std::string(b) + GuessCrsHint(sampleX, sampleY);
     }
-    if (failed) return "Conversion impossible : vérifier le système de coordonnées";
-    return "Aucune sonde lisible (format attendu : X Y Z)";
+    if (failed) return pd::tr("Conversion impossible : vérifier le système de coordonnées");
+    return pd::tr("Aucune sonde lisible (format attendu : X Y Z)");
   }
 };
 }  // namespace
@@ -269,7 +271,7 @@ bool LoadXYZ(const std::string& path, const LoadOptions& opt, PointCloud& pc,
              std::string& err, const ProgressFn& progress,
              const std::atomic<bool>* cancel) {
   FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::fseek(f, 0, SEEK_END);
   long long total = std::ftell(f);
   std::fseek(f, 0, SEEK_SET);
@@ -323,7 +325,7 @@ bool LoadESRIAscii(const std::string& path, const LoadOptions& opt,
                    PointCloud& pc, double& cellLon, double& cellLat,
                    std::string& err, const std::atomic<bool>* cancel) {
   std::ifstream in(path);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   long ncols = 0, nrows = 0; double xll = 0, yll = 0, cs = 0, dx = 0, dy = 0;
   double nodata = -9999; bool center = false;
   std::string key;
@@ -345,7 +347,7 @@ bool LoadESRIAscii(const std::string& path, const LoadOptions& opt,
     else { in.seekg(pos); break; }
   }
   if (cs > 0) dx = dy = cs;
-  if (ncols <= 0 || nrows <= 0 || dx <= 0 || dy <= 0) { err = "Entête ASC invalide"; return false; }
+  if (ncols <= 0 || nrows <= 0 || dx <= 0 || dy <= 0) { err = pd::tr("Entête ASC invalide"); return false; }
   if (center) { xll -= dx / 2; yll -= dy / 2; }
   pc.clear();
   pc.reserve((size_t)ncols * nrows);
@@ -423,11 +425,11 @@ bool LoadESRIAscii(const std::string& path, const LoadOptions& opt,
       }
     }
   }
-  if (idx < total) { err = "Fichier ASC tronqué"; return false; }
+  if (idx < total) { err = pd::tr("Fichier ASC tronqué"); return false; }
   if (pc.empty()) {
     err = (!opt.crs && (std::fabs(xll) > 1000 || std::fabs(yll) > 1000))
-              ? "Grille hors plage lon/lat : " + GuessCrsHint(xll, yll)
-              : "Grille vide";
+              ? pd::tr("Grille hors plage lon/lat : ") + GuessCrsHint(xll, yll)
+              : pd::tr("Grille vide");
     return false;
   }
   cellLon = dx; cellLat = dy;
@@ -463,7 +465,7 @@ bool LoadLandXMLTin(const std::string& path, const LoadOptions& opt,
                     PointCloud& pc, std::vector<uint32_t>& tris,
                     std::string& err) {
   std::ifstream in(path, std::ios::binary);
-  if (!in) { err = "Impossible d'ouvrir " + path; return false; }
+  if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::stringstream ss; ss << in.rdbuf();
   const std::string s = ss.str();
   std::unordered_map<long, uint32_t> idmap;
@@ -492,7 +494,7 @@ bool LoadLandXMLTin(const std::string& path, const LoadOptions& opt,
     if (I == idmap.end() || J == idmap.end() || K == idmap.end()) continue;
     tris.push_back(I->second); tris.push_back(J->second); tris.push_back(K->second);
   }
-  if (pc.empty()) { err = "Aucun point <P> trouvé"; return false; }
+  if (pc.empty()) { err = pd::tr("Aucun point <P> trouvé"); return false; }
   // LandXML : élévations -> en Auto, convertit en profondeurs si majoritairement négatives
   pc.applySign(opt, &tris);
   return true;
@@ -504,10 +506,10 @@ bool LoadGdalRaster(const std::string& path, const LoadOptions& opt,
                     std::string& err) {
   GDALAllRegister();
   GDALDataset* ds = (GDALDataset*)GDALOpen(path.c_str(), GA_ReadOnly);
-  if (!ds) { err = "GDAL ne peut pas ouvrir " + path; return false; }
+  if (!ds) { err = pd::tr("GDAL ne peut pas ouvrir ") + path; return false; }
   double gt[6];
   if (ds->GetGeoTransform(gt) != CE_None || gt[2] != 0 || gt[4] != 0) {
-    GDALClose(ds); err = "Géoréférencement absent ou tourné"; return false;
+    GDALClose(ds); err = pd::tr("Géoréférencement absent ou tourné"); return false;
   }
   GDALRasterBand* band = ds->GetRasterBand(1);
   int okNd = 0; double nd = band->GetNoDataValue(&okNd);
@@ -524,7 +526,7 @@ bool LoadGdalRaster(const std::string& path, const LoadOptions& opt,
   }
   cellLon = std::fabs(gt[1]); cellLat = std::fabs(gt[5]);
   GDALClose(ds);
-  if (pc.empty()) { err = "Raster vide"; return false; }
+  if (pc.empty()) { err = pd::tr("Raster vide"); return false; }
   pc.applySign(opt);
   return true;
 }

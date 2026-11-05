@@ -46,6 +46,7 @@
 #define PLUGIN_VERSION_PATCH 0
 
 class BathyDialog;
+class TideChartDialog;
 class BathyRenderer;
 
 // Réglages d'affichage : tout ceci est appliqué à chaud, sans recalcul des grilles
@@ -84,6 +85,7 @@ struct DisplaySettings {
   int importOrder = 0;              // LoadOptions::Order
   int importSign = 0;               // LoadOptions::ZSign
   float importOffset = 0.f;         // décalage vertical (m)
+  bool importZFeet = false;         // unité verticale des fichiers importés : pieds (sinon m)
   bool importCache = true;          // cache binaire .pdpc
   bool importNodataOn = false;      // NODATA supplémentaires (Z brut du fichier)
   std::string importNodata = "-9999 9999 -99999 99999";
@@ -113,6 +115,13 @@ struct DisplaySettings {
   int dbPriority = 0;               // pd::DbPriority
   std::set<std::string> dbHidden;   // fichiers .pdb masqués à l'affichage
   // --- calculés (non sauvegardés)
+  // Unités d'affichage d'OpenCPN (Options › Affichage › Unités) : les valeurs
+  // restent en mètres partout, multipliées par ces facteurs à l'affichage.
+  // Les brasses ne sont pas gérées : affichées en pieds.
+  float depthK = 1.f;               // mètres -> unité de profondeur affichée
+  wxString depthUnit = "m";
+  float heightK = 1.f;              // mètres -> unité de hauteur (marée)
+  wxString heightUnit = "m";
   float tideH = 0.f;                // hauteur d'eau appliquée à l'affichage (m)
   bool tideOk = false;
   wxString tideInfo;                // texte du panneau
@@ -122,6 +131,18 @@ struct DisplaySettings {
 
 // Niveaux d'isobathes effectifs (avec l'isobathe de sécurité si active)
 std::vector<float> ContourLevels(const DisplaySettings& s, float zMin, float zMax);
+
+// Réglages d'import d'une source (système, référence verticale, lecture…)
+// sérialisés « clé=valeur » et gardés dans la base, pour relire le fichier
+// d'origine avec d'autres paramètres
+// Point de marée tracé dans la courbe de marée
+struct TideChartPoint {
+  wxString name;
+  double lon = 0, lat = 0;
+};
+
+std::string SerializeImportPrefs(const DisplaySettings& s);
+bool ApplyImportPrefs(const std::string& text, DisplaySettings& s);
 
 class PersonalDepth_pi : public opencpn_plugin_118 {
  public:
@@ -165,7 +186,18 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void DbImport(const std::vector<pd::LayerParams>& files, const std::string& group,
                 const std::vector<std::vector<int64_t>>& replace = {});
   float DbProgressValue() const { return m_dbBusy ? m_dbProgress.load() : -1.f; }
-  void DbStop() { m_dbCancel = true; }                    // arrêt de l'opération en cours
+  void DbStop() { m_dbCancel = true; }
+  // Courbe de marée : points utilisés (station OpenCPN, ou 9 points FES sur
+  // l'emprise des données), hauteurs au-dessus du ZH (m), instant choisi
+  std::vector<TideChartPoint> TideChartPoints(wxString& source, wxString& why);
+  void TideChartSeries(const std::vector<TideChartPoint>& pts, const std::vector<time_t>& t,
+                       std::vector<std::vector<double>>& h);
+  time_t TideChartTime() const;
+  void ShowTideChart();
+  // date du levé (AAAA-MM-JJ) et/ou classe, sans relire les fichiers (vide = inchangé) ;
+  // params : réglages d'import déclarés pour les sources qui n'en ont pas encore
+  void DbEditMeta(const std::vector<int64_t>& ids, const std::string& date, const std::string& group,
+                  const std::string& params = std::string());                    // arrêt de l'opération en cours
   void DbSetCellsVisible(const std::vector<std::string>& names, bool visible);
   void DbZoomToCells(const std::vector<std::string>& names);
   void DbResplit(double deg);
@@ -202,10 +234,16 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void UpdateDbView();
   void UpdateAutoPalette(bool force);
   void UpdateCursorText();
+  bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
+  bool UpdateLanguage();  // langue d'OpenCPN (français / anglais) ; true si elle a changé
+  int m_lang = -1;        // 0 français, 1 anglais
 
   wxBitmap m_icon;
   int m_toolId = -1;
   BathyDialog* m_dlg = nullptr;
+  TideChartDialog* m_chart = nullptr;
+  double m_tideBox[4] = {0, 0, 0, 0};  // emprise des données (lon0 lon1 lat0 lat1)
+  bool m_tideBoxOk = false;
   std::unique_ptr<BathyRenderer> m_renderer;
   std::vector<pd::LayerPtr> m_layers;
   std::vector<int> m_lastState;
@@ -221,7 +259,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   // Marée
   int m_tideStation = -1;
   wxString m_tideStationName;
-  double m_tideStationDistKm = 0;
+  double m_tideStationDistKm = 0, m_tideStationLat = 0, m_tideStationLon = 0;
   double m_tideRefLat = 1e9, m_tideRefLon = 1e9;
   long long m_lastTideMinute = 0;
   unsigned m_tideVersion = 0;

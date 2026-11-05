@@ -21,21 +21,28 @@
 #include <wx/wx.h>
 #include <wx/combobox.h>
 #include <wx/spinctrl.h>
+#include <wx/datectrl.h>
 
 #include <string>
 #include <vector>
 
+#include "core/BathyDb.h"
 #include "core/BathyLayer.h"
 #include "core/VerticalRef.h"
-
-class PersonalDepth_pi;
+#include "PersonalDepth_pi.h"
 
 class ImportDialog : public wxDialog {
  public:
-  ImportDialog(wxWindow* parent, PersonalDepth_pi* pi);
+  // edit : sources déjà importées à modifier (relues si un réglage de lecture
+  // change), sinon import de nouveaux fichiers
+  ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
+               const std::vector<pd::DbSource>* edit = nullptr);
   // Valides après ShowModal() == wxID_OK
   const std::vector<pd::LayerParams>& Params() const { return m_out; }
   const std::string& Group() const { return m_group; }
+  const std::string& SurveyDate() const { return m_date; }  // vide : non imposée
+  bool NeedsReread() const { return m_reread; }  // modification : relire les fichiers
+  const std::string& Prefs() const { return m_prefs; }  // réglages d'import validés
 
  private:
   wxSizer* BuildFiles(wxWindow* p);
@@ -53,13 +60,24 @@ class ImportDialog : public wxDialog {
 
   PersonalDepth_pi* m_pi;
   std::vector<pd::LayerParams> m_out;
-  std::string m_group;
+  std::string m_group, m_date, m_prefs;
+  // réglages de départ : ceux du dernier import, ou ceux de la source modifiée
+  DisplaySettings m_init;
+  bool m_edit = false, m_reread = false, m_prefsKnown = true;
+  std::vector<pd::DbSource> m_srcs;
+  std::string m_initPrefs;
+  wxCheckBox* m_dateOn = nullptr;
+  wxDatePickerCtrl* m_datePick = nullptr;
   // Fichiers
   wxListBox* m_files = nullptr;
   wxStaticText* m_count = nullptr;
   // Lecture
   wxChoice *m_order = nullptr, *m_sign = nullptr;
   wxSpinCtrlDouble* m_offset = nullptr;
+  wxChoice* m_zUnit = nullptr;             // unité verticale du fichier : m / ft
+  double m_unitF = 1.0;                    // unité affichée -> m (1 ou 0,3048)
+  wxStaticText *m_offsetL = nullptr, *m_boundsU = nullptr;
+  void OnZUnit();
   wxCheckBox* m_cache = nullptr;
   wxCheckBox *m_nodataOn = nullptr, *m_boundsOn = nullptr;
   wxComboBox* m_nodata = nullptr;

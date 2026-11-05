@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "TileCodec.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cstring>
@@ -120,14 +121,14 @@ bool DecodeTile(const uint8_t* p, size_t n, DepthTile& t, std::string& err) {
   const int mul = kDiv[(p[3] >> 2) & 3];
   const uint16_t nIds = Get<uint16_t>(p + 12);
   size_t pos = 14;
-  if (n < pos + 8u * nIds + 4) { err = "Tuile tronquée"; return false; }
+  if (n < pos + 8u * nIds + 4) { err = pd::tr("Tuile tronquée"); return false; }
   t.srcIds.resize(nIds);
   for (int k = 0; k < nIds; ++k, pos += 8) t.srcIds[k] = Get<int64_t>(p + pos);
   const uint32_t rawLen = Get<uint32_t>(p + pos);
   pos += 4;
   const int N = DepthTile::kN;
   const size_t want = (partial ? N / 8 : 0) + 4u * N + (plane ? N : 0);
-  if (rawLen != want) { err = "Tuile incohérente"; return false; }
+  if (rawLen != want) { err = pd::tr("Tuile incohérente"); return false; }
   std::vector<uint8_t> raw(rawLen);
   mz_ulong len = rawLen;
   if (mz_uncompress(raw.data(), &len, p + pos, (mz_ulong)(n - pos)) != MZ_OK || len != rawLen) {

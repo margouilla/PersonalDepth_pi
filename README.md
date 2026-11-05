@@ -40,6 +40,10 @@ grids are never recomputed.
 | **Vertical datum** | Conversion to chart datum (ZH) on import: IGN69 / IGN78C (Corsica) → ZH with Shom BathyElli v2.1 + IGN RAF20 / RAC23, ellipsoidal heights → ZH, or any reference surface + geoid / difference grid |
 | **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by `tools/pdtide_convert.py`, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
 | **Palette** | Continuous or stepped, editable table, presets, GMT `.cpt` import/export, automatic mode (N rounded thresholds over all data or the current view, optional fixed min/max), safety depth overlay |
+| **Units** | Survey files can be imported in metres or feet; the database always stores metres. Soundings, isobaths, legend, palette thresholds, safety depth and tide heights follow OpenCPN's units (*Options › Display › Units*: metres or feet — fathoms are shown in feet) |
+| **Survey metadata** | Survey date set at import (or read from the file name) and editable afterwards; vertical reference, coordinate system and Z unit of an imported source can be changed (*Edit…*: the original files are re-read with the new settings, which are stored per source) |
+| **Tide curve** | Separate window plotting height versus time for every tide point used (OpenCPN station, or up to 9 FES2022 points spread over the data), legend with checkboxes, automatic bounds (one tide cycle around the chosen time) or user-defined, marker at the current or chosen time |
+| **Language** | French or English, following OpenCPN's language (*Options › User › General options › Language*: French → French, any other language → English) |
 | **Display** | Hillshading (adjustable, vertical exaggeration), GLSL smoothing, isobaths (marching squares, cached per zoom level, labels, safety contour), decluttered exact soundings, cursor read-out with source survey |
 
 ### Installation (testers)
@@ -52,17 +56,28 @@ platforms (64-bit Windows, Linux, macOS) are not available yet.
 2. OpenCPN: *Options › Plugins › Import plugin…*, select the file.
 3. Enable **PersonalDepth**, then click its toolbar icon.
 
-⚠️ The user interface is currently **in French only** (English translation
-planned).
+What's new in each version: [CHANGELOG.md](CHANGELOG.md).
+
+The user interface is in **English or French**, following the language
+chosen in OpenCPN.
+
+### Sample data
+
+Ready-to-use database files for the Iroise Sea (Litto3D® Finistère 2014, 1 m,
+depths below chart datum) to try the rendering without importing anything:
+[data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
+(Licence Ouverte 2.0 — see the attached `README_DATA.md`).
 
 ### Quick start
 
 1. In the PersonalDepth panel, choose a **database folder**.
-2. *Gestion des données…* (data management) › *Importer…* (import): pick the
-   files, columns, Z sign, coordinate system and vertical reference.
+2. *Data management…* › *Import…*: pick the files, columns, Z sign and unit,
+   survey date, coordinate system and vertical reference. *Edit…* changes
+   these settings later for the selected sources.
 3. Adjust palette, thresholds, safety depth and hillshading: changes are
    applied immediately.
-4. Optional: *Marée* (tide) section for the current tide height.
+4. Optional: *Tide* section for the current (or chosen) water height;
+   *Tide curve…* opens the time / height chart.
 
 ### External data (not included, because of their licences)
 
@@ -98,6 +113,10 @@ sudo apt install build-essential cmake libwxgtk3.2-dev libgl-dev libgdal-dev
 cmake -S . -B build && cmake --build build -j
 ```
 
+Translations: every English text is in `src/core/LangTable.inc`, one line
+`{"French text", "English text"}` per text, looked up at run time — a
+missing line simply leaves the French text.
+
 ### Known limitations
 
 - Validated on Windows only, OpenCPN 5.14 32-bit, OpenGL mode; the non-GL
@@ -108,7 +127,7 @@ cmake -S . -B build && cmake --build build -j
 
 ### Roadmap
 
-English user interface and translations, builds for other platforms
+Other user interface languages, builds for other platforms
 (OpenCPN plugin catalog), live echo-sounder input, export of the merged
 surface.
 
@@ -145,11 +164,15 @@ grilles de profondeur ne sont jamais recalculées.
 | Coordonnées | 69 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin. Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
 | Référence verticale | Conversion vers le ZH à l'import : IGN69 / IGN78C (Corse) → ZH par BathyElli v2.1 (Shom) + RAF20 / RAC23 (IGN), hauteurs ellipsoïdales → ZH, ou surface de référence + géoïde / grille d'écart au choix |
 | Marée | Stations de marée d'OpenCPN (hauteur unique, « maintenant » ou date choisie, curseur ±12 h), ou **FES2022 maillé** : atlas mondial converti (`tools/pdtide_convert.py`, 34 ondes), prédiction Schureman identique à pyfes (~1 cm), ondes mineures déduites ; Z0 = grille fournie, sinon BathyElli NM/ell − ZH/ell, sinon plus basse mer astronomique FES sur 19 ans. Profondeur affichée = sonde ZH + hauteur d'eau, pixel par pixel (shader), aussi pour les isobathes et les sondes |
+| Unités | Fichiers de levé importés en mètres ou en pieds ; la base est toujours en mètres. Sondes, isobathes, légende, seuils de la palette, zone dangereuse et hauteurs de marée suivent les unités d'OpenCPN (*Options › Affichage › Unités* : mètres ou pieds — les brasses sont affichées en pieds) |
 | Palette | Dégradé continu ou paliers ; seuils et couleurs éditables ; 5 préréglages ; import/export GMT `.cpt`. Mode automatique : N seuils (valeurs rondes ou répartis) entre le min et le max de toutes les données ou de la zone affichée, bornes min/max imposables |
 | Sécurité | Zone « prof. < X m » en surcouche (tirant d'eau + pied de pilote), isobathe de sécurité rouge |
 | Relief | Ombrage (Horn) réglable en direct, exagération verticale, adoucissement de la seule surface d'ombrage |
 | Isobathes | Marching squares sur la grille, en cache par niveau de zoom : intervalle régulier ou seuils de la palette, isobathe maîtresse, valeurs sur les lignes, lissage. Aucune ligne inventée dans les trous du levé |
 | Sondes chiffrées | Plus faible sonde par case d'écran, décimale en indice, valeurs découvrantes soulignées, troncature hydrographique, désencombrement ; lecture curseur avec la source du levé |
+| Métadonnées des levés | Date du levé imposée à l'import (sinon lue dans le nom du fichier) et modifiable ensuite ; référence verticale, système de coordonnées et unité de Z d'une source importée modifiables (*Modifier…* : les fichiers d'origine sont relus avec les nouveaux réglages, enregistrés par source) |
+| Courbe de marée | Fenêtre indépendante : hauteur d'eau en fonction du temps pour chaque point de marée utilisé (station OpenCPN, ou jusqu'à 9 points FES2022 répartis sur les données), légende à cocher, bornes automatiques (un cycle de marée autour de l'instant choisi) ou saisies, marqueur de l'instant (direct ou date choisie) |
+| Langue | Français ou anglais, selon la langue d'OpenCPN (*Options › Utilisateur › Options générales › Langue* : français → français, toute autre langue → anglais) |
 | Rendu | OpenGL (tuiles texturées, shader GLSL) et mode non-GL (wxDC) |
 
 ### Installation (testeurs)
@@ -163,6 +186,19 @@ disponibles.
 2. OpenCPN : *Options › Plugins › Importer un plugin…*, choisir le fichier.
 3. Activer **PersonalDepth**, puis cliquer sur son icône dans la barre d'outils.
 
+Nouveautés de chaque version : [CHANGELOG.md](CHANGELOG.md#français).
+
+L'interface est en **français ou en anglais**, selon la langue choisie dans
+OpenCPN.
+
+### Données d'exemple
+
+Fichiers de base prêts à l'emploi pour la mer d'Iroise (Litto3D® Finistère 2014,
+1 m, profondeurs au zéro hydrographique), pour essayer le rendu sans rien
+importer :
+[data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
+(Licence Ouverte 2.0 — voir le `README_DATA.md` joint).
+
 ### Utilisation
 
 1. Panneau PersonalDepth, cadre *Base de bathymétrie* : choisir le dossier de
@@ -170,9 +206,12 @@ disponibles.
    de sources ; la case de chaque fichier affiche ou masque sa zone (*Tout* /
    *Aucun*, *Centrer*). *Arrêter* interrompt l'opération en cours.
 2. *Gestion des données…* :
-   - *Importer…* : fichiers (ou dossier entier), colonnes, sens de Z, NODATA,
-     bornes Z1 – Z2, système de coordonnées, référence verticale et
-     transformation vers le ZH, classe ;
+   - *Importer…* : fichiers (ou dossier entier), colonnes, sens et unité de Z
+     (mètres ou pieds), NODATA, bornes Z1 – Z2, date du levé, système de
+     coordonnées, référence verticale et transformation vers le ZH, classe ;
+   - *Modifier…* (ou double-clic) : date du levé, classe, et réglages de
+     lecture des sources sélectionnées (unité, système, référence verticale :
+     relecture des fichiers d'origine) ;
    - liste des sources par classe (date du levé, résolution, sondes, rang,
      Z min / max, référence verticale, date d'import) et détail de la
      sélection ;
@@ -180,8 +219,9 @@ disponibles.
      *Nettoyer…*, *Centrer*, *Redécouper…*.
 3. Palette, seuils, zone dangereuse, opacité, ombrage, sondes : tout
    s'applique immédiatement.
-4. Section *Marée* : « Maintenant » ou « Date choisie », stations OpenCPN ou
-   FES2022 maillé.
+4. Section *Marée* : « Hauteur d'eau actuelle » ou « Date et heure
+   choisies », stations OpenCPN ou FES2022 maillé ; *Courbe de marée…* ouvre
+   le graphique temps / hauteur.
 
 ### Données externes (non fournies, en raison de leurs licences)
 
@@ -233,6 +273,10 @@ cmake -S . -B build && cmake --build build -j
 sudo cmake --install build
 ```
 
+Traductions : tous les textes anglais sont dans `src/core/LangTable.inc`, une
+ligne `{"texte français", "English text"}` par texte, cherchée à l'exécution —
+une ligne absente laisse simplement le texte français.
+
 ### Arborescence
 
 ```
@@ -256,7 +300,9 @@ src/PersonalDepth_pi.*   classe plugin, configuration, tâches de fond
 src/BathyRenderer.*      rendu GL / DC, sondes, légende
 src/BathyDialog.*        panneau principal
 src/DataDialog.*         fenêtre « Gestion des données »
-src/ImportDialog.*       fenêtre d'import
+src/ImportDialog.*       fenêtre d'import / de modification des sources
+src/TideChart.*          fenêtre « Courbe de marée »
+src/core/Lang.*          langue de l'interface ; LangTable.inc : table français -> anglais
 tools/pdtide_convert.py  conversion FES2022 NetCDF -> .pdtide
 tests/test_core.cpp      tests du cœur
 third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
@@ -271,10 +317,12 @@ third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
 - Datums anciens (NTF, ED50, OSGB36, DHDN, BD72…) : paramètres de Helmert
   moyens, ~1–2 m d'écart. LAEA (EPSG:3035) non pris en charge.
 - Légende et lecture curseur en ASCII en mode OpenGL.
+- Les noms de classe et libellés de référence verticale enregistrés dans la
+  base restent dans la langue où ils ont été créés.
 
 ### Pistes suivantes
 
-Interface en anglais et traductions, compilation pour les autres plateformes
+Autres langues d'interface, compilation pour les autres plateformes
 (catalogue de plugins OpenCPN), intégration d'un sondeur en direct, export de
 la surface fusionnée.
 

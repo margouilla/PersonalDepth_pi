@@ -41,6 +41,7 @@ class BathyDialog : public wxDialog {
   BathyDialog(wxWindow* parent, PersonalDepth_pi* pi);
   void RefreshLayers() {}  // (couches fichiers supprimées : tout passe par la base)
   void RefreshPalette();  // recharge la grille des seuils depuis les réglages
+  void RefreshUnits();    // unités d'affichage d'OpenCPN changées (m / ft)
   void SetCursorText(const wxString& t);
   void SetTideInfo(const wxString& t);
   void RefreshDb();                       // liste des sources de la base
@@ -60,6 +61,9 @@ class BathyDialog : public wxDialog {
   void OnContours(wxCommandEvent&);
   void ApplyPaletteFromUI();
   void FillStopRow(int row);
+  // profondeurs : stockées en m, affichées dans l'unité d'OpenCPN
+  float K() const;
+  float FromUi(double ui, float storedM, int digits) const;  // garde la valeur si inchangée
   void OnAuto(wxCommandEvent&);
   void StopAuto();  // modification manuelle des seuils : la palette redevient fixe
 
@@ -102,6 +106,8 @@ class BathyDialog : public wxDialog {
   wxChoice* m_autoSrc = nullptr;
   wxSpinCtrl* m_autoCount = nullptr;
   wxStaticText* m_autoInfo = nullptr;
+  wxStaticText *m_autoMinU = nullptr, *m_autoMaxU = nullptr, *m_safeU = nullptr,
+               *m_ctStepL = nullptr, *m_ctMajorL = nullptr;
   wxCheckBox *m_autoMinOn = nullptr, *m_autoMaxOn = nullptr;
   wxSpinCtrlDouble *m_autoMin = nullptr, *m_autoMax = nullptr;
   wxRadioBox* m_mode;

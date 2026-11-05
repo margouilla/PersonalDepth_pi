@@ -14,11 +14,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyLayer.h"
+#include "Lang.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -101,7 +103,7 @@ void BathyLayer::run() {
       ok = LoadGdalRaster(params.path, lo, cloud, cl, ca, err);
       gp.forceDLon = cl; gp.forceDLat = ca;
 #else
-      err = "Format raster " + ext + " : plugin compilé sans GDAL (utiliser .asc ou .xyz)";
+      err = pd::tr("Format raster ") + ext + pd::tr(" : plugin compilé sans GDAL (utiliser .asc ou .xyz)");
 #endif
     } else {  // XYZ texte, avec cache binaire
       char tag[128], rng[48] = "";
@@ -111,6 +113,9 @@ void BathyLayer::run() {
         for (double v : params.load.nodata) nd += std::to_string(v) + ";";
         std::snprintf(rng, sizeof rng, "_n%06zx", std::hash<std::string>()(nd) & 0xFFFFFF);
       }
+      if (params.load.zToMeters != 1.0)  // fichier en pieds : autre cache
+        std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_u%g",
+                      params.load.zToMeters);
       std::snprintf(tag, sizeof tag, ".%d%d_%g%s_%06zx.v3.pdpc", (int)params.load.order,
                     (int)params.load.zsign, params.load.zOffset, rng, crsHash);
       const std::string cache = params.path + tag;
@@ -136,12 +141,12 @@ void BathyLayer::run() {
         throw std::runtime_error(verr);
       float cmin, cmax;
       const size_t miss = vc.apply(cloud, cmin, cmax);
-      if (miss == cloud.size()) throw std::runtime_error("Aucune sonde dans la couverture de la référence verticale");
+      if (miss == cloud.size()) throw std::runtime_error(pd::tr("Aucune sonde dans la couverture de la référence verticale"));
       char b[200];
-      std::snprintf(b, sizeof b, "%s → ZH (%+.2f…%+.2f m)", params.vref.label.empty() ? "Réf. terrestre" : params.vref.label.c_str(), cmin, cmax);
+      std::snprintf(b, sizeof b, "%s → ZH (%+.2f…%+.2f m)", params.vref.label.empty() ? pd::tr("Réf. terrestre") : params.vref.label.c_str(), cmin, cmax);
       vrefInfo_ = b;
       if (miss) {
-        std::snprintf(b, sizeof b, " — %zu sondes hors couverture NON converties", miss);
+        std::snprintf(b, sizeof b, pd::tr(" — %zu sondes hors couverture NON converties"), miss);
         vrefInfo_ += b;
       }
     }
@@ -150,7 +155,7 @@ void BathyLayer::run() {
       cloud.keepDepths(params.depthMin, params.depthMax, tris.empty() ? nullptr : &tris);
       if (cloud.empty()) {
         char b[160];
-        std::snprintf(b, sizeof b, "Aucune sonde entre %.1f et %.1f m (bornes d'import)",
+        std::snprintf(b, sizeof b, pd::tr("Aucune sonde entre %.1f et %.1f m (bornes d'import)"),
                       params.depthMin, params.depthMax);
         throw std::runtime_error(b);
       }
@@ -175,7 +180,7 @@ void BathyLayer::run() {
       if (ok) index.build(cloud);
     }
   } catch (const std::bad_alloc&) {
-    ok = false; err = "Mémoire insuffisante : augmenter la taille de cellule";
+    ok = false; err = pd::tr("Mémoire insuffisante : augmenter la taille de cellule");
   } catch (const std::exception& e) {
     ok = false; err = e.what();
   }
@@ -225,19 +230,19 @@ std::string BathyLayer::summary() const {
   char b[512];
   switch (state()) {
     case Loading:
-      std::snprintf(b, sizeof b, "%s — chargement %d %%", name.c_str(), (int)(progress() * 100));
+      std::snprintf(b, sizeof b, pd::tr("%s — chargement %d %%"), name.c_str(), (int)(progress() * 100));
       break;
     case Failed:
-      std::snprintf(b, sizeof b, "%s — ERREUR : %s", name.c_str(), error_.c_str());
+      std::snprintf(b, sizeof b, pd::tr("%s — ERREUR : %s"), name.c_str(), error_.c_str());
       break;
     case Ready: {
       const GridLevel& g = grid.levels[0];
       double cellM = g.dlat * 110540.0;
       const bool srcGrid = cloud.srcStepX > 0 && cloud.srcStepY > 0;
-      std::snprintf(b, sizeof b, "%s%s — %.2f M sondes, %.2f…%.2f m, cellule %.1f m%s, %d×%d%s%s",
-                    visible ? "" : "(masqué) ", name.c_str(), cloud.size() / 1e6,
+      std::snprintf(b, sizeof b, pd::tr("%s%s — %.2f M sondes, %.2f…%.2f m, cellule %.1f m%s, %d×%d%s%s"),
+                    visible ? "" : pd::tr("(masqué) "), name.c_str(), cloud.size() / 1e6,
                     cloud.zMin, cloud.zMax, cellM,
-                    grid.nativeLattice ? " (grille native)" : srcGrid ? " (pas d'origine)" : "",
+                    grid.nativeLattice ? pd::tr(" (grille native)") : srcGrid ? pd::tr(" (pas d'origine)") : "",
                     g.nx, g.ny, crsUsed_.empty() ? "" : " — ", crsUsed_.c_str());
       if (!vrefInfo_.empty()) {
         std::string r = std::string(b) + " — " + vrefInfo_;

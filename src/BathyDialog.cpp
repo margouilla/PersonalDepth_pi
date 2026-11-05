@@ -13,6 +13,7 @@
 //
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "core/Lang.h"
 #include "BathyDialog.h"
 
 #include <wx/colordlg.h>
@@ -24,13 +25,15 @@
 #include <wx/scrolwin.h>
 #include <wx/statline.h>
 
+#include <cmath>
 #include <map>
 
 #include "DataDialog.h"
 #include "PersonalDepth_pi.h"
 #include "core/Projection.h"
 
-#define U8(s) wxString::FromUTF8(s)
+#define U8(s) wxString::FromUTF8(pd::tr(s))
+#define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
 
 using namespace pd;
 
@@ -63,7 +66,7 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
   SetSizer(top);
   SetSize(FromDIP(wxSize(470, 760)));
   Bind(wxEVT_CLOSE_WINDOW, &BathyDialog::OnClose, this);
-  RefreshPalette();
+  RefreshUnits();  // libellés d'unité, puis valeurs
   RefreshDb();
 }
 
@@ -121,12 +124,18 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
   box->Add(r1, 0, wxLEFT | wxRIGHT, 4);
   box->Add(r2, 0, wxEXPAND | wxALL, 4);
   box->Add(m_tideInfo, 0, wxEXPAND | wxALL, 4);
+  {
+    auto* chartBtn = new wxButton(sb, wxID_ANY, U8("Courbe de marée…"));
+    chartBtn->SetToolTip(U8("Hauteur d'eau en fonction du temps pour chaque point de marée utilisé"));
+    chartBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_pi->ShowTideChart(); });
+    box->Add(chartBtn, 0, wxALL, 4);
+  }
 
   const DisplaySettings& s = m_pi->Settings();
   m_tideMode->SetSelection(std::max(0, std::min(2, s.tideMode)));
   m_tideSrc->SetSelection(std::max(0, std::min(1, s.tideSource)));
-  m_tideAtlas->SetValue(U8(s.tideAtlas.c_str()));
-  m_tideZ0->SetValue(U8(s.tideZ0Files.c_str()));
+  m_tideAtlas->SetValue(W8(s.tideAtlas.c_str()));
+  m_tideZ0->SetValue(W8(s.tideZ0Files.c_str()));
   m_tideBE->SetValue(s.tideUseBathyElli);
   wxDateTime dt = s.tideTime > 0 ? wxDateTime((time_t)s.tideTime) : wxDateTime::Now();
   m_tideDate->SetValue(dt);
@@ -225,7 +234,7 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Base de bathymétrie"));
   wxWindow* sb = box->GetStaticBox();
   auto* r1 = new wxBoxSizer(wxHORIZONTAL);
-  m_dbFolder = new wxTextCtrl(sb, wxID_ANY, U8(m_pi->Settings().dbFolder.c_str()), wxDefaultPosition,
+  m_dbFolder = new wxTextCtrl(sb, wxID_ANY, W8(m_pi->Settings().dbFolder.c_str()), wxDefaultPosition,
                               wxDefaultSize, wxTE_PROCESS_ENTER);
   m_dbFolder->SetHint(U8("dossier de la base (fichiers PD_*.pdb)"));
   m_dbFolderBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
@@ -270,7 +279,7 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
   auto setFolder = [this]() {
     const std::string f = m_dbFolder->GetValue().Trim().Trim(false).ToUTF8().data();
     if (f == m_pi->Settings().dbFolder) return;
-    if (m_pi->DbBusy()) { m_dbFolder->SetValue(U8(m_pi->Settings().dbFolder.c_str())); return; }
+    if (m_pi->DbBusy()) { m_dbFolder->SetValue(W8(m_pi->Settings().dbFolder.c_str())); return; }
     m_pi->Settings().dbFolder = f;
     m_pi->Settings().dbHidden.clear();
     m_pi->SaveConfig();
@@ -345,7 +354,7 @@ void BathyDialog::RefreshCells() {
   const auto& hidden = m_pi->Settings().dbHidden;
   for (const auto& c : m_pi->DbCells()) {
     const wxTreeListItem it =
-        m_cells->AppendItem(m_cells->GetRootItem(), U8(c.name.c_str()), -1, -1, new CellItem(c.name));
+        m_cells->AppendItem(m_cells->GetRootItem(), W8(c.name.c_str()), -1, -1, new CellItem(c.name));
     m_cells->SetItemText(it, 1, CellBytes(c.bytes));
     m_cells->SetItemText(it, 2, wxString::Format("%d", c.sources));
     m_cells->CheckItem(it, hidden.count(c.name) ? wxCHK_UNCHECKED : wxCHK_CHECKED);
@@ -419,10 +428,12 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   m_autoMax->SetDigits(1);
   br->Add(m_autoMinOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   br->Add(m_autoMin, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 2);
-  br->Add(new wxStaticText(sb, wxID_ANY, "m"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  m_autoMinU = new wxStaticText(sb, wxID_ANY, "m");
+  br->Add(m_autoMinU, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
   br->Add(m_autoMaxOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   br->Add(m_autoMax, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 2);
-  br->Add(new wxStaticText(sb, wxID_ANY, "m"), 0, wxALIGN_CENTER_VERTICAL);
+  m_autoMaxU = new wxStaticText(sb, wxID_ANY, "m");
+  br->Add(m_autoMaxU, 0, wxALIGN_CENTER_VERTICAL);
   box->Add(br, 0, wxLEFT | wxRIGHT | wxTOP, 4);
   m_autoInfo = new wxStaticText(sb, wxID_ANY, "");
   box->Add(m_autoInfo, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
@@ -434,8 +445,6 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
     m_autoNice->SetValue(ds.autoNice);
     m_autoMinOn->SetValue(ds.autoMinOn);
     m_autoMaxOn->SetValue(ds.autoMaxOn);
-    m_autoMin->SetValue(ds.autoMin);
-    m_autoMax->SetValue(ds.autoMax);
   }
   m_autoMinOn->Bind(wxEVT_CHECKBOX, &BathyDialog::OnAuto, this);
   m_autoMaxOn->Bind(wxEVT_CHECKBOX, &BathyDialog::OnAuto, this);
@@ -472,7 +481,8 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   m_safeColour = new wxColourPickerCtrl(sb, wxID_ANY, *wxRED);
   s->Add(m_safeOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   s->Add(m_safeDepth, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  s->Add(new wxStaticText(sb, wxID_ANY, "m"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  m_safeU = new wxStaticText(sb, wxID_ANY, "m");
+  s->Add(m_safeU, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
   s->Add(m_safeColour, 0, wxALIGN_CENTER_VERTICAL);
   box->Add(s, 0, wxALL, 4);
 
@@ -496,12 +506,45 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
 
 void BathyDialog::FillStopRow(int r) {
   const ColorStop& st = m_pi->Settings().ramp.stops[r];
-  m_stops->SetCellValue(r, 0, wxString::FromCDouble(st.depth, 2));
+  m_stops->SetCellValue(r, 0, wxString::FromCDouble(st.depth * K(), 2));
   m_stops->SetCellBackgroundColour(r, 1, ToWx(st.rgba | 0xFF000000u));
   m_stops->SetCellValue(r, 1, wxString::Format("#%02X%02X%02X", R_(st.rgba), G_(st.rgba), B_(st.rgba)));
   int lum = (R_(st.rgba) * 299 + G_(st.rgba) * 587 + B_(st.rgba) * 114) / 1000;
   m_stops->SetCellTextColour(r, 1, lum > 128 ? *wxBLACK : *wxWHITE);
   m_stops->SetReadOnly(r, 1, true);
+}
+
+float BathyDialog::K() const {
+  const float k = m_pi->Settings().depthK;
+  return k > 0 ? k : 1.f;
+}
+
+// Valeur saisie (unité affichée) -> mètres ; si l'utilisateur ne l'a pas
+// changée (même valeur à l'arrondi affiché), la valeur stockée est gardée
+// telle quelle pour ne pas dériver à chaque aller-retour m <-> ft
+float BathyDialog::FromUi(double ui, float storedM, int digits) const {
+  const double p = std::pow(10.0, digits);
+  if (std::fabs(ui - std::round(storedM * K() * p) / p) < 0.5 / p) return storedM;
+  return (float)(ui / K());
+}
+
+void BathyDialog::RefreshUnits() {
+  const DisplaySettings& s = m_pi->Settings();
+  const wxString u = s.depthUnit;
+  const float k = K();
+  m_stops->SetColLabelValue(0, U8("Seuil (") + u + ")");
+  for (wxStaticText* t : {m_autoMinU, m_autoMaxU, m_safeU})
+    if (t) t->SetLabel(u);
+  if (m_ctStepL) m_ctStepL->SetLabel(U8("Intervalle (") + u + ")");
+  if (m_ctMajorL) m_ctMajorL->SetLabel(U8("Maîtresse tous les (") + u + ")");
+  m_autoMin->SetRange(-500 * k, 11000 * k);
+  m_autoMax->SetRange(-500 * k, 11000 * k);
+  m_safeDepth->SetRange(-20 * k, 200 * k);
+  m_ctStep->SetRange(0.1, 100 * k);
+  m_ctMajor->SetRange(0, 500 * k);
+  RefreshPalette();
+  if (m_data) m_data->RefreshDb();
+  Layout();
 }
 
 void BathyDialog::RefreshPalette() {
@@ -526,7 +569,7 @@ void BathyDialog::RefreshPalette() {
     if (m_autoInfo->GetLabel() != info) { m_autoInfo->SetLabel(info); Layout(); }
   }
   m_safeOn->SetValue(r.safetyOn);
-  m_safeDepth->SetValue(r.safetyDepth);
+  m_safeDepth->SetValue(r.safetyDepth * K());
   m_safeColour->SetColour(wxColour(R_(r.safetyColor), G_(r.safetyColor), B_(r.safetyColor)));
 
   const DisplaySettings& s = m_pi->Settings();
@@ -543,8 +586,10 @@ void BathyDialog::RefreshPalette() {
   m_legend->SetValue(s.legend);
   m_ctOn->SetValue(s.contours);
   m_ctMode->SetSelection(s.contourMode);
-  m_ctStep->SetValue(s.contourStep);
-  m_ctMajor->SetValue(s.contourMajor);
+  m_ctStep->SetValue(s.contourStep * K());
+  m_ctMajor->SetValue(s.contourMajor * K());
+  m_autoMin->SetValue(s.autoMin * K());
+  m_autoMax->SetValue(s.autoMax * K());
   m_ctLabels->SetValue(s.contourLabels);
   m_ctSmooth->SetValue(s.contourSmooth);
   m_ctColour->SetColour(wxColour(R_(s.contourColor), G_(s.contourColor), B_(s.contourColor)));
@@ -563,8 +608,8 @@ void BathyDialog::OnAuto(wxCommandEvent&) {
   s.autoNice = m_autoNice->GetValue();
   s.autoMinOn = m_autoMinOn->GetValue();
   s.autoMaxOn = m_autoMaxOn->GetValue();
-  s.autoMin = (float)m_autoMin->GetValue();
-  s.autoMax = (float)m_autoMax->GetValue();
+  s.autoMin = FromUi(m_autoMin->GetValue(), s.autoMin, 1);
+  s.autoMax = FromUi(m_autoMax->GetValue(), s.autoMax, 1);
   if (s.autoPalette && !was) {  // couleurs de référence : préréglage choisi, sinon palette actuelle
     const int k = m_preset->GetSelection();
     s.autoBase = k > 0 ? ColorRamp::Preset(ColorRamp::PresetNames()[k - 1]).serialize()
@@ -603,7 +648,10 @@ void BathyDialog::ApplyPaletteFromUI() {
   for (int k = 0; k < m_stops->GetNumberRows(); ++k) {
     double d;
     if (!ParseNum(m_stops->GetCellValue(k, 0), d)) continue;
-    st.push_back({(float)d, FromWx(m_stops->GetCellBackgroundColour(k, 1))});
+    // seuil saisi dans l'unité affichée ; une ligne inchangée garde sa valeur exacte en m
+    const float old = k < (int)r.stops.size() ? r.stops[k].depth : (float)(d / K());
+    st.push_back({k < (int)r.stops.size() ? FromUi(d, old, 2) : (float)(d / K()),
+                  FromWx(m_stops->GetCellBackgroundColour(k, 1))});
   }
   if (st.empty()) return;
   r.stops = st;
@@ -727,7 +775,7 @@ void BathyDialog::OnSafety(wxCommandEvent&) {
   if (m_updating) return;
   ColorRamp& r = m_pi->Settings().ramp;
   r.safetyOn = m_safeOn->GetValue();
-  r.safetyDepth = (float)m_safeDepth->GetValue();
+  r.safetyDepth = FromUi(m_safeDepth->GetValue(), r.safetyDepth, 1);
   r.safetyColor = FromWx(m_safeColour->GetColour(), A_(r.safetyColor));
   m_pi->ColorsChanged();
 }
@@ -749,14 +797,16 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctMajor = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
                                    wxSP_ARROW_KEYS, 0, 500, 5, 1);
   m_ctMajor->SetDigits(1);
-  m_ctMajor->SetToolTip(U8("Ligne épaisse tous les ... m (0 = aucune)"));
+  m_ctMajor->SetToolTip(U8("Ligne épaisse toutes les N unités de profondeur (0 = aucune)"));
   m_ctLabels = new wxCheckBox(sb, wxID_ANY, U8("Valeurs sur les lignes"));
   m_ctSmooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage des lignes"));
   m_ctSmooth->SetToolTip(U8("Arrondit les angles du tracé (purement graphique)"));
   g->Add(m_ctOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctColour, 0);
   g->Add(L("Niveaux"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMode, 0, wxEXPAND);
-  g->Add(L("Intervalle (m)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctStep, 0, wxEXPAND);
-  g->Add(L("Maîtresse tous les (m)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMajor, 0, wxEXPAND);
+  m_ctStepL = L("Intervalle (m)");
+  m_ctMajorL = L("Maîtresse tous les (m)");
+  g->Add(m_ctStepL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctStep, 0, wxEXPAND);
+  g->Add(m_ctMajorL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMajor, 0, wxEXPAND);
   g->Add(m_ctLabels, 0); g->Add(m_ctSmooth, 0);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   box->Add(new wxStaticText(sb, wxID_ANY,
@@ -779,8 +829,8 @@ void BathyDialog::OnContours(wxCommandEvent&) {
   DisplaySettings& s = m_pi->Settings();
   s.contours = m_ctOn->GetValue();
   s.contourMode = m_ctMode->GetSelection();
-  s.contourStep = (float)m_ctStep->GetValue();
-  s.contourMajor = (float)m_ctMajor->GetValue();
+  s.contourStep = FromUi(m_ctStep->GetValue(), s.contourStep, 1);
+  s.contourMajor = FromUi(m_ctMajor->GetValue(), s.contourMajor, 1);
   s.contourLabels = m_ctLabels->GetValue();
   s.contourSmooth = m_ctSmooth->GetValue();
   s.contourColor = FromWx(m_ctColour->GetColour());
