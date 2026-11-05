@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Tests du cœur (sans OpenCPN) : précision, recoloration sans recalcul, perfs.
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cmath>
