@@ -13,6 +13,8 @@
 - macOS: GLSL shaders enabled (live palette, gridded tide).
 - Default folder of the vertical references outside Windows: OpenCPN's
   private data folder.
+- Illustrated user guide (English, French) with checks for testers, and
+  GitHub forms to report a problem or send a test report.
 
 ### 0.1.0-beta.3
 
@@ -50,6 +52,9 @@ crash of OpenCPN when opening the plugin panel.
 - macOS : shaders GLSL activés (palette en direct, marée maillée).
 - Dossier par défaut des références verticales hors Windows : dossier de
   données privé d'OpenCPN.
+- Mode d'emploi illustré (anglais, français) avec les points à vérifier par
+  les testeurs, et formulaires GitHub pour signaler un problème ou envoyer un
+  retour de test.
 
 ### 0.1.0-beta.3
 

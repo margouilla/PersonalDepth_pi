@@ -69,6 +69,7 @@ yet.
 2. OpenCPN: *Options › Plugins › Import plugin…*, select the file.
 3. Enable **PersonalDepth**, then click its toolbar icon.
 
+**Illustrated user guide: [docs/user-guide.md](docs/user-guide.md)** (with what to check for testers).
 What's new in each version: [CHANGELOG.md](CHANGELOG.md).
 
 The user interface is in **English or French**, following the language
@@ -224,6 +225,7 @@ pas encore pris en charge.
 2. OpenCPN : *Options › Plugins › Importer un plugin…*, choisir le fichier.
 3. Activer **PersonalDepth**, puis cliquer sur son icône dans la barre d'outils.
 
+**Mode d'emploi illustré : [docs/guide-utilisateur.md](docs/guide-utilisateur.md)** (avec les points à vérifier pour les testeurs).
 Nouveautés de chaque version : [CHANGELOG.md](CHANGELOG.md#français).
 
 L'interface est en **français ou en anglais**, selon la langue choisie dans

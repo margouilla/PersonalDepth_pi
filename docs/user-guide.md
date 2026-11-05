@@ -1,0 +1,319 @@
+# PersonalDepth — User guide
+
+[🇫🇷 Version française](guide-utilisateur.md) · [README](../README.md) · [What's new](../CHANGELOG.md)
+
+> ⚠️ Beta software — **not for navigation**. Always use official charts.
+
+PersonalDepth displays your own high-resolution bathymetric surveys (XYZ point
+clouds, grids, TIN) in OpenCPN, as a coloured and shaded surface with the
+exact soundings. The surveys are imported once into a local database; the
+palette, the depth thresholds, the safety depth and the shading then change
+instantly, without regenerating anything.
+
+> 🧪 **Testers** — boxes like this one list what to check in each section.
+> Everything works? Send a short [test report](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=test_report.yml).
+> Something wrong? [Report a problem](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
+> — see [§10](#10-reporting-a-problem) for what to include.
+
+**Contents**
+1. [Installation](#1-installation)
+2. [First try in 5 minutes (sample data)](#2-first-try-in-5-minutes-sample-data)
+3. [The main panel](#3-the-main-panel)
+4. [Importing a survey](#4-importing-a-survey)
+5. [Data management](#5-data-management)
+6. [Palette and depth thresholds](#6-palette-and-depth-thresholds)
+7. [Depth contours and display](#7-depth-contours-and-display)
+8. [Tide](#8-tide)
+9. [Units and language](#9-units-and-language)
+10. [Reporting a problem](#10-reporting-a-problem)
+11. [FAQ and known limitations](#11-faq-and-known-limitations)
+
+---
+
+## 1. Installation
+
+You need **OpenCPN 5.14 or newer**, with OpenGL enabled (*Options › Display ›
+Advanced › Use accelerated graphics (OpenGL)*).
+
+1. Download the file for your system from
+   [Releases](https://github.com/margouilla/PersonalDepth_pi/releases)
+   (take the most recent **pre-release**):
+
+   | System | File `PersonalDepth-<version>_…` |
+   |---|---|
+   | Windows (OpenCPN 32-bit) | `msvc-wx32-10.tar.gz` |
+   | macOS 11 or newer, Intel and Apple Silicon | `darwin-wx32-10-universal.tar.gz` |
+   | Debian 12, Ubuntu 24.04 (OpenCPN PPA) — 64-bit PC | `debian-x86_64-12-x86_64.tar.gz` |
+   | Debian 13 — 64-bit PC | `debian-x86_64-13-x86_64.tar.gz` |
+   | Raspberry Pi OS 64-bit bookworm | `debian-arm64-12-arm64.tar.gz` |
+   | Raspberry Pi OS 64-bit trixie | `debian-arm64-13-arm64.tar.gz` |
+   | Raspberry Pi OS 32-bit bookworm | `debian-armhf-12-armhf.tar.gz` |
+
+   Do not download the *Source code* archives: they are not the plugin.
+2. In OpenCPN: *Options › Plugins › Import plugin…*, select the file.
+3. Tick **Enable** next to PersonalDepth, then *OK*.
+4. Click the PersonalDepth icon in the toolbar: the main panel opens.
+
+![Plugin enabled in OpenCPN's plugin manager](images/en/01-plugin-manager.png)
+
+> 🧪 **Testers — check:**
+> - the import is accepted (no "incompatible plugin" message);
+> - the toolbar icon appears and opens the panel without crash;
+> - your system, OpenCPN version and file name, to put in your test report.
+
+## 2. First try in 5 minutes (sample data)
+
+Ready-made database files for the Iroise Sea (Litto3D® Finistère 2014, 1 m
+resolution, depths at chart datum) let you see the rendering without importing
+anything.
+
+1. Download the `.pdb` files of the
+   [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
+   release and put them **in one folder** (e.g. `Documents/PersonalDepth/base`).
+2. In the PersonalDepth panel, *Bathymetry database* section: click **…** and
+   choose this folder. The `.pdb` files appear in the list.
+3. Select the files and click **Centre**: the chart moves to the Iroise Sea.
+4. Zoom in: the colour surface appears, then the exact soundings at large
+   scales.
+
+![Sample data rendered in OpenCPN](images/en/02-sample-rendering.png)
+
+> 🧪 **Testers — check:**
+> - the coloured, shaded surface is displayed (not a uniform colour);
+> - panning and zooming stay fluid; soundings appear at large scale;
+> - moving the cursor over the data shows the depth in the legend
+>   (*Cursor: …*).
+
+## 3. The main panel
+
+The panel is divided into five sections, from top to bottom:
+
+| Section | Role |
+|---|---|
+| **Bathymetry database** | Database folder, list of `.pdb` files (tick to show or hide), *All* / *None*, *Centre*, **Data management…**, *Stop* |
+| **Tide** | Tide source and moment, information line, **Tide curve…** |
+| **Palette and depth thresholds** | Colours, thresholds, automatic mode, danger zone |
+| **Depth contours** | Isobaths: interval, major lines, labels |
+| **Display** | Opacity, relief shading, soundings, smoothing, legend |
+
+![Main panel](images/en/03-main-panel.png)
+
+Every change is applied immediately on the chart. The panel can stay open
+while you use OpenCPN; closing it keeps the display.
+
+The database is split into **`.pdb` files**, one per geographic cell
+(0.25° × 0.25° by default). Unticking a file hides its area, which is handy to
+compare with the official chart.
+
+> 🧪 **Testers — check:** ticking / unticking a `.pdb` file hides / shows its
+> area; *Stop* interrupts a running operation.
+
+## 4. Importing a survey
+
+*Bathymetry database* › **Data management…** › **Import…**
+
+![Import window](images/en/04-import.png)
+
+**Files** — *Add files…* or *Add a folder…* (all bathymetry files of the
+folder and its sub-folders). Supported: XYZ text (`.xyz .txt .csv .dat`, any
+separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
+(`.xml`); GeoTIFF / BAG on builds with GDAL.
+
+**Reading values**
+
+| Setting | Meaning |
+|---|---|
+| Columns | `X Y Z` (lon lat z / East North z) or `Y X Z` |
+| Z direction | *Automatic*, *Depths positive down*, or *Heights* (bottom negative, e.g. Litto3D) |
+| Z unit | Metres or Feet. The database always stores metres |
+| Offset | Constant added to the depths, in the Z unit |
+| NODATA | Values to ignore (e.g. `-9999 9999`), in addition to the NODATA of the grid header |
+| Z bounds | Keep only depths between Z1 and Z2 (e.g. −200 to 200 m removes fill values) |
+| Binary cache | `.pdpc` file next to the source for a faster re-import |
+
+**Coordinate system (X, Y)** — choose from the list (WGS84, UTM, Lambert-93,
+CC42–CC50, many national systems), or *Other* with an EPSG code / PROJ string.
+*Use the neighbouring .prj file* takes priority when the file has one.
+
+**Vertical reference of Z and transformation to chart datum** — depths must
+end up at **chart datum** (CD, the reference of nautical charts):
+- *Chart datum — no transformation*: data already at CD (charts, Shom surveys);
+- *IGN69 / IGN78C → CD*: French land heights (e.g. Litto3D), needs the
+  BathyElli + RAF20 / RAC23 folder;
+- *Ellipsoidal heights → CD*: GNSS survey without geoid, needs BathyElli;
+- *Other land reference* or *separation grid*: your own grids.
+See [external-data.md](external-data.md) to get these files.
+
+**Fixed survey date** — otherwise the date is read from the file name
+(`YYYYMMDD`), failing that the file date. It is used by the "most recent"
+priority rule. **Class** — free label to group sources (e.g. `LITTO3D`,
+`My surveys`); empty = deduced from the file name.
+
+Click **Import**. Progress is shown at the bottom of the window; *Stop*
+cancels the file in progress (files already finished stay in the database).
+Files already in the database are detected: you can import only the new ones
+or re-import everything (replace).
+
+> 🧪 **Testers — check:**
+> - import of one of your own files (format, size, coordinate system);
+> - import time and memory use for big files (please note the file size and
+>   number of soundings);
+> - a file in **feet** shows the right depths after import.
+
+## 5. Data management
+
+![Data management window](images/en/05-data-management.png)
+
+The list shows the sources grouped by class, with: survey date, resolution,
+number of soundings, rank, Z min / max, vertical reference, coordinate system,
+Z unit and import date. The tick box of a source (or a class) includes it or
+not in the merge. The bottom pane gives the details of the selection.
+
+| Action | Effect |
+|---|---|
+| **Priority** | Rule used where surveys overlap: *Best resolution, then most recent* (default), *Shoalest sounding*, *Most recent survey*, *List order (manual rank)*. No averaging: each pixel takes the value of one source |
+| ▲ ▼ | Rank order, for the *manual rank* rule |
+| **Edit…** (or double-click) | Survey date and class (instant); Z unit, coordinate system, vertical reference (the original files are re-read) |
+| **Remove** | Removes the sources from the database (original files untouched) |
+| **Clean…** | Deletes the soundings outside Z1 – Z2 (e.g. fill values) |
+| **Centre** | Centres the chart on the selection |
+| **Classify selection** | Gives a class to the selected sources |
+| **Re-split…** | Changes the size of the geographic cells of the `.pdb` files (smaller cells = smaller files) |
+
+> 🧪 **Testers — check:** changing the priority rule changes the display
+> where two surveys overlap; *Edit…* of the date or class is immediate.
+
+## 6. Palette and depth thresholds
+
+![Palette section](images/en/06-palette.png)
+
+- **Presets**: *TimeZero PBG (blues)*, *Nautical chart (steps)*, *Rainbow*,
+  *Draught safety*, *Greyscale*. Any change makes it *(custom)*.
+- **Continuous gradient** or **Steps**.
+- **Table**: one line per threshold (depth, colour). Edit a depth directly,
+  double-click a colour to change it; *+ threshold* / *− threshold*.
+- **Import .cpt… / Export .cpt…**: GMT palettes.
+- **Automatic**: N thresholds spread between the minimum and maximum depth of
+  *all data* or of the *displayed area* (recomputed when the chart moves),
+  with *round values*, and optional *fixed min* / *fixed max* (e.g. fixed min
+  0 m: the palette covers the sea bottom only). Editing a threshold by hand
+  turns automatic mode off.
+- **Danger zone if depth < X**: overlay of the areas shallower than your
+  draught plus a margin; the red safety contour follows it.
+
+Depths are positive downwards; negative values are above chart datum
+(drying areas, land).
+
+> 🧪 **Testers — check:** every palette change is instant on the chart
+> (no reload); the danger zone matches the depth you set.
+
+## 7. Depth contours and display
+
+![Depth contours and soundings](images/en/07-contours-soundings.png)
+
+**Depth contours** — *Show depth contours*; levels at a *Regular interval*
+or on the *Palette thresholds*; *Major every* N units (thick line); *Values on
+lines*; *Line smoothing* (display only). No line is drawn in the gaps of the
+survey.
+
+**Display**
+
+| Setting | Effect |
+|---|---|
+| Opacity | Transparency of the colour surface over the chart |
+| Relief shading | Hillshading and its strength |
+| Vertical exaggeration | Accentuates the relief of the shading |
+| Soften relief | Smooths the shading only (colours, contours and soundings keep the true depths) |
+| Soundings | Exact soundings (shoalest per screen cell), spacing, decimals, text size |
+| Smoothing (interpolation) | Smooth colours between grid cells |
+| Legend + cursor readout | Legend in the corner, depth and source under the cursor |
+
+> 🧪 **Testers — check:** contours and soundings are readable and do not
+> overlap too much; the cursor readout gives the same value as the sounding
+> under the cursor.
+
+## 8. Tide
+
+![Tide section](images/en/08-tide.png)
+
+By default the displayed depths are at chart datum. The *Tide* section adds
+the water height of a given moment, pixel by pixel:
+
+- **Source**: *OpenCPN tide stations* (single height from the nearest
+  station; OpenCPN tide data must be enabled) or *Gridded FES2022* (height
+  varies over the area; needs the converted atlas, see
+  [external-data.md](external-data.md)).
+- **Moment**: *None — depths at chart datum*, *Current water height
+  (computer clock)*, or *Chosen date and time* with the ±12 h slider in
+  15-minute steps.
+- The information line gives the height used, the station or the FES2022
+  range over the area.
+
+**Tide curve…** opens a separate window: water height against time for each
+tide point used (the OpenCPN station, or up to 9 FES2022 points — NW, N, NE,
+W, Centre, E, SW, S, SE — spread over your data).
+
+![Tide curve window](images/en/09-tide-curve.png)
+
+- Click a point in the legend to show or hide its curve.
+- *Automatic bounds*: one tide cycle (24 h 50) around the chosen moment;
+  editing a bound (dates, heights) switches to manual bounds.
+- The red line is the chosen moment (live in *Current water height* mode).
+
+> 🧪 **Testers — check:** the station tide height matches OpenCPN's own tide
+> window; the red line of the tide curve follows the moment chosen in the
+> panel.
+
+## 9. Units and language
+
+- **Units** follow OpenCPN: *Options › Display › Units* (metres or feet;
+  fathoms are shown in feet). Soundings, contours, legend, thresholds, danger
+  zone and tide heights switch together.
+- **Language** follows OpenCPN: *Options › User › General options ›
+  Language*. French gives French; any other language gives English. Class
+  names and labels stored in the database keep the language they were
+  created in.
+
+> 🧪 **Testers — check:** switching OpenCPN between metres and feet updates
+> the whole display; English texts that are wrong or still in French
+> (please quote them).
+
+## 10. Reporting a problem
+
+Use the [problem report form](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
+(free GitHub account needed) or the
+[Cruisers Forum thread](https://www.cruisersforum.com/forums/f134/plugin-dev-dynamic-bathymetry-and-topography-grid-overlay-302721.html).
+Please include:
+
+1. your **system** and **OpenCPN version** (*About* window, ? button of the toolbar), and the **name of
+   the file** you installed;
+2. what you did, what you expected, what happened;
+3. a **screenshot** if it is a display problem;
+4. the end of the **OpenCPN log** (lines with `PersonalDepth` and the last
+   lines before a crash):
+
+   | System | Log file |
+   |---|---|
+   | Windows | `C:\ProgramData\opencpn\opencpn.log` |
+   | Linux, Raspberry Pi | `~/.opencpn/opencpn.log` |
+   | macOS | `~/Library/Preferences/opencpn/opencpn.log` |
+
+## 11. FAQ and known limitations
+
+**The whole surface is one colour.** The data probably contain fill values
+(e.g. −9999 or 999). Use *Data management › Clean…* with bounds such as
+−200 / 200 m, or re-import with *NODATA* and *Z bounds*.
+
+**Nothing is displayed.** Check that OpenGL is enabled, that the `.pdb` files
+are ticked, and that you are zoomed on the data area (*Centre*).
+
+**The import is slow.** Large grids (hundreds of millions of soundings) take
+minutes; the import can be stopped and resumed (*import only the new files*).
+On a Raspberry Pi, prefer importing on a PC and copying the `.pdb` files.
+
+**Known limitations**
+- Linux, Raspberry Pi and macOS packages are new and still being tested.
+- Flatpak OpenCPN (Flathub) is not supported yet.
+- Not compatible with Android (OpenGL ES).
+- Mercator chart projection assumed; antimeridian not handled.
+- Older datums (NTF, ED50, OSGB36…): mean Helmert parameters (~1–2 m).

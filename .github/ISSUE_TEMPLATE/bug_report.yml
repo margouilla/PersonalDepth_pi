@@ -1,0 +1,76 @@
+name: "🐞 Problem report / Signaler un problème"
+description: "Something does not work: crash, wrong display, import error… / Quelque chose ne fonctionne pas : plantage, affichage faux, erreur d'import…"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing PersonalDepth! English or French, as you prefer. / Merci de tester PersonalDepth ! En anglais ou en français, comme vous préférez.
+        User guide / Mode d'emploi: [EN](https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/user-guide.md) · [FR](https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/guide-utilisateur.md)
+  - type: dropdown
+    id: system
+    attributes:
+      label: "System / Système"
+      options:
+        - Windows
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Ubuntu 24.04
+        - Debian 12
+        - Debian 13
+        - Raspberry Pi OS 64-bit
+        - Raspberry Pi OS 32-bit
+        - Other / Autre
+    validations:
+      required: true
+  - type: input
+    id: system-version
+    attributes:
+      label: "System version / Version du système"
+      placeholder: "e.g. Windows 11, macOS 14.5, Raspberry Pi 5 bookworm"
+  - type: input
+    id: opencpn
+    attributes:
+      label: "OpenCPN version / Version d'OpenCPN"
+      description: "About window (? button) / Fenêtre À propos (bouton ?)"
+      placeholder: "5.14.0"
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: "Plugin file installed / Fichier du plugin installé"
+      placeholder: "PersonalDepth-0.1.0-beta.4_debian-arm64-12-arm64.tar.gz"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened? / Que s'est-il passé ?"
+      description: "What you did, what you expected, what you got / Ce que vous avez fait, attendu, obtenu"
+      placeholder: |
+        1. …
+        2. …
+        Expected / Attendu : …
+        Got / Obtenu : …
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: "Data used / Données utilisées"
+      description: "Format, size, coordinate system, vertical reference — or the sample .pdb files / Format, taille, système de coordonnées, référence verticale — ou les fichiers .pdb d'exemple"
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: "Screenshot / Capture d'écran"
+      description: "Drag and drop an image here / Glisser une image ici"
+  - type: textarea
+    id: log
+    attributes:
+      label: "OpenCPN log / Journal d'OpenCPN"
+      description: |
+        Lines with PersonalDepth and the last lines before a crash / Lignes contenant PersonalDepth et dernières lignes avant un plantage.
+        Windows: C:\ProgramData\opencpn\opencpn.log · Linux / Raspberry Pi: ~/.opencpn/opencpn.log · macOS: ~/Library/Preferences/opencpn/opencpn.log
+      render: text

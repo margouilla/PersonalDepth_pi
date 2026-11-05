@@ -1,0 +1,49 @@
+name: "🧪 Test report / Retour de test"
+description: "It works (or partly): tell which system and what you checked / Ça fonctionne (ou en partie) : indiquez le système et ce que vous avez vérifié"
+title: "[Test] "
+labels: ["test report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Tick what you checked — the 🧪 boxes of the user guide explain each point. / Merci ! Cochez ce que vous avez vérifié — les encadrés 🧪 du mode d'emploi détaillent chaque point.
+        [User guide](https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/user-guide.md) · [Mode d'emploi](https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/guide-utilisateur.md)
+  - type: input
+    id: system
+    attributes:
+      label: "System and version / Système et version"
+      placeholder: "e.g. Raspberry Pi 4, Raspberry Pi OS 64-bit bookworm"
+    validations:
+      required: true
+  - type: input
+    id: opencpn
+    attributes:
+      label: "OpenCPN version / Version d'OpenCPN"
+      placeholder: "5.14.0"
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: "Plugin file installed / Fichier du plugin installé"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "What works / Ce qui fonctionne"
+      options:
+        - label: "Import into OpenCPN and toolbar icon / Import dans OpenCPN et icône (§1)"
+        - label: "Sample data displayed, coloured and shaded / Données d'exemple affichées, colorées et ombrées (§2)"
+        - label: "Show / hide .pdb files / Afficher / masquer les fichiers .pdb (§3)"
+        - label: "Import of my own survey / Import de mon propre levé (§4)"
+        - label: "Data management: priority, edit, clean / Gestion des données : priorité, modifier, nettoyer (§5)"
+        - label: "Palette changes are instant / Changements de palette immédiats (§6)"
+        - label: "Depth contours and soundings readable / Isobathes et sondes lisibles (§7)"
+        - label: "Tide: station or FES2022, tide curve / Marée : station ou FES2022, courbe de marée (§8)"
+        - label: "Metres / feet and language follow OpenCPN / Mètres / pieds et langue suivent OpenCPN (§9)"
+  - type: textarea
+    id: comments
+    attributes:
+      label: "Comments, performance, suggestions / Remarques, performances, suggestions"
+      description: "File sizes, import times, fluidity, ideas… / Taille des fichiers, durée d'import, fluidité, idées…"
