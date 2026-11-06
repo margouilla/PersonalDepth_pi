@@ -30,6 +30,7 @@
 #include "core/BathyLayer.h"
 #include "core/VerticalRef.h"
 #include "PersonalDepth_pi.h"
+#include "core/PointCloud.h"
 
 class ImportDialog : public wxDialog {
  public:
@@ -73,6 +74,11 @@ class ImportDialog : public wxDialog {
   wxStaticText* m_count = nullptr;
   // Lecture
   wxChoice *m_order = nullptr, *m_sign = nullptr;
+  wxButton* m_fmtBtn = nullptr;            // « Format… » : colonnes choisies
+  wxStaticText* m_fmtInfo = nullptr;
+  pd::TextFormat m_fmt;                    // format personnalisé des fichiers texte
+  // aperçu sur `preview`, sinon sur le premier fichier texte de la liste
+  void OnFormat(const wxString& preview = wxString());
   wxSpinCtrlDouble* m_offset = nullptr;
   wxChoice* m_zUnit = nullptr;             // unité verticale du fichier : m / ft
   double m_unitF = 1.0;                    // unité affichée -> m (1 ou 0,3048)

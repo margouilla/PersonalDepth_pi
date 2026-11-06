@@ -15,6 +15,7 @@
 
 #include "BathyDb.h"
 #include "Lang.h"
+#include "FileUtil.h"
 
 #include <sys/stat.h>
 
@@ -208,9 +209,8 @@ std::string GuessSurveyDate(const std::string& path) {
       return b;
     }
   }
-  struct stat st;
-  if (stat(path.c_str(), &st) == 0) {
-    std::time_t t = st.st_mtime;
+  if (const long long mt = FileMTime(path)) {
+    std::time_t t = (std::time_t)mt;
     char b[32];
     std::strftime(b, sizeof b, "%Y-%m-%d", std::localtime(&t));
     return b;

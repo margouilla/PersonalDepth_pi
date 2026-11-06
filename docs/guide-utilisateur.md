@@ -87,8 +87,32 @@ permettent de voir le rendu sans rien importer.
 > - la surface colorée et ombrée s'affiche (pas une couleur uniforme) ;
 > - déplacement et zoom restent fluides ; les sondes apparaissent aux grandes
 >   échelles ;
-> - le curseur sur les données affiche la profondeur dans la légende
->   (*Curseur : …*).
+> - le curseur sur les données affiche la profondeur à côté du curseur
+>   (et dans le panneau, *Curseur : …*).
+
+### Le bandeau de palette
+
+En bas de la carte, un bandeau présente la palette de couleurs :
+
+```
+ -10       [A][Vue]       80 m   ⚙
+ ▇▇▇▇▇▇▇▇▇▇▇▇▇▇|▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+```
+
+| Clic sur | Effet |
+|---|---|
+| **A** / **M** | Palette automatique (seuils calculés d'après les profondeurs) ou manuelle |
+| **Vue** / **Tout** (automatique seulement) | Seuils calculés sur la zone affichée ou sur toutes les données |
+| Profondeur minimale ou maximale | Saisie d'une borne de la palette. Automatique : borne imposée (vide = calculée) ; manuel : seuils étirés sur la nouvelle plage |
+| Rampe de couleurs | Choix d'un préréglage de couleurs |
+| ⚙ | Ouvre le panneau principal |
+
+Le trait sur la rampe marque la profondeur de sécurité. Le bandeau peut être
+masqué ou déplacé (en bas au centre, en haut au centre, en bas à gauche) dans
+*Affichage*.
+
+> 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne, et la
+> carte ne se déplace pas quand on clique dessus.
 
 ## 3. Le panneau principal
 
@@ -100,7 +124,7 @@ Le panneau comprend cinq cadres, de haut en bas :
 | **Marée** | Source et moment de la marée, ligne d'information, **Courbe de marée…** |
 | **Palette et seuils de profondeur** | Couleurs, seuils, mode automatique, zone dangereuse |
 | **Isobathes** | Intervalle, isobathes maîtresses, valeurs |
-| **Affichage** | Opacité, ombrage, sondes, lissage, légende |
+| **Affichage** | Opacité, ombrage, sondes, lissage, lecture au curseur, bandeau de palette |
 
 <img src="images/fr/03-main-panel_1.png" alt="Panneau principal (haut)" width="49%"> <img src="images/fr/03-main-panel_2.png" alt="Panneau principal (bas)" width="49%">
 
@@ -130,7 +154,7 @@ avec GDAL.
 
 | Réglage | Signification |
 |---|---|
-| Colonnes | `X Y Z` (lon lat z / Est Nord z) ou `Y X Z` |
+| Colonnes | `X Y Z` (lon lat z / Est Nord z), `Y X Z`, ou **Format personnalisé** (voir plus bas) |
 | Sens de Z | *Automatique*, *Profondeurs positives vers le bas*, ou *Altitudes* (fond négatif, ex. Litto3D) |
 | Unité de Z | Mètres ou Pieds. La base est toujours en mètres |
 | Décalage | Constante ajoutée aux profondeurs, dans l'unité de Z |
@@ -139,10 +163,48 @@ avec GDAL.
 | Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : estimé (pas de la grille, ou espacement des sondes consécutives pour les lignes de sonde). Une valeur plus grande (ex. 10–20 m) donne une surface plus continue entre des lignes de sonde espacées |
 | Cache binaire | Fichier `.pdpc` à côté de la source pour un réimport rapide |
 
-**Système de coordonnées (X, Y)** — choisir dans la liste (WGS84, UTM,
-Lambert-93, CC42–CC50, nombreux systèmes nationaux), ou *Autre* avec un code
-EPSG / une chaîne PROJ. *Utiliser le fichier .prj voisin* est prioritaire
-quand le fichier en a un.
+**Format personnalisé** (*Colonnes* › *Format personnalisé*, bouton
+**Format…**) — pour les fichiers texte qui ne sont pas de simples X Y Z :
+exports GNSS / RTK, journaux de sondeur, CSV avec entête… La fenêtre s'ouvre
+d'elle-même à chaque ajout de fichiers de points texte (fichiers ou dossier),
+avec l'aperçu du premier fichier ajouté, et montre les premières lignes du fichier en couleur :
+
+- *Lignes d'entête à ignorer*, *Séparateur de colonnes* (automatique,
+  espaces, virgule, point-virgule, tabulation), *Séparateur décimal* (point
+  ou virgule) ;
+- la colonne de **X** (longitude / Est), de **Y** (latitude / Nord), de
+  **Z** (profondeur), et au besoin de la **date** (ou date et heure) et de
+  l'**heure** ; *Ordre des dates* pour les dates comme 03/04/2021 ;
+- des **gabarits** facultatifs sous les colonnes, comme dans les logiciels
+  d'hydrographie : date / heure avec `y M d h m s z AP` (ex. `yyyy/M/d`,
+  `d/M/y h:m:s.s`, `MMM d, y`, `yyyyMMddhhmmss`), coordonnées X et Y
+  (chacune son gabarit) en degrés / minutes / secondes avec `D M S X` (ex.
+  `D M S.S X`, `DDMM.MX` pour le NMEA). Vide = reconnaissance automatique /
+  nombre décimal. *Aide sur les formats…* détaille les champs avec des
+  exemples ;
+- sous **Z** : le sens des valeurs (profondeurs positives vers le bas,
+  altitudes positives vers le haut, ou automatique) et leur unité (mètres ou
+  pieds) — les mêmes réglages que dans la fenêtre d'import ;
+- *Détection automatique* devine tout d'après le fichier (les noms de
+  colonnes de l'entête comme `latitude`, `lon`, `depth` sont reconnus) ; les
+  cases rouges sont des valeurs illisibles pour leur rôle ;
+- *Enregistrer le format… / Charger un format…* gardent un format dans un
+  fichier `.pdfmt` pour les levés suivants du même type.
+
+Avec une colonne de date, la **date du levé** de la source est la première
+date du fichier (sauf date du levé imposée).
+
+![Format du fichier texte](images/fr/10-text-format.png)
+
+**Système de coordonnées (X, Y)** — choisir dans la liste : *Automatique*
+(fichier `.prj` à côté des données, sinon longitude / latitude en degrés),
+WGS84, UTM, Lambert-93, CC42–CC50, nombreux systèmes nationaux, **NAD83 State
+Plane** (toutes les zones des États-Unis, en mètres, pieds US ou pieds — ex.
+levés de l'USACE), ou *Autre* avec un code EPSG / une chaîne PROJ. *Utiliser
+le fichier .prj voisin* est prioritaire quand le fichier en a un (les `.prj`
+ESRI State Plane sont reconnus). Des coordonnées projetées (UTM, Mercator…)
+ne se reconnaissent pas à leurs seules valeurs : sans fichier `.prj`, choisir
+le système.
 
 **Référence verticale des Z et transformation vers le ZH** — les profondeurs
 doivent être rapportées au **zéro hydrographique** (ZH, la référence des
@@ -200,8 +262,11 @@ dans la fusion. Le cadre du bas détaille la sélection.
 ![Cadre Palette](images/fr/06-palette.png)
 
 - **Préréglages** : *TimeZero PBG (bleus)*, *Carte marine (paliers)*,
-  *Arc-en-ciel*, *Sécurité tirant d'eau*, *Niveaux de gris*. Toute
-  modification passe en *(personnalisée)*.
+  *ENC OpenCPN (S-52)* (les couleurs de profondeur des cartes vectorielles
+  d'OpenCPN, avec les isobathes peu profonde / de sécurité / profonde réglées
+  dans *Options › Cartes › Cartes vectorielles*), *Arc-en-ciel*, *Sécurité
+  tirant d'eau*, *Niveaux de gris*. Toute modification passe en
+  *(personnalisée)*.
 - **Dégradé continu** ou **Paliers**.
 - **Tableau** : une ligne par seuil (profondeur, couleur). Modifier une
   profondeur directement, double-cliquer sur une couleur pour la changer ;
@@ -241,7 +306,8 @@ ligne n'est tracée dans les trous du levé.
 | Adoucir le relief | Lisse l'ombrage seul (couleurs, isobathes et sondes gardent les vraies profondeurs) |
 | Sondes chiffrées | Sondes exactes (la plus faible par case d'écran), espacement, décimales, taille du texte |
 | Lissage (interpolation) | Couleurs fondues entre les mailles |
-| Légende + lecture au curseur | Légende dans le coin, profondeur et source sous le curseur |
+| Lecture au curseur | Profondeur et source à côté du curseur |
+| Bandeau de palette sur la carte | Affiche le bandeau et choisit sa position |
 
 > 🧪 **Testeurs — à vérifier :** isobathes et sondes lisibles, sans trop de
 > chevauchements ; la lecture au curseur donne la même valeur que la sonde

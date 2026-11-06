@@ -90,7 +90,7 @@ add_library(pd_core STATIC
   src/core/Soundings.cpp src/core/BathyLayer.cpp src/core/Contours.cpp
   src/core/Projection.cpp src/core/VerticalRef.cpp src/core/Triangulate.cpp
   src/core/Inflate.cpp src/core/TideFES.cpp
-  src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp)
+  src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp)
 target_include_directories(pd_core PUBLIC src third_party)
 set_target_properties(pd_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 find_package(Threads REQUIRED)
@@ -137,7 +137,7 @@ if(PD_BUILD_PLUGIN)
     endif()
 
     add_library(PersonalDepth_pi SHARED
-      src/PersonalDepth_pi.cpp src/BathyRenderer.cpp src/BathyDialog.cpp src/ImportDialog.cpp src/DataDialog.cpp src/TideChart.cpp)
+      src/PersonalDepth_pi.cpp src/BathyRenderer.cpp src/BathyDialog.cpp src/ImportDialog.cpp src/DataDialog.cpp src/TideChart.cpp src/TextFormatDialog.cpp)
     target_link_libraries(PersonalDepth_pi PRIVATE pd_core ocpn::api
                           ${wxWidgets_LIBRARIES} OpenGL::GL)
     if(APPLE)

@@ -542,6 +542,21 @@ bool Crs::fromWGS84(double lon, double lat, double& x, double& y) const {
 
 // ------------------------------------------------------------- catalogue
 namespace {
+struct Spcs {
+  int code;
+  const char* name;
+  const char* proj;
+};
+}  // namespace
+// NAD83 State Plane (SPCS83), en mètres, pieds US ou pieds : base EPSG de PROJ
+static const std::vector<Spcs>& SpcsTable() {
+  static const std::vector<Spcs> t = {
+#include "SpcsTable.inc"
+  };
+  return t;
+}
+
+namespace {
 const char* kNTF = " +a=6378249.2 +b=6356515 +towgs84=-168,-60,320,0,0,0,0 +pm=paris +units=m";
 const char* kED50 = " +ellps=intl +towgs84=-87,-98,-121,0,0,0,0";
 
@@ -615,6 +630,8 @@ const std::map<int, std::string>& EpsgTable() {
   t[3346] = "+proj=tmerc +lat_0=0 +lon_0=24 +k=0.9998 +x_0=500000 +y_0=0 +ellps=GRS80";
   // Océanie
   t[2193] = "+proj=tmerc +lat_0=0 +lon_0=173 +k=0.9996 +x_0=1600000 +y_0=10000000 +ellps=GRS80";
+  // États-Unis : NAD83 State Plane (NAD83 assimilé à WGS84, écart ~1 m)
+  for (const auto& s : SpcsTable()) t[s.code] = s.proj;
   return t;
 }
 }  // namespace
@@ -647,6 +664,7 @@ const std::vector<CrsEntry>& CrsCatalog() {
   auto Z = [&](const char* code, const char* g, const char* n, int z0, int z1, bool s) {
     c.push_back({code, g, n, z0, z1, s});
   };
+  E("AUTO", "Monde", "Automatique — fichier .prj, sinon longitude / latitude WGS84");
   E("EPSG:4326", "Monde", "WGS84 — longitude / latitude (GPS)");
   Z("UTM-WGS84", "Monde", "UTM WGS84 — fuseau et hémisphère", 1, 60, false);
   E("EPSG:3857", "Monde", "Web Mercator (Google, OSM)");
@@ -709,10 +727,13 @@ const std::vector<CrsEntry>& CrsCatalog() {
   Z("UTM-GDA2020", "Océanie", "Australie — GDA2020 / MGA — fuseau", 46, 59, true);
   Z("UTM-GDA94", "Océanie", "Australie — GDA94 / MGA — fuseau", 48, 58, true);
   E("EPSG:2193", "Océanie", "Nouvelle-Zélande — NZGD2000 / NZTM");
+  for (const auto& s : SpcsTable())  // levés USACE, NOAA… : souvent en pieds US
+    c.push_back({Fmt("EPSG:%d", s.code), "États-Unis — State Plane", std::string("NAD83 / ") + s.name, 0, 0, false});
   return c;
 }
 
 std::string CrsDefinition(const CrsEntry& e, int zone, bool south) {
+  if (e.code == "AUTO") return EpsgToProj(4326);  // .prj lu en priorité (voir l'import)
   if (e.zoneMin == 0) return EpsgToProj(std::atoi(e.code.c_str() + 5));
   zone = std::max(e.zoneMin, std::min(e.zoneMax, zone));
   const char* rest = " +ellps=GRS80";
@@ -740,6 +761,40 @@ int EpsgFromWkt(const std::string& wkt) {
     return 0;
   }
   if (u.find("LAMBERT93") != std::string::npos) return 2154;
+  // NAD83 State Plane ESRI : « NAD_1983_StatePlane_Massachusetts_Mainland_FIPS_2001_Feet »
+  {
+    std::regex sp(R"re(StatePlane_([A-Za-z_]+?)_FIPS_\d+(_Feet_Intl|_Feet)?)re", std::regex::icase);
+    if (std::regex_search(wkt, m, sp) && u.find("NAD1983") != std::string::npos) {
+      auto norm = [](std::string s) {  // « California VI » == « California zone 6 »
+        std::string o;
+        for (char ch : s) if (std::isalnum((unsigned char)ch)) o += (char)std::toupper((unsigned char)ch);
+        static const char* romans[] = {"VII", "VI", "IV", "V", "III", "II", "I"};
+        static const char* digits[] = {"7", "6", "4", "5", "3", "2", "1"};
+        for (int k = 0; k < 7; ++k) {
+          const std::string r = romans[k];
+          if (o.size() > r.size() && o.compare(o.size() - r.size(), r.size(), r) == 0 &&
+              std::islower((unsigned char)s[s.size() - r.size() - 1]) == 0) {
+            o = o.substr(0, o.size() - r.size()) + digits[k];
+            break;
+          }
+        }
+        const size_t z = o.find("ZONE");
+        if (z != std::string::npos) o.erase(z, 4);
+        return o;
+      };
+      const std::string feet = m[2].str();
+      const std::string suffix = feet.empty() ? "" : (feet.size() > 5 ? " (ft)" : " (ftUS)");
+      const std::string want = norm(m[1].str());
+      for (const auto& s : SpcsTable()) {
+        std::string n = s.name;
+        const bool ftus = n.find("(ftUS)") != std::string::npos, ft = n.find("(ft)") != std::string::npos;
+        if ((suffix == " (ftUS)") != ftus || (suffix == " (ft)") != ft) continue;
+        const size_t p = n.find(" (");
+        if (p != std::string::npos) n = n.substr(0, p);
+        if (norm(n) == want) return s.code;
+      }
+    }
+  }
   std::regex cc(R"(RGF93(?:V2B?)?CC(4[2-9]|50))");
   if (std::regex_search(u, m, cc)) return 3900 + std::atoi(m[1].str().c_str());
   if (u.find("LAMBERTIIETENDU") != std::string::npos || u.find("LAMBERTIIEXTENDED") != std::string::npos ||

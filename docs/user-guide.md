@@ -81,8 +81,31 @@ anything.
 > 🧪 **Testers — check:**
 > - the coloured, shaded surface is displayed (not a uniform colour);
 > - panning and zooming stay fluid; soundings appear at large scale;
-> - moving the cursor over the data shows the depth in the legend
->   (*Cursor: …*).
+> - moving the cursor over the data shows the depth next to the cursor
+>   (and in the panel, *Cursor: …*).
+
+### The palette banner
+
+At the bottom of the chart, a banner shows the colour palette:
+
+```
+ -10       [A][View]       80 m   ⚙
+ ▇▇▇▇▇▇▇▇▇▇▇▇▇▇|▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+```
+
+| Click on | Effect |
+|---|---|
+| **A** / **M** | Automatic palette (thresholds computed from the depths) or manual palette |
+| **View** / **All** (automatic only) | Thresholds computed from the displayed area or from all the data |
+| Minimum or maximum depth | Type a palette bound. Automatic: imposed bound (empty = computed); manual: thresholds stretched over the new range |
+| Colour bar | Choose a colour preset |
+| ⚙ | Open the main panel |
+
+The mark on the colour bar is the safety depth. The banner can be hidden or
+moved (bottom centre, top centre, bottom left) in *Display*.
+
+> 🧪 **Testers — check:** every click on the banner works, and the chart
+> does not move when clicking on it.
 
 ## 3. The main panel
 
@@ -94,7 +117,7 @@ The panel is divided into five sections, from top to bottom:
 | **Tide** | Tide source and moment, information line, **Tide curve…** |
 | **Palette and depth thresholds** | Colours, thresholds, automatic mode, danger zone |
 | **Depth contours** | Isobaths: interval, major lines, labels |
-| **Display** | Opacity, relief shading, soundings, smoothing, legend |
+| **Display** | Opacity, relief shading, soundings, smoothing, cursor readout, palette banner |
 
 <img src="images/en/03-main-panel_1.png" alt="Main panel (top)" width="49%"> <img src="images/en/03-main-panel_2.png" alt="Main panel (bottom)" width="49%">
 
@@ -123,7 +146,7 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 
 | Setting | Meaning |
 |---|---|
-| Columns | `X Y Z` (lon lat z / East North z) or `Y X Z` |
+| Columns | `X Y Z` (lon lat z / East North z), `Y X Z`, or **Custom format** (see below) |
 | Z direction | *Automatic*, *Depths positive down*, or *Heights* (bottom negative, e.g. Litto3D) |
 | Z unit | Metres or Feet. The database always stores metres |
 | Offset | Constant added to the depths, in the Z unit |
@@ -132,9 +155,44 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Fixed resolution | Horizontal step of the database for this survey. Unticked: estimated (grid step, or spacing between consecutive soundings for sounding lines). A larger value (e.g. 10–20 m) gives a more continuous surface between widely spaced sounding lines |
 | Binary cache | `.pdpc` file next to the source for a faster re-import |
 
-**Coordinate system (X, Y)** — choose from the list (WGS84, UTM, Lambert-93,
-CC42–CC50, many national systems), or *Other* with an EPSG code / PROJ string.
-*Use the neighbouring .prj file* takes priority when the file has one.
+**Custom format** (*Columns* › *Custom format*, button **Format…**) — for
+text files that are not plain X Y Z: GNSS / RTK exports, sounder logs, CSV
+with headers… The window opens by itself each time text point files are
+added (files or folder), with a preview of the first added file, and shows the first lines of the file in colour:
+
+- *Header lines to skip*, *Column separator* (automatic, spaces, comma,
+  semicolon, tab), *Decimal mark* (period or comma);
+- the column holding **X** (longitude / East), **Y** (latitude / North),
+  **Z** (depth), and optionally the **date** (or date and time) and the
+  **time**; *Date order* for dates like 03/04/2021;
+- optional **patterns** under the columns, as in hydrographic software:
+  date / time with `y M d h m s z AP` (e.g. `yyyy/M/d`, `d/M/y h:m:s.s`,
+  `MMM d, y`, `yyyyMMddhhmmss`), X and Y coordinates (each its own pattern)
+  in degrees / minutes / seconds with `D M S X` (e.g. `D M S.S X`, `DDMM.MX`
+  for NMEA). Empty = automatic recognition / decimal number. *Format help…*
+  lists the fields and examples;
+- under **Z**: the direction of the values (depths positive down, heights
+  positive up, or automatic) and their unit (metres or feet) — the same
+  settings as in the import window;
+- *Automatic detection* guesses everything from the file (column names of the
+  header such as `latitude`, `lon`, `depth` are recognised); red cells are
+  values that cannot be read for their role;
+- *Save format… / Load format…* keep a format in a `.pdfmt` file for the
+  next surveys of the same kind.
+
+When a date column is set, the **survey date** of the source is the first
+date of the file (unless a fixed survey date is given).
+
+![Custom text format](images/en/10-text-format.png)
+
+**Coordinate system (X, Y)** — choose from the list: *Automatic* (the `.prj`
+file next to the data, otherwise longitude / latitude in degrees), WGS84, UTM,
+Lambert-93, CC42–CC50, many national systems, **NAD83 State Plane** (all US
+zones, in metres, US survey feet or feet — e.g. for USACE surveys), or
+*Other* with an EPSG code / PROJ string. *Use the neighbouring .prj file*
+takes priority when the file has one (ESRI State Plane `.prj` files are
+recognised). Projected coordinates (UTM, Mercator…) cannot be identified
+from the numbers alone: without a `.prj` file, choose the system.
 
 **Vertical reference of Z and transformation to chart datum** — depths must
 end up at **chart datum** (CD, the reference of nautical charts):
@@ -188,8 +246,11 @@ not in the merge. The bottom pane gives the details of the selection.
 
 ![Palette section](images/en/06-palette.png)
 
-- **Presets**: *TimeZero PBG (blues)*, *Nautical chart (steps)*, *Rainbow*,
-  *Draught safety*, *Greyscale*. Any change makes it *(custom)*.
+- **Presets**: *TimeZero PBG (blues)*, *Nautical chart (steps)*, *OpenCPN
+  ENC (S-52)* (the depth colours of OpenCPN's vector charts, with the
+  shallow / safety / deep contours set in *Options › Charts › Vector
+  Charts*), *Rainbow*, *Draught safety*, *Greyscale*. Any change makes it
+  *(custom)*.
 - **Continuous gradient** or **Steps**.
 - **Table**: one line per threshold (depth, colour). Edit a depth directly,
   double-click a colour to change it; *+ threshold* / *− threshold*.
@@ -227,7 +288,8 @@ survey.
 | Soften relief | Smooths the shading only (colours, contours and soundings keep the true depths) |
 | Soundings | Exact soundings (shoalest per screen cell), spacing, decimals, text size |
 | Smoothing (interpolation) | Smooth colours between grid cells |
-| Legend + cursor readout | Legend in the corner, depth and source under the cursor |
+| Cursor readout | Depth and source next to the cursor |
+| Palette banner on the chart | Show the banner and choose where it sits |
 
 > 🧪 **Testers — check:** contours and soundings are readable and do not
 > overlap too much; the cursor readout gives the same value as the sounding

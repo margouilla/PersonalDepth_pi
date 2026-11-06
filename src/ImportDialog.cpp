@@ -15,6 +15,7 @@
 
 #include "core/Lang.h"
 #include "ImportDialog.h"
+#include "TextFormatDialog.h"
 
 #include <wx/display.h>
 
@@ -82,8 +83,9 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
   m_dateOn = new wxCheckBox(sc, wxID_ANY, U8("Date du levé imposée"));
   m_datePick = new wxDatePickerCtrl(sc, wxID_ANY, wxDateTime::Today(), wxDefaultPosition,
                                     wxDefaultSize, wxDP_DROPDOWN | wxDP_SHOWCENTURY);
-  m_dateOn->SetToolTip(U8("Sinon : date AAAAMMJJ trouvée dans le nom du fichier, à défaut date "
-                          "du fichier. La date sert à la règle de priorité « plus récent »."));
+  m_dateOn->SetToolTip(U8("Sinon : première date de la colonne date (format personnalisé), "
+                         "ou date AAAAMMJJ trouvée dans le nom du fichier, à défaut date du "
+                         "fichier. La date sert à la règle de priorité « plus récent »."));
   if (m_edit) {
     wxDateTime d;
     if (d.ParseISODate(W8(m_srcs[0].date.c_str()))) m_datePick->SetValue(d);
@@ -205,10 +207,24 @@ wxSizer* ImportDialog::BuildFiles(wxWindow* p) {
   return box;
 }
 
+// fichier de points texte (format personnalisable)
+static bool IsTextPoints(const wxString& f) {
+  const wxString e = f.AfterLast('.').Lower();
+  return e == "xyz" || e == "txt" || e == "csv" || e == "dat" || e == "pos" || e == "pts";
+}
+
 void ImportDialog::AddPaths(const wxArrayString& paths) {
+  wxString firstText;  // premier fichier de points texte de cet ajout
   for (const wxString& f : paths)
-    if (m_files->FindString(f, true) == wxNOT_FOUND) m_files->Append(f);
+    if (m_files->FindString(f, true) == wxNOT_FOUND) {
+      m_files->Append(f);
+      if (firstText.empty() && IsTextPoints(f)) firstText = f;
+    }
   UpdateSummary();
+  // à chaque ajout de fichiers de points texte : fenêtre « Format du fichier
+  // texte » ouverte d'office (aperçu sur le premier fichier ajouté) pour
+  // vérifier colonnes, entête et sens de Z
+  if (!firstText.empty()) CallAfter([this, firstText]() { OnFormat(firstText); });
 }
 
 void ImportDialog::UpdateSummary() {
@@ -223,13 +239,27 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Lecture des valeurs"));
   wxWindow* sb = box->GetStaticBox();
   const DisplaySettings& st = m_init;
-  wxString orders[] = {U8("X Y Z (lon lat z / Est Nord z)"), U8("Y X Z (lat lon z / Nord Est z)")};
+  wxString orders[] = {U8("X Y Z (lon lat z / Est Nord z)"), U8("Y X Z (lat lon z / Nord Est z)"),
+                       U8("Format personnalisé (colonnes choisies)")};
   wxString signs[] = {U8("Automatique (majorité négative = altitudes)"),
                       U8("Profondeurs positives vers le bas"),
                       U8("Altitudes (fond négatif, Z positif vers le haut)")};
-  m_order = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, orders);
+  m_order = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, orders);
   m_sign = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, signs);
-  m_order->SetSelection(std::max(0, std::min(1, st.importOrder)));
+  m_fmt.deserialize(st.importFormat);
+  m_order->SetSelection(m_fmt.custom ? 2 : std::max(0, std::min(1, st.importOrder)));
+  m_order->SetToolTip(U8("Fichiers texte (.xyz .txt .csv .dat) : les trois premiers nombres de chaque "
+                         "ligne, ou un format personnalisé (lignes d'entête, séparateurs, colonnes X, "
+                         "Y, Z, date et heure) réglé avec « Format… »."));
+  m_fmtBtn = new wxButton(sb, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_fmtInfo = new wxStaticText(sb, wxID_ANY, TextFormatDialog::Describe(m_fmt));
+  m_fmtInfo->SetForegroundColour(wxColour(90, 90, 90));
+  m_fmtBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnFormat(); });
+  m_order->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    if (m_order->GetSelection() == 2 && !m_fmt.custom) OnFormat();
+    m_fmtInfo->SetLabel(m_order->GetSelection() == 2 ? TextFormatDialog::Describe(m_fmt) : wxString());
+    Layout();
+  });
   m_sign->SetSelection(std::max(0, std::min(2, st.importSign)));
   m_sign->SetToolTip(U8("Sens des valeurs Z du fichier. Les rasters (.asc, .tif) suivent la même règle."));
   // unité verticale des valeurs du fichier ; décalage et bornes s'expriment
@@ -251,7 +281,15 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   auto* g = new wxFlexGridSizer(2, 4, 8);
   g->AddGrowableCol(1);
   auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
-  g->Add(L("Colonnes"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_order, 0, wxEXPAND);
+  {
+    auto* orow = new wxBoxSizer(wxHORIZONTAL);
+    orow->Add(m_order, 1, wxEXPAND | wxRIGHT, 4);
+    orow->Add(m_fmtBtn, 0);
+    auto* ocol = new wxBoxSizer(wxVERTICAL);
+    ocol->Add(orow, 0, wxEXPAND);
+    ocol->Add(m_fmtInfo, 0, wxTOP, 2);
+    g->Add(L("Colonnes"), 0, wxALIGN_CENTER_VERTICAL); g->Add(ocol, 0, wxEXPAND);
+  }
   g->Add(L("Sens de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_sign, 0, wxEXPAND);
   g->Add(L("Unité de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_zUnit, 0);
   m_offsetL = L("Décalage (m)");
@@ -343,8 +381,13 @@ wxSizer* ImportDialog::BuildCrs(wxWindow* p) {
   wxWindow* sb = box->GetStaticBox();
   const DisplaySettings& st = m_init;
   m_crs = new wxChoice(sb, wxID_ANY);
-  for (const CrsEntry& e : CrsCatalog()) m_crs->Append(CrsLabel(e));
-  m_crs->Append(U8("Autre — code EPSG ou chaîne PROJ"));
+  {  // ajout en un seul appel : 300 systèmes, insertion une à une lente sous Windows
+    wxArrayString items;
+    items.reserve(CrsCatalog().size() + 1);
+    for (const CrsEntry& e : CrsCatalog()) items.Add(CrsLabel(e));
+    items.Add(U8("Autre — code EPSG ou chaîne PROJ"));
+    m_crs->Append(items);
+  }
   m_zone = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(70), -1),
                           wxSP_ARROW_KEYS, 1, 60, 31);
   wxString hemis[] = {U8("Nord"), U8("Sud")};
@@ -645,7 +688,8 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.vrefGeoid = m_vrGeoid->GetValue().ToUTF8().data();
   s.vrefDirect = m_vrDirect->GetValue().ToUTF8().data();
   s.vrefInvert = m_vrInvert->GetValue();
-  s.importOrder = m_order->GetSelection();
+  s.importOrder = std::min(1, m_order->GetSelection());
+  s.importFormat = m_order->GetSelection() == 2 ? m_fmt.serialize() : std::string();
   s.importSign = m_sign->GetSelection();
   // valeurs affichées dans l'unité de Z -> mètres (une valeur inchangée garde
   // sa valeur exacte, sans dérive d'arrondi)
@@ -719,9 +763,10 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.path = m_files->GetString(k).ToUTF8().data();
     p.crsDef = crsDef;
     p.crsName = crsName;
-    p.readPrj = s.readPrj;
+    p.readPrj = s.readPrj || s.crsCode == "AUTO";  // automatique : .prj toujours lu
     p.vref = vref;
     p.load.order = (LoadOptions::Order)s.importOrder;
+    p.load.text.deserialize(s.importFormat);
     p.load.zsign = (LoadOptions::ZSign)s.importSign;
     p.load.zOffset = s.importOffset;
     p.load.zToMeters = s.importZFeet ? 0.3048 : 1.0;
@@ -740,4 +785,25 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     m_out.push_back(p);
   }
   EndModal(wxID_OK);
+}
+
+// Format personnalisé des fichiers texte (aperçu sur le premier fichier texte de la liste)
+void ImportDialog::OnFormat(const wxString& preview) {
+  std::string sample = preview.ToStdString(wxConvUTF8);
+  for (unsigned k = 0; k < m_files->GetCount() && sample.empty(); ++k)
+    if (IsTextPoints(m_files->GetString(k))) sample = m_files->GetString(k).ToStdString(wxConvUTF8);
+  TextFormatDialog d(this, sample, m_fmt, m_sign->GetSelection(), m_zUnit->GetSelection() == 1);
+  if (d.ShowModal() == wxID_OK) {
+    m_fmt = d.Format();
+    m_order->SetSelection(2);
+    m_sign->SetSelection(d.ZSign());  // convention et unité de Z réglées dans le format
+    if ((m_zUnit->GetSelection() == 1) != d.ZFeet()) {
+      m_zUnit->SetSelection(d.ZFeet() ? 1 : 0);
+      OnZUnit();  // décalage et bornes convertis
+    }
+  } else if (!m_fmt.custom) {
+    m_order->SetSelection(0);
+  }
+  m_fmtInfo->SetLabel(m_order->GetSelection() == 2 ? TextFormatDialog::Describe(m_fmt) : wxString());
+  Layout();
 }

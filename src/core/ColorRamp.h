@@ -58,6 +58,10 @@ class ColorRamp {
 
   static std::vector<std::string> PresetNames();
   static ColorRamp Preset(const std::string& name);
+  // Couleurs de profondeur des cartes ENC d'OpenCPN (S-52, jour) entre les
+  // isobathes peu profonde / de sécurité / profonde (m)
+  static ColorRamp EncPreset(float shallow, float safety, float deep);
+  static constexpr const char* kEncName = "ENC OpenCPN (S-52)";
 };
 
 // Palette automatique : n seuils répartis entre zMin et zMax (valeurs rondes

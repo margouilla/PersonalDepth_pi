@@ -558,6 +558,7 @@ void BathyDialog::RefreshPalette() {
   if (m_autoOn) {
     const DisplaySettings& ds = m_pi->Settings();
     m_autoOn->SetValue(ds.autoPalette);
+    m_autoSrc->SetSelection(std::max(0, std::min(1, ds.autoSource)));
     m_autoSrc->Enable(ds.autoPalette);
     m_autoCount->Enable(ds.autoPalette);
     m_autoNice->Enable(ds.autoPalette);
@@ -584,6 +585,9 @@ void BathyDialog::RefreshPalette() {
   m_font->SetValue(s.fontSize);
   m_smooth->SetValue(s.smooth);
   m_legend->SetValue(s.legend);
+  m_banner->SetValue(s.banner);
+  m_bannerPos->SetSelection(std::max(0, std::min(2, s.bannerPos)));
+  m_bannerPos->Enable(s.banner);
   m_ctOn->SetValue(s.contours);
   m_ctMode->SetSelection(s.contourMode);
   m_ctStep->SetValue(s.contourStep * K());
@@ -611,9 +615,9 @@ void BathyDialog::OnAuto(wxCommandEvent&) {
   s.autoMin = FromUi(m_autoMin->GetValue(), s.autoMin, 1);
   s.autoMax = FromUi(m_autoMax->GetValue(), s.autoMax, 1);
   if (s.autoPalette && !was) {  // couleurs de référence : préréglage choisi, sinon palette actuelle
-    const int k = m_preset->GetSelection();
-    s.autoBase = k > 0 ? ColorRamp::Preset(ColorRamp::PresetNames()[k - 1]).serialize()
-                       : s.ramp.serialize();
+    // couleurs de référence : dernier préréglage choisi, sinon palette affichée
+    if (s.autoBase.empty() || !s.autoBaseFresh) s.autoBase = s.ramp.serialize();
+    s.autoBaseFresh = true;
   }
   m_autoSrc->Enable(s.autoPalette);
   m_autoCount->Enable(s.autoPalette);
@@ -643,6 +647,7 @@ void BathyDialog::StopAuto() {
 
 void BathyDialog::ApplyPaletteFromUI() {
   StopAuto();
+  m_pi->Settings().autoBaseFresh = false;  // seuils / couleurs modifiés à la main
   ColorRamp& r = m_pi->Settings().ramp;
   std::vector<ColorStop> st;
   for (int k = 0; k < m_stops->GetNumberRows(); ++k) {
@@ -664,20 +669,13 @@ void BathyDialog::ApplyPaletteFromUI() {
 void BathyDialog::OnPreset(wxCommandEvent&) {
   int k = m_preset->GetSelection();
   if (k <= 0) return;
-  ColorRamp& r = m_pi->Settings().ramp;
-  ColorRamp p = ColorRamp::Preset(ColorRamp::PresetNames()[k - 1]);
-  if (m_pi->Settings().autoPalette) {  // automatique : nouvelles couleurs, mêmes seuils calculés
-    m_pi->Settings().autoBase = p.serialize();
-    r.mode = p.mode;
-    m_pi->AutoPaletteChanged();
-    RefreshPalette();
-    return;
-  }
-  r.stops = p.stops;
-  r.mode = p.mode;
-  if (p.safetyOn) { r.safetyOn = true; r.safetyDepth = p.safetyDepth; }
-  m_pi->ColorsChanged();
-  RefreshPalette();
+  m_pi->ApplyPreset(ColorRamp::PresetNames()[k - 1]);
+}
+
+void BathyDialog::SelectPreset(const std::string& name) {
+  const auto names = ColorRamp::PresetNames();
+  for (size_t k = 0; k < names.size(); ++k)
+    if (names[k] == name) { m_preset->SetSelection((int)k + 1); return; }
 }
 
 void BathyDialog::OnMode(wxCommandEvent&) {
@@ -759,6 +757,7 @@ void BathyDialog::OnImportCPT(wxCommandEvent&) {
   StopAuto();
   r = tmp;
   m_preset->SetSelection(0);
+  m_pi->Settings().autoBaseFresh = false;
   m_pi->ColorsChanged();
   RefreshPalette();
 }
@@ -858,7 +857,12 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   m_font = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
                           wxSP_ARROW_KEYS, 6, 20, 9);
   m_smooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage (interpolation)"));
-  m_legend = new wxCheckBox(sb, wxID_ANY, U8("Légende + lecture au curseur"));
+  m_legend = new wxCheckBox(sb, wxID_ANY, U8("Lecture au curseur"));
+  m_banner = new wxCheckBox(sb, wxID_ANY, U8("Bandeau de palette sur la carte"));
+  m_banner->SetToolTip(U8("A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée "
+                          "ou toutes les données ; clic sur une profondeur : "
+                          "borne de la palette ; clic sur les couleurs : préréglages ; "
+                          "roue : ce panneau."));
   g->Add(L("Opacité"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_opacity, 0, wxEXPAND);
   g->Add(m_shade, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeStrength, 0, wxEXPAND);
   g->Add(L("Exagération verticale"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_exag, 0, wxEXPAND);
@@ -871,6 +875,9 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   g->Add(L("Décimales"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_decimals, 0);
   g->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_font, 0);
   g->Add(m_smooth, 0); g->Add(m_legend, 0);
+  m_bannerPos = new wxChoice(sb, wxID_ANY);
+  for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche"}) m_bannerPos->Append(U8(t));
+  g->Add(m_banner, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_bannerPos, 0, wxEXPAND);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   m_cursor = new wxStaticText(sb, wxID_ANY, U8("Curseur : —"));
   m_cursor->SetFont(m_cursor->GetFont().Bold());
@@ -878,8 +885,9 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
 
   for (wxSlider* s : {m_opacity, m_shadeStrength, m_spacing})
     s->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
-  for (wxCheckBox* c : {m_shade, m_sound, m_smooth, m_legend})
+  for (wxCheckBox* c : {m_shade, m_sound, m_smooth, m_legend, m_banner})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
+  m_bannerPos->Bind(wxEVT_CHOICE, &BathyDialog::OnDisplay, this);
   for (wxSpinCtrl* c : {m_decimals, m_font})
     c->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnDisplay(e); });
   m_shadeSmooth->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) {
@@ -907,6 +915,9 @@ void BathyDialog::OnDisplay(wxCommandEvent&) {
   s.fontSize = m_font->GetValue();
   s.smooth = m_smooth->GetValue();
   s.legend = m_legend->GetValue();
+  s.banner = m_banner->GetValue();
+  s.bannerPos = m_bannerPos->GetSelection();
+  m_bannerPos->Enable(s.banner);
   if (colors) m_pi->ColorsChanged(); else m_pi->ViewChanged();
 }
 

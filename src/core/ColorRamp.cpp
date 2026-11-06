@@ -15,6 +15,7 @@
 
 #include "ColorRamp.h"
 #include "Lang.h"
+#include "FileUtil.h"
 #include "TideField.h"
 
 #include <algorithm>
@@ -117,7 +118,7 @@ bool ColorRamp::deserialize(const std::string& s) {
 
 // GMT .cpt : "z0 r g b z1 r g b" ou "z0 r/g/b z1 r/g/b"
 bool ColorRamp::loadCPT(const std::string& path, std::string& err) {
-  std::ifstream in(path);
+  std::ifstream in(U8Path(path));
   if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::vector<ColorStop> st;
   bool allFlat = true;
@@ -144,7 +145,7 @@ bool ColorRamp::loadCPT(const std::string& path, std::string& err) {
 }
 
 bool ColorRamp::saveCPT(const std::string& path) const {
-  std::ofstream o(path);
+  std::ofstream o(U8Path(path));
   if (!o || stops.size() < 2) return false;
   o << "# PersonalDepth_pi - " << (mode == Mode::Stepped ? "paliers" : "continu") << "\n";
   for (size_t i = 0; i + 1 < stops.size(); ++i) {
@@ -161,13 +162,25 @@ bool ColorRamp::saveCPT(const std::string& path) const {
 }
 
 std::vector<std::string> ColorRamp::PresetNames() {
-  return {"TimeZero PBG (bleus)", "Carte marine (paliers)", "Arc-en-ciel",
+  return {"TimeZero PBG (bleus)", "Carte marine (paliers)", kEncName, "Arc-en-ciel",
           "Sécurité tirant d'eau", "Niveaux de gris"};
+}
+
+ColorRamp ColorRamp::EncPreset(float shallow, float safety, float deep) {
+  ColorRamp r;
+  r.mode = Mode::Stepped;
+  safety = std::max(safety, shallow + 0.01f);
+  deep = std::max(deep, safety + 0.01f);
+  // table DAY_BRIGHT d'OpenCPN (chartsymbols.xml) : DEPIT, DEPVS, DEPMS, DEPMD, DEPDW
+  r.stops = {{-10.f, RGBA(131, 178, 149)}, {0.f, RGBA(115, 182, 239)}, {shallow, RGBA(152, 197, 242)},
+             {safety, RGBA(186, 213, 225)}, {deep, RGBA(212, 234, 238)}};
+  return r;
 }
 
 ColorRamp ColorRamp::Preset(const std::string& n) {
   ColorRamp r;
   auto S = [&](float d, int R, int G, int B) { r.stops.push_back({d, RGBA(R, G, B)}); };
+  if (n == kEncName) return EncPreset(2.f, 3.f, 6.f);  // réglages par défaut d'OpenCPN
   if (n == "Carte marine (paliers)") {
     r.mode = Mode::Stepped;
     S(-10, 165, 190, 120); S(0, 110, 170, 230); S(2, 150, 200, 240);

@@ -28,6 +28,51 @@ namespace pd {
 class Crs;
 using ProgressFn = std::function<void(float /*0..1*/)>;
 
+// Format personnalisé d'un fichier texte : lignes d'entête, séparateurs et
+// rôle des colonnes (numérotées à partir de 1, 0 = absente)
+struct TextFormat {
+  bool custom = false;   // false : trois premiers nombres de la ligne (X Y Z / Y X Z)
+  int skipLines = 0;     // lignes d'entête ignorées
+  char sep = 0;          // 0 automatique, ' ' espaces/tabulations, ',', ';', '\t'
+  char decimal = '.';    // '.' ou ','
+  int colX = 1, colY = 2, colZ = 3;
+  int colDate = 0;       // date, ou date et heure (2021-06-26T19:41:24Z)
+  int colTime = 0;       // heure seule (08:10:23.000)
+  int dateOrder = 0;     // 0 automatique, 1 A-M-J, 2 J/M/A, 3 M/J/A
+  // Gabarits facultatifs ("" = reconnaissance automatique / nombre décimal) :
+  // date et heure : y M d h m s z AP MMM (« yyyy/M/d h:m:s.s ») ;
+  // coordonnées X et Y (chacune) : D M S X (« D M S.S X », « DDMM.MX »)
+  std::string dateFmt, timeFmt, xFmt, yFmt;
+  std::string serialize() const;            // "" si non personnalisé
+  bool deserialize(const std::string& s);   // "" -> non personnalisé
+  bool operator==(const TextFormat& o) const { return serialize() == o.serialize(); }
+};
+
+// Découpe d'une ligne en champs selon le format (espaces, virgule…)
+std::vector<std::string> SplitFields(const std::string& line, const TextFormat& f);
+// Nombre d'un champ (décimale '.' ou ',')
+bool ParseFieldNumber(const std::string& s, char decimal, double& v);
+// Date (et heure) d'un ou deux champs -> secondes UTC depuis 1970 (reconnaissance automatique)
+bool ParseDateTime(const std::string& date, const std::string& time, int dateOrder, long long& t);
+// Idem avec les gabarits du format (dateFmt / timeFmt), sinon automatique
+bool ParseFieldDateTime(const std::string& date, const std::string& time, const TextFormat& f,
+                        long long& t);
+// Coordonnée X (isY false) ou Y : gabarit xFmt / yFmt (degrés, minutes, secondes, hémisphère), sinon nombre
+bool ParseFieldCoord(const std::string& s, const TextFormat& f, bool isY, double& v);
+// Gabarits seuls (aide, tests). Date : champs non lus = -1 ; renvoie false si le texte ne suit pas le gabarit
+struct DateParts {
+  int y = -1, mo = -1, d = -1, h = -1, mi = -1;
+  double s = -1;
+  int ampm = 0;  // 1 AM, 2 PM
+};
+bool ParseDatePattern(const std::string& text, const std::string& pattern, DateParts& p);
+bool ParseCoordPattern(const std::string& text, const std::string& pattern, double& deg);
+// Premières lignes d'un fichier texte (UTF-8, fins de ligne retirées)
+bool ReadTextHead(const std::string& path, size_t maxLines, std::vector<std::string>& lines,
+                  std::string& err);
+// Format deviné d'après les premières lignes (entête, séparateur, colonnes)
+TextFormat GuessTextFormat(const std::vector<std::string>& lines);
+
 struct LoadOptions {
   enum class Order { LonLatZ, LatLonZ };
   enum class ZSign { Auto, DepthPositive, Elevation };
@@ -44,6 +89,8 @@ struct LoadOptions {
   // Système de coordonnées du fichier (nullptr = WGS84 lon/lat). Les deux
   // premières colonnes sont alors Est/Nord (ou Nord/Est avec LatLonZ).
   std::shared_ptr<const Crs> crs;
+  // Fichiers texte : format personnalisé (colonnes, entête, séparateurs)
+  TextFormat text;
 };
 
 // Pas régulier d'une suite de coordonnées entières (en unités), 0 sinon.
@@ -61,6 +108,8 @@ class PointCloud {
   float zMin = 0, zMax = 0;
   // Pas de grille détecté dans les coordonnées projetées d'origine (m), 0 sinon
   double srcStepX = 0, srcStepY = 0;
+  // Dates des sondes (colonne date/heure du fichier), secondes UTC ; 0 = inconnues
+  long long tMin = 0, tMax = 0;
 
   size_t size() const { return z.size(); }
   bool empty() const { return z.empty(); }

@@ -155,6 +155,9 @@ struct GLHostState {
 static const int kTile = 512;   // cellules par tuile de texture
 static const int kMesh = 8;     // subdivisions par tuile (suivi de la projection)
 static const uint32_t kInk = RGBA(15, 25, 60), kHalo = RGBA(255, 255, 255);
+// Bandeau de palette : fond sombre, badge « A » (automatique) / « M » (manuel)
+static const uint32_t kBannerBg = RGBA(32, 38, 48), kBadgeAuto = RGBA(0, 132, 196),
+                      kBadgeMan = RGBA(96, 104, 118), kBadgeSrc = RGBA(70, 84, 104);
 
 struct BathyRenderer::Tile {
   GLuint tex = 0;    // couleurs précalculées (rendu sans lissage)
@@ -222,7 +225,7 @@ struct BathyRenderer::SmoothGL {
 };
 
 struct BathyRenderer::Glyphs {
-  GLuint tex = 0;
+  GLuint tex = 0, texLight = 0;  // encre sombre / halo blanc ; encre blanche / halo sombre
   int texW = 0, texH = 0, lineH = 0, fontSize = 0;
   int x[128] = {0}, w[128] = {0};
 };
@@ -240,6 +243,7 @@ void BathyRenderer::ReleaseGL() {
   m_sgl.reset();
   m_tiles.clear();
   if (m_glyphs && m_glyphs->tex) glDeleteTextures(1, &m_glyphs->tex);
+  if (m_glyphs && m_glyphs->texLight) glDeleteTextures(1, &m_glyphs->texLight);
   m_glyphs.reset();
 }
 
@@ -444,6 +448,7 @@ std::vector<Label> BathyRenderer::CollectLabels(PlugIn_ViewPort* vp, const Scree
 void BathyRenderer::BuildGlyphs(int fontSize) {
   if (m_glyphs && m_glyphs->fontSize == fontSize) return;
   if (m_glyphs && m_glyphs->tex) glDeleteTextures(1, &m_glyphs->tex);
+  if (m_glyphs && m_glyphs->texLight) glDeleteTextures(1, &m_glyphs->texLight);
   m_glyphs = std::make_unique<Glyphs>();
   Glyphs& G = *m_glyphs;
   G.fontSize = fontSize;
@@ -473,28 +478,34 @@ void BathyRenderer::BuildGlyphs(int fontSize) {
   const unsigned char* d = img.GetData();
   std::vector<float> A((size_t)G.texW * G.texH);
   for (size_t k = 0; k < A.size(); ++k) A[k] = d[3 * k] / 255.f;
-  std::vector<uint32_t> px(A.size());
-  for (int j = 0; j < G.texH; ++j)
-    for (int i = 0; i < G.texW; ++i) {
-      float a = A[(size_t)j * G.texW + i], hmax = 0;
-      for (int dj = -1; dj <= 1; ++dj)
-        for (int di = -1; di <= 1; ++di) {
-          int ii = i + di, jj = j + dj;
-          if (ii >= 0 && jj >= 0 && ii < G.texW && jj < G.texH)
-            hmax = std::max(hmax, A[(size_t)jj * G.texW + ii]);
-        }
-      auto mix = [a](int ink, int halo) { return (int)(ink * a + halo * (1 - a)); };
-      px[(size_t)j * G.texW + i] =
-          RGBA(mix(R_(kInk), R_(kHalo)), mix(G_(kInk), G_(kHalo)), mix(B_(kInk), B_(kHalo)),
-               (int)(255 * std::max(a, hmax * 0.9f)));
-    }
-  glGenTextures(1, &G.tex);
-  glBindTexture(GL_TEXTURE_2D, G.tex);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, G.texW, G.texH, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-               px.data());
+  auto build = [&](uint32_t ink, uint32_t halo) {
+    std::vector<uint32_t> px(A.size());
+    for (int j = 0; j < G.texH; ++j)
+      for (int i = 0; i < G.texW; ++i) {
+        float a = A[(size_t)j * G.texW + i], hmax = 0;
+        for (int dj = -1; dj <= 1; ++dj)
+          for (int di = -1; di <= 1; ++di) {
+            int ii = i + di, jj = j + dj;
+            if (ii >= 0 && jj >= 0 && ii < G.texW && jj < G.texH)
+              hmax = std::max(hmax, A[(size_t)jj * G.texW + ii]);
+          }
+        auto mix = [a](int in, int ha) { return (int)(in * a + ha * (1 - a)); };
+        px[(size_t)j * G.texW + i] =
+            RGBA(mix(R_(ink), R_(halo)), mix(G_(ink), G_(halo)), mix(B_(ink), B_(halo)),
+                 (int)(255 * std::max(a, hmax * 0.9f)));
+      }
+    GLuint t = 0;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, G.texW, G.texH, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 px.data());
+    return t;
+  };
+  G.tex = build(kInk, kHalo);
+  G.texLight = build(RGBA(255, 255, 255), kBannerBg);
 }
 
 float BathyRenderer::GLTextWidth(const wxString& t, float scale) const {
@@ -511,7 +522,7 @@ void BathyRenderer::DrawGLText(float x, float y, const wxString& t, float scale,
   if (center) x -= GLTextWidth(t, scale) / 2;
   const float h = G.texH * scale;
   y -= h / 2;
-  glBindTexture(GL_TEXTURE_2D, G.tex);
+  glBindTexture(GL_TEXTURE_2D, m_glLight ? G.texLight : G.tex);
   glBegin(GL_QUADS);
   for (wxUniChar ch : t) {
     int c = (int)ch.GetValue();
@@ -744,7 +755,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
       glEnable(GL_TEXTURE_2D);
     }
   }
-  if (s.legend) DrawLegendGL(vp, s, s.tideLegend);
+  if (s.banner) DrawBannerGL(vp, s); else m_banner.valid = false;
   if (!cursorText.empty()) DrawCursorGL(vp, cursorText);
 }
 
@@ -991,56 +1002,204 @@ void BathyRenderer::DrawCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& 
   dc.DrawText(text, x + 7, y + 4);
 }
 
-void BathyRenderer::DrawLegendGL(PlugIn_ViewPort* vp, const DisplaySettings& s,
-                                 const wxString& cursorText) {
+// ------------------------------------------------- bandeau de palette
+// [min]  (A|M)  [max unité]  ⚙   puis la rampe de couleurs entre min et max ;
+// une ligne de marée éventuelle au-dessus. Remplace l'ancienne légende.
+bool BathyRenderer::LayoutBanner(PlugIn_ViewPort* vp, const DisplaySettings& s,
+                                 const std::function<int(const wxString&)>& textW, int lineH,
+                                 BannerLayout& L) {
   const auto& st = s.ramp.stops;
-  if (st.empty()) return;
-  const int band = 16, bw = 22, pad = 8;
-  const int n = (int)st.size();
-  const int lh = m_glyphs->lineH;
-  int boxH = pad * 2 + n * band + lh + (s.ramp.safetyOn ? lh : 0) +
-             (cursorText.empty() ? 0 : lh);
-  int boxW = cursorText.empty() ? 150 : std::max(150, (int)GLTextWidth(cursorText, 1.f) + 2 * pad);
-  float x = 10, y = vp->pix_height - 10 - boxH;
-  glDisable(GL_TEXTURE_2D);
-  glColor4f(1, 1, 1, 0.85f);
-  glBegin(GL_QUADS);
-  glVertex2f(x, y); glVertex2f(x + boxW, y); glVertex2f(x + boxW, y + boxH); glVertex2f(x, y + boxH);
-  glEnd();
-  float cy = y + pad;
-  glEnable(GL_TEXTURE_2D);
-  glColor4f(1, 1, 1, 1);
-  if (!cursorText.empty()) { DrawGLText(x + pad, cy + lh / 2.f, cursorText, 1.f, false); cy += lh; }
-  DrawGLText(x + pad, cy + lh / 2.f, wxString::FromUTF8(pd::tr("Prof. (")) + s.depthUnit + ")", 1.f, false);
-  cy += lh;
-  glDisable(GL_TEXTURE_2D);
-  glBegin(GL_QUADS);
+  if (st.empty()) return false;
+  L.lo = st.front().depth;
+  L.hi = st.back().depth;
+  L.lineH = lineH;
+  L.minT = DepthText(s, L.lo);
+  L.maxT = DepthText(s, L.hi) + " " + s.depthUnit;
+  L.modeT = s.autoPalette ? "A" : "M";
+  // source du mode automatique : zone affichée / toutes les données (texte ASCII)
+  if (s.autoPalette) L.srcT = wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout"));
+  L.tide = s.tideLegend;
+  const int pad = 8, gap = 16, barH = 14;
+  const int rowH = lineH + 6, gear = lineH + 2;
+  const int badgeW = std::max(textW("M") + 12, rowH), wMin = textW(L.minT), wMax = textW(L.maxT);
+  const int srcW = L.srcT.empty() ? 0 : std::max(textW("Tout"), textW(L.srcT)) + 12;
+  const int midW = badgeW + (srcW ? 3 + srcW : 0);
+  // boutons au centre : chaque côté doit contenir sa valeur (et la roue à droite)
+  const int leftNeed = pad + std::max(wMin, textW("-000.0")) + gap;
+  const int rightNeed = gap + std::max(wMax, textW("000.0 ft")) + gap + gear + pad;
+  int boxW = midW + 2 * std::max(leftNeed, rightNeed);
+  boxW = std::max(boxW, 360);
+  if (!L.tide.empty()) boxW = std::max(boxW, textW(L.tide) + 2 * pad);
+  const int tideH = L.tide.empty() ? 0 : lineH + 2;
+  const int boxH = pad + tideH + rowH + 6 + barH + pad;
+  // hors de la marge où OpenCPN fait défiler la carte (5 % de la largeur),
+  // hors de l'échelle des distances (bas gauche) et des boutons de zoom (bas droite)
+  const int W = vp->pix_width, H = vp->pix_height;
+  const int m = std::max(24, W * 5 / 100 + 10);
+  int x, y;
+  switch (s.bannerPos) {
+    case 1: x = (W - boxW) / 2; y = m; break;               // haut, centré
+    case 2: x = m; y = H - m - boxH; break;                  // bas gauche
+    default: x = (W - boxW) / 2; y = H - m - boxH; break;   // bas, centré
+  }
+  x = std::max(0, x); y = std::max(0, y);
+  L.box = wxRect(x, y, boxW, boxH);
+  L.tideY = y + pad + lineH / 2;
+  L.rowY = y + pad + tideH;
+  const int bx = x + (boxW - midW) / 2;
+  L.modeR = wxRect(bx, L.rowY, badgeW, rowH);
+  if (srcW) L.srcR = wxRect(bx + badgeW + 3, L.rowY, srcW, rowH);
+  const int midR = bx + midW;
+  L.gearR = wxRect(x + boxW - pad - gear, L.rowY + (rowH - gear) / 2, gear, gear);
+  L.minR = wxRect(x + 2, L.rowY - 2, bx - x - 6, rowH + 4);
+  L.maxR = wxRect(midR + 4, L.rowY - 2, L.gearR.x - 6 - (midR + 4), rowH + 4);
+  L.barR = wxRect(x + pad, L.rowY + rowH + 6, boxW - 2 * pad, barH);
+  m_banner.valid = true;
+  m_banner.box = L.box;
+  m_banner.minR = L.minR;
+  m_banner.modeR = L.modeR;
+  m_banner.srcR = L.srcR;
+  m_banner.maxR = L.maxR;
+  m_banner.barR = wxRect(L.barR.x, L.barR.y - 3, L.barR.width, L.barR.height + 6);
+  m_banner.gearR = wxRect(L.gearR.x - 4, L.gearR.y - 4, L.gearR.width + 8, L.gearR.height + 8);
+  m_banner.pixW = vp->pix_width;
+  return true;
+}
+
+#ifndef GL_TRIANGLE_FAN
+#define GL_TRIANGLE_FAN 0x0006
+#endif
+static const double kPiB = 3.14159265358979323846;
+// Roue dentée : 8 dents (polygone étoilé autour du centre)
+static std::vector<wxPoint2DDouble> GearShape(double cx, double cy, double r) {
+  std::vector<wxPoint2DDouble> p;
+  const int n = 8 * 4;
   for (int k = 0; k < n; ++k) {
-    uint32_t a = st[k].rgba;
-    uint32_t b = (s.ramp.mode == ColorRamp::Mode::Continuous && k + 1 < n) ? st[k + 1].rgba : a;
-    float y0 = cy + k * band, y1 = y0 + band;
-    glColor4ub(R_(a), G_(a), B_(a), 255); glVertex2f(x + pad, y0); glVertex2f(x + pad + bw, y0);
-    glColor4ub(R_(b), G_(b), B_(b), 255); glVertex2f(x + pad + bw, y1); glVertex2f(x + pad, y1);
+    const double a = (k + 0.5) * 2 * kPiB / n;
+    const double rr = (k % 4 < 2) ? r : r * 0.7;
+    p.emplace_back(cx + rr * std::cos(a), cy + rr * std::sin(a));
+  }
+  return p;
+}
+
+void BathyRenderer::DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  BannerLayout L;
+  const int lh = m_glyphs->lineH;
+  if (!LayoutBanner(vp, s, [this](const wxString& t) { return (int)GLTextWidth(t, 1.f); }, lh, L)) {
+    m_banner.valid = false;
+    return;
+  }
+  auto rect = [](const wxRect& r) {
+    glBegin(GL_QUADS);
+    glVertex2f(r.x, r.y); glVertex2f(r.x + r.width, r.y);
+    glVertex2f(r.x + r.width, r.y + r.height); glVertex2f(r.x, r.y + r.height);
+    glEnd();
+  };
+  auto col = [](uint32_t c, float a) { glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, a); };
+  glDisable(GL_TEXTURE_2D);
+  col(kBannerBg, 0.86f);
+  rect(L.box);
+  // badge du mode
+  col(s.autoPalette ? kBadgeAuto : kBadgeMan, 1.f);
+  rect(L.modeR);
+  if (!L.srcR.IsEmpty()) { col(kBadgeSrc, 1.f); rect(L.srcR); }
+  // rampe : une tranche par pixel, couleur exacte de la palette (paliers, sécurité)
+  const wxRect& b = L.barR;
+  const ColorRamp& r = s.ramp;
+  glBegin(GL_QUADS);
+  for (int i = 0; i < b.width; ++i) {
+    const float d = L.hi > L.lo ? L.lo + (L.hi - L.lo) * (i + 0.5f) / b.width : L.lo;
+    const uint32_t c = r.colorAt(d);
+    glColor4ub(R_(c), G_(c), B_(c), 255);
+    glVertex2f(b.x + i, b.y); glVertex2f(b.x + i + 1, b.y);
+    glVertex2f(b.x + i + 1, b.y + b.height); glVertex2f(b.x + i, b.y + b.height);
   }
   glEnd();
+  // profondeur de sécurité : repère sur la rampe
+  if (r.safetyOn && L.hi > L.lo && r.safetyDepth > L.lo && r.safetyDepth < L.hi) {
+    const float xs = b.x + b.width * (r.safetyDepth - L.lo) / (L.hi - L.lo);
+    glColor4f(1, 1, 1, 1);
+    rect(wxRect((int)xs - 1, b.y - 3, 3, b.height + 6));
+    col(r.safetyColor, 1.f);
+    rect(wxRect((int)xs, b.y - 2, 1, b.height + 4));
+  }
+  // roue des réglages
+  glColor4f(0.85f, 0.88f, 0.92f, 1);
+  const double gr = L.gearR.width / 2.0, gx = L.gearR.x + gr, gy = L.gearR.y + gr;
+  const auto g = GearShape(gx, gy, gr);
+  glBegin(GL_TRIANGLE_FAN);
+  glVertex2d(gx, gy);
+  for (const auto& p : g) glVertex2d(p.m_x, p.m_y);
+  glVertex2d(g.front().m_x, g.front().m_y);
+  glEnd();
+  col(kBannerBg, 1.f);
+  glBegin(GL_TRIANGLE_FAN);
+  glVertex2d(gx, gy);
+  for (int k = 0; k <= 16; ++k)
+    glVertex2d(gx + gr * 0.32 * std::cos(k * kPiB / 8), gy + gr * 0.32 * std::sin(k * kPiB / 8));
+  glEnd();
+  // textes
   glEnable(GL_TEXTURE_2D);
   glColor4f(1, 1, 1, 1);
-  for (int k = 0; k < n; ++k)
-    DrawGLText(x + pad + bw + 6, cy + k * band + (s.ramp.mode == ColorRamp::Mode::Stepped ? 0 : 1),
-               DepthText(s, st[k].depth), 1.f, false);
-  if (s.ramp.safetyOn) {
-    float yy = cy + n * band + lh / 2.f;
-    glDisable(GL_TEXTURE_2D);
-    uint32_t c = s.ramp.safetyColor;
-    glColor4ub(R_(c), G_(c), B_(c), 255);
-    glBegin(GL_QUADS);
-    glVertex2f(x + pad, yy - 6); glVertex2f(x + pad + bw, yy - 6);
-    glVertex2f(x + pad + bw, yy + 6); glVertex2f(x + pad, yy + 6);
-    glEnd();
-    glEnable(GL_TEXTURE_2D);
-    glColor4f(1, 1, 1, 1);
-    DrawGLText(x + pad + bw + 6, yy, "< " + DepthText(s, s.ramp.safetyDepth) + " " + s.depthUnit, 1.f, false);
+  m_glLight = true;
+  const float cy = L.rowY + L.modeR.height / 2.f;
+  if (!L.tide.empty()) DrawGLText(L.box.x + 8, L.tideY, L.tide, 1.f, false);
+  DrawGLText(L.box.x + 8, cy, L.minT, 1.f, false);
+  DrawGLText(L.modeR.x + L.modeR.width / 2.f, cy, L.modeT, 1.f, true);
+  if (!L.srcR.IsEmpty()) DrawGLText(L.srcR.x + L.srcR.width / 2.f, cy, L.srcT, 1.f, true);
+  DrawGLText(L.gearR.x - 10 - GLTextWidth(L.maxT, 1.f), cy, L.maxT, 1.f, false);
+  m_glLight = false;
+}
+
+void BathyRenderer::DrawBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  BannerLayout L;
+  const int lh = dc.GetTextExtent("0").y + 2;
+  if (!LayoutBanner(vp, s, [&dc](const wxString& t) { return dc.GetTextExtent(t).x; }, lh, L)) {
+    m_banner.valid = false;
+    return;
   }
+  auto wc = [](uint32_t c) { return wxColour(R_(c), G_(c), B_(c)); };
+  dc.SetPen(*wxTRANSPARENT_PEN);
+  dc.SetBrush(wxBrush(wc(kBannerBg)));
+  dc.DrawRoundedRectangle(L.box, 5);
+  dc.SetBrush(wxBrush(wc(s.autoPalette ? kBadgeAuto : kBadgeMan)));
+  dc.DrawRoundedRectangle(L.modeR, 3);
+  if (!L.srcR.IsEmpty()) {
+    dc.SetBrush(wxBrush(wc(kBadgeSrc)));
+    dc.DrawRoundedRectangle(L.srcR, 3);
+  }
+  const wxRect& b = L.barR;
+  const ColorRamp& r = s.ramp;
+  for (int i = 0; i < b.width; ++i) {
+    const float d = L.hi > L.lo ? L.lo + (L.hi - L.lo) * (i + 0.5f) / b.width : L.lo;
+    dc.SetPen(wxPen(wc(r.colorAt(d)), 1));
+    dc.DrawLine(b.x + i, b.y, b.x + i, b.y + b.height);
+  }
+  if (r.safetyOn && L.hi > L.lo && r.safetyDepth > L.lo && r.safetyDepth < L.hi) {
+    const int xs = (int)(b.x + b.width * (r.safetyDepth - L.lo) / (L.hi - L.lo));
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(*wxWHITE_BRUSH);
+    dc.DrawRectangle(xs - 1, b.y - 3, 3, b.height + 6);
+    dc.SetPen(wxPen(wc(r.safetyColor), 1));
+    dc.DrawLine(xs, b.y - 2, xs, b.y + b.height + 2);
+  }
+  const double gr = L.gearR.width / 2.0, gx = L.gearR.x + gr, gy = L.gearR.y + gr;
+  std::vector<wxPoint> gp;
+  for (const auto& p : GearShape(gx, gy, gr))
+    gp.emplace_back((int)std::lround(p.m_x), (int)std::lround(p.m_y));
+  dc.SetPen(*wxTRANSPARENT_PEN);
+  dc.SetBrush(wxBrush(wxColour(217, 224, 235)));
+  dc.DrawPolygon((int)gp.size(), gp.data());
+  dc.SetBrush(wxBrush(wc(kBannerBg)));
+  dc.DrawCircle((int)std::lround(gx), (int)std::lround(gy), (int)std::lround(gr * 0.32));
+  dc.SetTextForeground(*wxWHITE);
+  const int ty = L.rowY + (L.modeR.height - dc.GetTextExtent("0").y) / 2;
+  if (!L.tide.empty()) dc.DrawText(L.tide, L.box.x + 8, L.tideY - dc.GetTextExtent("0").y / 2);
+  dc.DrawText(L.minT, L.box.x + 8, ty);
+  dc.DrawText(L.modeT, L.modeR.x + (L.modeR.width - dc.GetTextExtent(L.modeT).x) / 2, ty);
+  if (!L.srcR.IsEmpty())
+    dc.DrawText(L.srcT, L.srcR.x + (L.srcR.width - dc.GetTextExtent(L.srcT).x) / 2, ty);
+  dc.DrawText(L.maxT, L.gearR.x - 10 - dc.GetTextExtent(L.maxT).x, ty);
 }
 
 // ---------------------------------------------------------------- wxDC
@@ -1185,40 +1344,7 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
 
   if (!cursorText.empty()) { dc.SetFont(fontBig); DrawCursorDC(dc, vp, cursorText); }
 
-  // Légende
-  if (!s.legend || s.ramp.stops.empty()) return;
-  const auto& st = s.ramp.stops;
-  dc.SetFont(fontBig);
-  const int lh = dc.GetTextExtent("0").y + 2, band = 16, bw = 22, pad = 8, n = (int)st.size();
-  const bool tl = !s.tideLegend.empty();
-  int boxH = pad * 2 + n * band + lh + (s.ramp.safetyOn ? lh : 0) + (tl ? lh : 0);
-  int x = 10, y = H - 10 - boxH;
-  const int boxW = tl ? std::max(150, dc.GetTextExtent(s.tideLegend).x + 2 * pad) : 150;
-  dc.SetPen(*wxTRANSPARENT_PEN);
-  dc.SetBrush(wxBrush(wxColour(255, 255, 255)));
-  dc.DrawRectangle(x, y, boxW, boxH);
-  dc.SetTextForeground(ink);
-  int cy = y + pad;
-  if (tl) { dc.DrawText(s.tideLegend, x + pad, cy); cy += lh; }
-  dc.DrawText(wxString::FromUTF8(pd::tr("Prof. (")) + s.depthUnit + ")", x + pad, cy);
-  cy += lh;
-  for (int k = 0; k < n; ++k) {
-    uint32_t a = st[k].rgba;
-    if (s.ramp.mode == ColorRamp::Mode::Continuous && k + 1 < n) {
-      uint32_t b = st[k + 1].rgba;
-      dc.GradientFillLinear(wxRect(x + pad, cy + k * band, bw, band),
-                            wxColour(R_(a), G_(a), B_(a)), wxColour(R_(b), G_(b), B_(b)), wxDOWN);
-    } else {
-      dc.SetBrush(wxBrush(wxColour(R_(a), G_(a), B_(a))));
-      dc.DrawRectangle(x + pad, cy + k * band, bw, band);
-    }
-    dc.DrawText(DepthText(s, st[k].depth), x + pad + bw + 6, cy + k * band);
-  }
-  if (s.ramp.safetyOn) {
-    uint32_t c = s.ramp.safetyColor;
-    int yy = cy + n * band;
-    dc.SetBrush(wxBrush(wxColour(R_(c), G_(c), B_(c))));
-    dc.DrawRectangle(x + pad, yy + 2, bw, lh - 4);
-    dc.DrawText("< " + DepthText(s, s.ramp.safetyDepth) + " " + s.depthUnit, x + pad + bw + 6, yy);
-  }
+  // Bandeau de palette (remplace la légende)
+  if (s.banner) { dc.SetFont(fontBig); DrawBannerDC(dc, vp, s); }
+  else m_banner.valid = false;
 }

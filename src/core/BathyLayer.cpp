@@ -15,6 +15,7 @@
 
 #include "BathyLayer.h"
 #include "Lang.h"
+#include "FileUtil.h"
 
 #include <algorithm>
 #include <cctype>
@@ -45,7 +46,7 @@ void BathyLayer::startLoad() {
 }
 
 static std::string lowerExt(const std::string& p) {
-  std::string e = fs::path(p).extension().string();
+  std::string e = U8Path(p).extension().u8string();
   std::transform(e.begin(), e.end(), e.begin(), ::tolower);
   return e;
 }
@@ -61,8 +62,8 @@ void BathyLayer::run() {
     // Système de coordonnées : .prj voisin, sinon choix de l'utilisateur
     std::string def = params.crsDef, label = params.crsName;
     if (params.readPrj) {
-      fs::path base(params.path);
-      for (fs::path prj : {fs::path(params.path + ".prj"), base.replace_extension(".prj")}) {
+      fs::path base = U8Path(params.path);
+      for (fs::path prj : {U8Path(params.path + ".prj"), base.replace_extension(".prj")}) {
         std::error_code ec;
         if (!fs::exists(prj, ec)) continue;
         std::ifstream f(prj);
@@ -113,6 +114,9 @@ void BathyLayer::run() {
         for (double v : params.load.nodata) nd += std::to_string(v) + ";";
         std::snprintf(rng, sizeof rng, "_n%06zx", std::hash<std::string>()(nd) & 0xFFFFFF);
       }
+      if (params.load.text.custom)  // format personnalisé : autre cache
+        std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_f%06zx",
+                      std::hash<std::string>()(params.load.text.serialize()) & 0xFFFFFF);
       if (params.load.zToMeters != 1.0)  // fichier en pieds : autre cache
         std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_u%g",
                       params.load.zToMeters);
@@ -120,8 +124,8 @@ void BathyLayer::run() {
                     (int)params.load.zsign, params.load.zOffset, rng, crsHash);
       const std::string cache = params.path + tag;
       std::error_code ec;
-      bool fresh = params.useCache && fs::exists(cache, ec) &&
-                   fs::last_write_time(cache, ec) >= fs::last_write_time(params.path, ec);
+      bool fresh = params.useCache && fs::exists(U8Path(cache), ec) &&
+                   fs::last_write_time(U8Path(cache), ec) >= fs::last_write_time(U8Path(params.path), ec);
       if (fresh && cloud.loadCache(cache)) {
         ok = true;
         progress_ = 0.6f;

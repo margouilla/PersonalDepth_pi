@@ -36,10 +36,11 @@ grids are never recomputed.
 | **Formats** | XYZ text (any separator, headers skipped), ESRI ASCII `.asc`, LandXML TIN; GeoTIFF/BAG/NetCDF when built with GDAL. User NODATA values and Z bounds at import |
 | **Survey database** | SQLite files split into geographic cells (0.25° by default, re-splittable); per-pixel shoalest sounding kept to the millimetre; overlapping surveys merged pixel by pixel by priority (best resolution then newest, shoalest, newest, or manual rank — no averaging); classes, multi-selection, clean-up by depth range; import can be stopped safely (SQLite transaction rolled back); already-imported files detected (import only new ones or replace) |
 | **Compression** | JPEG-LS (MED) predictor + zig-zag + deflate, unit detection; ~0.9 byte per sounding at 50 cm resolution; tile encoding spread over all CPU cores |
-| **Coordinates** | 69 built-in systems (WGS84, all UTM zones, Lambert-93, CC42–CC50, NTF Lambert, French overseas, many European/American/Oceanian systems, polar, Web Mercator), EPSG code or PROJ string, `.prj` file; projections coded in the plugin, checked against proj4js to < 1 cm |
+| **Coordinates** | 300 built-in systems (WGS84, all UTM zones, Lambert-93, CC42–CC50, NTF Lambert, French overseas, many European/American/Oceanian systems, all NAD83 State Plane zones in m / US ft, polar, Web Mercator), EPSG code or PROJ string, `.prj` file; custom text formats (column choice, header, separators, date and time); projections coded in the plugin, checked against proj4js to < 1 cm |
 | **Vertical datum** | Conversion to chart datum (ZH) on import: IGN69 / IGN78C (Corsica) → ZH with Shom BathyElli v2.1 + IGN RAF20 / RAC23, ellipsoidal heights → ZH, or any reference surface + geoid / difference grid |
 | **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by `tools/pdtide_convert.py`, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
 | **Palette** | Continuous or stepped, editable table, presets, GMT `.cpt` import/export, automatic mode (N rounded thresholds over all data or the current view, optional fixed min/max), safety depth overlay |
+| **Palette banner** | On-chart banner: min / max depth (click to set), **A**/**M** automatic or manual, **View**/**All** source, colour bar (click for presets), gear to open the panel |
 | **Units** | Survey files can be imported in metres or feet; the database always stores metres. Soundings, isobaths, legend, palette thresholds, safety depth and tide heights follow OpenCPN's units (*Options › Display › Units*: metres or feet — fathoms are shown in feet) |
 | **Survey metadata** | Survey date set at import (or read from the file name) and editable afterwards; vertical reference, coordinate system and Z unit of an imported source can be changed (*Edit…*: the original files are re-read with the new settings, which are stored per source) |
 | **Tide curve** | Separate window plotting height versus time for every tide point used (OpenCPN station, or up to 9 FES2022 points spread over the data), legend with checkboxes, automatic bounds (one tide cycle around the chosen time) or user-defined, marker at the current or chosen time |
@@ -187,11 +188,12 @@ grilles de profondeur ne sont jamais recalculées.
 | Formats | XYZ texte (espace, tabulation, `,` ou `;`, entêtes ignorés), ESRI ASCII `.asc`, LandXML TIN (`<P>`/`<F>`), GeoTIFF/BAG/NetCDF si compilé avec GDAL. Valeurs NODATA supplémentaires et bornes Z1 – Z2 à l'import |
 | Base de bathymétrie | Fichiers SQLite découpés en cellules géographiques (0,25° par défaut : `PD_N4815W00430.pdb` ; 1°, 0,5° ou 0,1° au choix, redécoupage possible ; anciennes bases en 1° lisibles), tuiles Web Mercator 256 × 256 (niveau natif d'après la résolution). Chaque pixel garde la plus faible sonde de la source (au mm) ; la surface fusionnée garde la valeur de la source prioritaire (pas de moyenne) : meilleure résolution puis plus récente (défaut), sonde la plus faible, plus récente, rang manuel. Classes, sélection multiple, nettoyage par bornes de profondeur, seules les tuiles touchées sont refusionnées. Import interruptible (transaction annulée pour le fichier en cours), fichiers déjà importés détectés (seulement les nouveaux, ou remplacement) |
 | Compression | Prédicteur JPEG-LS (MED) + zigzag + deflate, détection de l'unité ; ~0,9 octet par sonde pour un levé à 50 cm ; encodage réparti sur tous les cœurs |
-| Coordonnées | 69 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin. Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
+| Coordonnées | 300 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques dont toutes les zones NAD83 State Plane en m / pieds US, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin ; formats texte personnalisés (choix des colonnes, entête, séparateurs, date et heure). Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
 | Référence verticale | Conversion vers le ZH à l'import : IGN69 / IGN78C (Corse) → ZH par BathyElli v2.1 (Shom) + RAF20 / RAC23 (IGN), hauteurs ellipsoïdales → ZH, ou surface de référence + géoïde / grille d'écart au choix |
 | Marée | Stations de marée d'OpenCPN (hauteur unique, « maintenant » ou date choisie, curseur ±12 h), ou **FES2022 maillé** : atlas mondial converti (`tools/pdtide_convert.py`, 34 ondes), prédiction Schureman identique à pyfes (~1 cm), ondes mineures déduites ; Z0 = grille fournie, sinon BathyElli NM/ell − ZH/ell, sinon plus basse mer astronomique FES sur 19 ans. Profondeur affichée = sonde ZH + hauteur d'eau, pixel par pixel (shader), aussi pour les isobathes et les sondes |
 | Unités | Fichiers de levé importés en mètres ou en pieds ; la base est toujours en mètres. Sondes, isobathes, légende, seuils de la palette, zone dangereuse et hauteurs de marée suivent les unités d'OpenCPN (*Options › Affichage › Unités* : mètres ou pieds — les brasses sont affichées en pieds) |
 | Palette | Dégradé continu ou paliers ; seuils et couleurs éditables ; 5 préréglages ; import/export GMT `.cpt`. Mode automatique : N seuils (valeurs rondes ou répartis) entre le min et le max de toutes les données ou de la zone affichée, bornes min/max imposables |
+| Bandeau de palette | Bandeau sur la carte : profondeurs min / max (clic pour les saisir), **A**/**M** automatique ou manuel, **Vue**/**Tout**, rampe de couleurs (clic : préréglages), roue pour ouvrir le panneau |
 | Sécurité | Zone « prof. < X m » en surcouche (tirant d'eau + pied de pilote), isobathe de sécurité rouge |
 | Relief | Ombrage (Horn) réglable en direct, exagération verticale, adoucissement de la seule surface d'ombrage |
 | Isobathes | Marching squares sur la grille, en cache par niveau de zoom : intervalle régulier ou seuils de la palette, isobathe maîtresse, valeurs sur les lignes, lissage. Aucune ligne inventée dans les trous du levé |
@@ -346,7 +348,7 @@ src/core/          cœur C++17 sans wxWidgets (testable seul)
   Inflate          décompression zlib sans dépendance
   Triangulate      enveloppe de delaunator
 src/PersonalDepth_pi.*   classe plugin, configuration, tâches de fond
-src/BathyRenderer.*      rendu GL / DC, sondes, légende
+src/BathyRenderer.*      rendu GL / DC, sondes, bandeau de palette
 src/BathyDialog.*        panneau principal
 src/DataDialog.*         fenêtre « Gestion des données »
 src/ImportDialog.*       fenêtre d'import / de modification des sources
@@ -372,7 +374,7 @@ third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
 - Projection écran supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36, DHDN, BD72…) : paramètres de Helmert
   moyens, ~1–2 m d'écart. LAEA (EPSG:3035) non pris en charge.
-- Légende et lecture curseur en ASCII en mode OpenGL.
+- Bandeau de palette et lecture curseur en ASCII en mode OpenGL.
 - Les noms de classe et libellés de référence verticale enregistrés dans la
   base restent dans la langue où ils ont été créés.
 

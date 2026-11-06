@@ -4,7 +4,31 @@
 
 ## English
 
-### 0.1.0-beta.5 (in preparation)
+### 0.1.0-beta.6 (2026-11-06)
+
+- **Palette banner on the chart** replaces the legend: minimum depth,
+  **A** / **M** button (automatic or manual palette), maximum depth, colour
+  bar with the safety depth marked, and a gear that opens the panel. In
+  automatic mode, a **View** / **All** button chooses between the displayed
+  area and all data. Click a depth to type a palette bound, click the colour
+  bar to pick a preset. Placed bottom centre (or top centre, bottom left),
+  clear of the scale bar and of OpenCPN's edge panning. The cursor readout
+  and the banner can be switched separately.
+- **Custom text format** at import (*Columns › Custom format*, *Format…*):
+  header lines, separator, decimal mark, choice of the X, Y, Z, date and
+  time columns, coloured preview, automatic detection, formats saved in
+  `.pdfmt` files. Optional date / time patterns (`yyyy/M/d h:m:s.s`,
+  `MMM d, y`…) and degree-minute-second coordinate patterns (`D M S.S X`,
+  `DDMM.MX`), with a help window. The survey date is taken from the date
+  column.
+- **File paths with any characters** (Cyrillic, accents…) on Windows.
+- **NAD83 State Plane**: all US zones (metres, US survey feet, feet) in the
+  list and by EPSG code; ESRI State Plane `.prj` files recognised.
+- **Automatic** coordinate system: `.prj` file, otherwise degrees.
+- **OpenCPN ENC (S-52)** palette, using OpenCPN's shallow / safety / deep
+  contours.
+
+### 0.1.0-beta.5
 
 - **Sounding lines** (single-beam echo sounder, GPS tracks): the storage
   resolution is now estimated from the spacing of consecutive soundings
@@ -53,7 +77,34 @@ crash of OpenCPN when opening the plugin panel.
 
 ## Français
 
-### 0.1.0-beta.5 (en préparation)
+### 0.1.0-beta.6 (2026-11-06)
+
+- **Bandeau de palette sur la carte** à la place de la légende : profondeur
+  minimale, bouton **A** / **M** (palette automatique ou manuelle),
+  profondeur maximale, rampe de couleurs avec la profondeur de sécurité
+  repérée, et une roue qui ouvre le panneau. En automatique, un bouton
+  **Vue** / **Tout** choisit entre la zone affichée et toutes les données.
+  Clic sur une profondeur : saisie d'une borne de la palette ; clic sur les
+  couleurs : choix d'un préréglage. Placé en bas au centre (ou en haut au
+  centre, en bas à gauche), à l'écart de l'échelle et du défilement de bord
+  d'OpenCPN. Lecture au curseur et bandeau s'activent séparément.
+- **Format texte personnalisé** à l'import (*Colonnes › Format
+  personnalisé*, *Format…*) : lignes d'entête, séparateur, séparateur
+  décimal, choix des colonnes X, Y, Z, date et heure, aperçu en couleur,
+  détection automatique, formats enregistrés en fichiers `.pdfmt`. Gabarits
+  facultatifs de date / heure (`yyyy/M/d h:m:s.s`, `MMM d, y`…) et de
+  coordonnées en degrés-minutes-secondes (`D M S.S X`, `DDMM.MX`), avec une
+  fenêtre d'aide. La date du levé est prise dans la colonne de date.
+- **Chemins de fichiers avec tous caractères** (cyrillique, accents…) sous
+  Windows.
+- **NAD83 State Plane** : toutes les zones des États-Unis (mètres, pieds US,
+  pieds) dans la liste et par code EPSG ; fichiers `.prj` ESRI State Plane
+  reconnus.
+- Système de coordonnées **automatique** : fichier `.prj`, sinon degrés.
+- Palette **ENC OpenCPN (S-52)**, avec les isobathes peu profonde / de
+  sécurité / profonde d'OpenCPN.
+
+### 0.1.0-beta.5
 
 - **Lignes de sonde** (sondeur monofaisceau, traces GPS) : la résolution de
   stockage est maintenant estimée d'après l'espacement des sondes

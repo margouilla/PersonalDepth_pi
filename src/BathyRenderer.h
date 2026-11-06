@@ -17,6 +17,7 @@
 #pragma once
 #include <wx/wx.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <tuple>
@@ -29,6 +30,25 @@
 #include "core/Soundings.h"
 
 struct DisplaySettings;
+
+// Bandeau de palette posé sur la carte : zones cliquables (pixels du canevas,
+// tels que les donne le point de vue d'OpenCPN)
+struct BannerHit {
+  enum Part { None = 0, Min, Mode, Source, Max, Bar, Gear, Body };
+  bool valid = false;
+  wxRect box, minR, modeR, srcR, maxR, barR, gearR;
+  int pixW = 0;  // largeur du point de vue (rapport avec les coordonnées souris)
+  Part PartAt(const wxPoint& p) const {
+    if (!valid || !box.Contains(p)) return None;
+    if (minR.Contains(p)) return Min;
+    if (modeR.Contains(p)) return Mode;
+    if (!srcR.IsEmpty() && srcR.Contains(p)) return Source;
+    if (maxR.Contains(p)) return Max;
+    if (gearR.Contains(p)) return Gear;
+    if (barR.Contains(p)) return Bar;
+    return Body;
+  }
+};
 
 class BathyRenderer {
  public:
@@ -47,6 +67,8 @@ class BathyRenderer {
   void Invalidate() { ++m_epoch; m_contours.clear(); m_labelKey.clear(); }  // couches ajoutées / retirées
   void ReleaseGL();                 // à appeler avec un contexte GL courant
   double LastPixelsPerDegLon() const { return m_ppd; }
+  const BannerHit& Banner() const { return m_banner; }
+  void HideBanner() { m_banner.valid = false; }
 
  private:
   struct Tile;
@@ -62,7 +84,18 @@ class BathyRenderer {
   static void FormatDepth(float z, int decimals, wxString& ip, wxString& dp);
   void DrawGLText(float x, float y, const wxString& t, float scale, bool center);
   float GLTextWidth(const wxString& t, float scale) const;
-  void DrawLegendGL(PlugIn_ViewPort* vp, const DisplaySettings& s, const wxString& cursorText);
+  // Géométrie du bandeau (largeurs de texte fournies par l'appelant : GL ou DC)
+  struct BannerLayout {
+    wxRect box, minR, modeR, srcR, maxR, barR, gearR;  // srcR vide en manuel
+    wxString minT, maxT, modeT, srcT, tide;
+    int lineH = 0, rowY = 0, tideY = 0;
+    float lo = 0, hi = 0;
+  };
+  bool LayoutBanner(PlugIn_ViewPort* vp, const DisplaySettings& s,
+                    const std::function<int(const wxString&)>& textW, int lineH,
+                    BannerLayout& L);
+  void DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s);
+  void DrawBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s);
   void BuildGlyphs(int fontSize);
   void DrawCursorGL(PlugIn_ViewPort* vp, const wxString& text);
   void DrawCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& text);
@@ -86,6 +119,8 @@ class BathyRenderer {
   unsigned m_epoch = 1, m_purgedEpoch = 1;
   double m_ppd = 1e5;
   bool m_curOn = false;
+  BannerHit m_banner;
+  bool m_glLight = false;  // texte GL clair (sur fond sombre)
   // Sondes déjà sélectionnées et désencombrées pour la vue courante
   std::vector<pd::Label> m_labels;
   struct ContourCache {

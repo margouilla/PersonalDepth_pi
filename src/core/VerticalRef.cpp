@@ -15,6 +15,7 @@
 
 #include "VerticalRef.h"
 #include "Lang.h"
+#include "FileUtil.h"
 
 #include <algorithm>
 #include <cctype>
@@ -72,7 +73,7 @@ double Grid2D::sample(double lon, double lat) const {
 // coord = 1 : lon lat écrits avant les valeurs de chaque nœud ; prec = 1 : un
 // code de précision suit les valeurs. Seule la première valeur est retenue.
 bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
-  std::ifstream in(path);
+  std::ifstream in(U8Path(path));
   if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::string head;
   std::getline(in, head);
@@ -133,7 +134,7 @@ bool LoadTacGrid(const std::string& path, Grid2D& g, std::string& err) {
 }
 
 bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
-  std::ifstream in(path);
+  std::ifstream in(U8Path(path));
   if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   long ncols = 0, nrows = 0;
   double xll = 0, yll = 0, cs = 0, nodata = -9999;
@@ -171,7 +172,7 @@ bool LoadAscGrid(const std::string& path, Grid2D& g, std::string& err) {
 // .gtx : entête gros-boutiste (lat sud, lon ouest, dlat, dlon, nlignes, ncols),
 // puis des float32 du sud vers le nord ; -88.8888 = absent
 bool LoadGtxGrid(const std::string& path, Grid2D& g, std::string& err) {
-  FILE* f = std::fopen(path.c_str(), "rb");
+  FILE* f = OpenFile(path, "rb");
   if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   auto be64 = [](const unsigned char* b) {
     uint64_t u = 0;
@@ -215,7 +216,7 @@ bool LoadAnyGrid(const std::string& path, Grid2D& g, std::string& err) {
 }
 
 bool LoadPointSurface(const std::string& path, std::vector<GeoPoint>& pts, std::string& err) {
-  std::ifstream in(path);
+  std::ifstream in(U8Path(path));
   if (!in) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   std::string line;
   const size_t before = pts.size();

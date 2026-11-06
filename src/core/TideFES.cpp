@@ -15,6 +15,7 @@
 
 #include "TideFES.h"
 #include "Lang.h"
+#include "FileUtil.h"
 
 #include <algorithm>
 #include <cmath>
@@ -274,7 +275,7 @@ template <class T> static T Get(const uint8_t* p) {
 bool TideAtlas::open(const std::string& path, std::string& err) {
   if (f_) { std::fclose(f_); f_ = nullptr; }
   names_.clear();
-  FILE* f = std::fopen(path.c_str(), "rb");
+  FILE* f = OpenFile(path, "rb");
   if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   uint8_t h[80];
   if (std::fread(h, 1, 80, f) != 80 || std::memcmp(h, "PDTIDE01", 8) != 0) {

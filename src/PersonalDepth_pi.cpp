@@ -117,7 +117,8 @@ int PersonalDepth_pi::Init() {
   m_cursorRefresh = std::make_unique<CursorRefresh>();
 
   return WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK | WANTS_CURSOR_LATLON |
-         WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL | WANTS_CONFIG | WANTS_PREFERENCES;
+         WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL | WANTS_CONFIG | WANTS_PREFERENCES |
+         WANTS_MOUSE_EVENTS;
 }
 
 bool PersonalDepth_pi::DeInit() {
@@ -226,6 +227,21 @@ bool PersonalDepth_pi::UpdateUnits() {
   m_set.heightK = hK;
   m_set.heightUnit = heightFeet ? "ft" : "m";
   return true;
+}
+
+void PersonalDepth_pi::EncContours(float& shallow, float& safety, float& deep) {
+  double sh = 2, sa = 3, de = 6;  // valeurs par défaut d'OpenCPN
+  if (wxFileConfig* c = GetOCPNConfigObject()) {
+    const wxString old = c->GetPath();
+    c->SetPath("/Settings/GlobalState");
+    c->Read("S52_MAR_SHALLOW_CONTOUR", &sh, sh);
+    c->Read("S52_MAR_SAFETY_CONTOUR", &sa, sa);
+    c->Read("S52_MAR_DEEP_CONTOUR", &de, de);
+    c->SetPath(old);
+  }
+  shallow = (float)sh;
+  safety = (float)sa;
+  deep = (float)de;
 }
 
 // Langue choisie dans Options › Utilisateur › Options générales › Langue
@@ -681,6 +697,8 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("FontSize", m_set.fontSize);
   c->Write("Smooth", m_set.smooth);
   c->Write("Legend", m_set.legend);
+  c->Write("Banner", m_set.banner);
+  c->Write("BannerPos", m_set.bannerPos);
   c->Write("Contours", m_set.contours);
   c->Write("ContourMode", m_set.contourMode);
   c->Write("ContourStep", (double)m_set.contourStep);
@@ -699,6 +717,7 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ImportOffset", (double)m_set.importOffset);
   c->Write("ImportZFeet", m_set.importZFeet);
   c->Write("ImportRes", (double)m_set.importRes);
+  c->Write("ImportFormat", W8(m_set.importFormat.c_str()));
   c->Write("ImportCache", m_set.importCache);
   c->Write("ImportNodataOn", m_set.importNodataOn);
   c->Write("ImportNodata", W8(m_set.importNodata.c_str()));
@@ -755,6 +774,8 @@ void PersonalDepth_pi::LoadConfig() {
   c->Read("FontSize", &m_set.fontSize, m_set.fontSize);
   c->Read("Smooth", &m_set.smooth, m_set.smooth);
   c->Read("Legend", &m_set.legend, m_set.legend);
+  c->Read("Banner", &m_set.banner, m_set.banner);
+  c->Read("BannerPos", &m_set.bannerPos, m_set.bannerPos);
   c->Read("Contours", &m_set.contours, m_set.contours);
   c->Read("ContourMode", &m_set.contourMode, m_set.contourMode);
   if (c->Read("ContourStep", &d) && d > 0) m_set.contourStep = (float)d;
@@ -784,6 +805,7 @@ void PersonalDepth_pi::LoadConfig() {
   }
   c->Read("ImportNodataOn", &m_set.importNodataOn, m_set.importNodataOn);
   if (c->Read("ImportNodata", &ws)) m_set.importNodata = ws.ToUTF8().data();
+  if (c->Read("ImportFormat", &ws)) m_set.importFormat = ws.ToUTF8().data();
   c->Read("ImportBoundsOn", &m_set.importBoundsOn, m_set.importBoundsOn);
   {
     double v;
@@ -942,7 +964,16 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  m.path = p.path;
                  m.res = EstimateResolution(L.cloud, gridded);
                  if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
-                 m.date = p.surveyDate.empty() ? GuessSurveyDate(p.path) : p.surveyDate;
+                 // date du levé : imposée, sinon première date de la colonne
+                 // date du fichier, sinon nom du fichier ou date du fichier
+                 m.date = p.surveyDate;
+                 if (m.date.empty() && L.cloud.tMin > 0) {
+                   const time_t t0 = (time_t)L.cloud.tMin;
+                   char b[16];
+                   std::strftime(b, sizeof b, "%Y-%m-%d", std::gmtime(&t0));
+                   m.date = b;
+                 }
+                 if (m.date.empty()) m.date = GuessSurveyDate(p.path);
                  m.params = p.importPrefs;
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
                  m.vref = p.vref.active() ? (p.vref.label.empty() ? "converti" : p.vref.label) : "ZH";
@@ -1163,6 +1194,158 @@ void PersonalDepth_pi::AutoPaletteChanged() {
   UpdateAutoPalette(true);
 }
 
+void PersonalDepth_pi::SetAutoPalette(bool on) {
+  DisplaySettings& s = m_set;
+  if (s.autoPalette == on) return;
+  // couleurs de référence : celles de la palette affichée (préréglage ou seuils
+  // modifiés en manuel depuis le dernier passage en automatique)
+  if (on && (s.autoBase.empty() || !s.autoBaseFresh)) s.autoBase = s.ramp.serialize();
+  s.autoBaseFresh = true;
+  s.autoPalette = on;
+  AutoPaletteChanged();
+  ColorsChanged();
+  if (m_dlg) m_dlg->RefreshPalette();
+}
+
+void PersonalDepth_pi::ApplyPreset(const std::string& name) {
+  DisplaySettings& s = m_set;
+  ColorRamp& r = s.ramp;
+  ColorRamp p = ColorRamp::Preset(name);
+  if (name == ColorRamp::kEncName) {  // isobathes des cartes vectorielles d'OpenCPN
+    float sh, sa, de;
+    EncContours(sh, sa, de);
+    p = ColorRamp::EncPreset(sh, sa, de);
+    if (s.autoPalette) {  // paliers fixés par OpenCPN : mode automatique coupé
+      s.autoPalette = false;
+      AutoPaletteChanged();
+    }
+  }
+  s.autoBase = p.serialize();  // couleurs reprises au passage en automatique
+  s.autoBaseFresh = true;
+  if (s.autoPalette) {  // automatique : nouvelles couleurs, mêmes seuils calculés
+    r.mode = p.mode;
+    AutoPaletteChanged();
+  } else {
+    r.stops = p.stops;
+    r.mode = p.mode;
+    if (p.safetyOn) { r.safetyOn = true; r.safetyDepth = p.safetyDepth; }
+  }
+  ColorsChanged();
+  if (m_dlg) { m_dlg->SelectPreset(name); m_dlg->RefreshPalette(); }
+}
+
+// ------------------------------------------------------ bandeau de palette
+bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
+  if (!m_set.banner || !m_renderer) return false;
+  const BannerHit& h = m_renderer->Banner();
+  if (!h.valid) return false;
+  const bool button = e.ButtonDown() || e.ButtonUp() || e.ButtonDClick() ||
+                      e.GetEventType() == wxEVT_MOUSEWHEEL;
+  if (!button) return false;
+  if (DrawLayers().empty()) { m_renderer->HideBanner(); return false; }  // rien d'affiché
+  // coordonnées souris (points) -> pixels du point de vue (écrans haute densité)
+  wxWindow* win = wxDynamicCast(e.GetEventObject(), wxWindow);
+  double k = 1.0;
+  if (win && win->GetClientSize().x > 0 && h.pixW > 0) {
+    k = (double)h.pixW / win->GetClientSize().x;
+    if (std::fabs(k - 1.0) < 0.05) k = 1.0;
+  }
+  const wxPoint p((int)std::lround(e.GetX() * k), (int)std::lround(e.GetY() * k));
+  const int part = h.PartAt(p);
+  if (part == BannerHit::None) return false;
+  if (e.LeftDown()) {
+    const wxPoint pos = e.GetPosition();
+    wxTheApp->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });
+  }
+  return true;  // le clic sur le bandeau ne déplace pas la carte
+}
+
+void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
+  if (!win) win = GetOCPNCanvasWindow();
+  switch (part) {
+    case BannerHit::Mode:
+      SetAutoPalette(!m_set.autoPalette);
+      break;
+    case BannerHit::Source:
+      m_set.autoSource = m_set.autoSource == 1 ? 0 : 1;
+      AutoPaletteChanged();
+      ColorsChanged();
+      if (m_dlg) m_dlg->RefreshPalette();
+      break;
+    case BannerHit::Min:
+    case BannerHit::Max:
+      BannerRange(part == BannerHit::Min, win);
+      break;
+    case BannerHit::Bar: {
+      wxMenu menu;
+      const auto names = ColorRamp::PresetNames();
+      for (size_t k = 0; k < names.size(); ++k) menu.Append(10000 + (int)k, U8(names[k].c_str()));
+      const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
+      if (id >= 10000 && id < 10000 + (int)names.size()) ApplyPreset(names[id - 10000]);
+      break;
+    }
+    case BannerHit::Gear:
+      if (!m_dlg) m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
+      m_dlg->Show();
+      m_dlg->Raise();
+      SetToolbarItemState(m_toolId, true);
+      break;
+    default:
+      break;
+  }
+}
+
+// Saisie d'une borne de la palette. Automatique : borne imposée (vide = calculée) ;
+// manuel : les seuils sont étirés linéairement sur la nouvelle plage.
+void PersonalDepth_pi::BannerRange(bool isMin, wxWindow* win) {
+  DisplaySettings& s = m_set;
+  auto& st = s.ramp.stops;
+  if (st.empty()) return;
+  const float k = s.depthK > 0 ? s.depthK : 1.f;
+  const float lo = st.front().depth, hi = st.back().depth;
+  const float cur = isMin ? lo : hi;
+  wxString msg = isMin ? U8("Profondeur minimale de la palette") : U8("Profondeur maximale de la palette");
+  msg += " (" + s.depthUnit + ")";
+  if (s.autoPalette) msg += U8("\n(vide = valeur calculée d'après les données)");
+  const wxString def = wxString::Format("%g", std::round(cur * k * 100.0) / 100.0);
+  wxString txt = wxGetTextFromUser(msg, U8("Palette"), def, win);
+  if (txt.IsSameAs(def)) return;
+  txt.Trim(true).Trim(false);
+  txt.Replace(",", ".");
+  if (txt.empty()) {
+    if (!s.autoPalette) return;  // annulé
+    (isMin ? s.autoMinOn : s.autoMaxOn) = false;
+    AutoPaletteChanged();
+    ColorsChanged();
+    if (m_dlg) m_dlg->RefreshPalette();
+    return;
+  }
+  double v;
+  if (!txt.ToCDouble(&v)) {
+    wxMessageBox(U8("Valeur numérique attendue."), U8("Palette"), wxOK | wxICON_WARNING, win);
+    return;
+  }
+  const float m = (float)(v / k);
+  const float nlo = isMin ? m : lo, nhi = isMin ? hi : m;
+  if (!(nhi > nlo)) {
+    wxMessageBox(U8("La profondeur minimale doit être inférieure à la maximale."), U8("Palette"),
+                 wxOK | wxICON_WARNING, win);
+    return;
+  }
+  if (s.autoPalette) {
+    if (isMin) { s.autoMinOn = true; s.autoMin = m; }
+    else { s.autoMaxOn = true; s.autoMax = m; }
+    AutoPaletteChanged();
+  } else if (hi > lo) {
+    for (auto& c : st) c.depth = std::round((nlo + (c.depth - lo) * (nhi - nlo) / (hi - lo)) * 100.f) / 100.f;
+  } else {
+    st.front().depth = nlo;
+    if (st.size() > 1) st.back().depth = nhi;
+  }
+  ColorsChanged();
+  if (m_dlg) m_dlg->RefreshPalette();
+}
+
 // Seuils recalculés d'après les profondeurs du moment (sonde ZH + marée) :
 // toutes les données (base + couches) ou la seule zone affichée
 void PersonalDepth_pi::UpdateAutoPalette(bool force) {
@@ -1296,6 +1479,7 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("offset", s.importOffset);
   num("zFeet", s.importZFeet);
   num("res", s.importRes);
+  kv("fmt", s.importFormat);
   num("cache", s.importCache);
   num("nodataOn", s.importNodataOn);
   kv("nodata", s.importNodata);
@@ -1308,6 +1492,7 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
 bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
   if (text.empty()) return false;
   s.importRes = 0.f;  // réglages enregistrés avant la résolution imposée : automatique
+  s.importFormat.clear();
   std::istringstream in(text);
   std::string line;
   while (std::getline(in, line)) {
@@ -1336,6 +1521,7 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "offset") s.importOffset = (float)d;
     else if (k == "zFeet") s.importZFeet = d != 0;
     else if (k == "res") s.importRes = (float)d;
+    else if (k == "fmt") s.importFormat = v;
     else if (k == "cache") s.importCache = d != 0;
     else if (k == "nodataOn") s.importNodataOn = d != 0;
     else if (k == "nodata") s.importNodata = v;

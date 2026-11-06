@@ -42,6 +42,7 @@ class BathyDialog : public wxDialog {
   void RefreshLayers() {}  // (couches fichiers supprimées : tout passe par la base)
   void RefreshPalette();  // recharge la grille des seuils depuis les réglages
   void RefreshUnits();    // unités d'affichage d'OpenCPN changées (m / ft)
+  void SelectPreset(const std::string& name);  // préréglage choisi ailleurs (bandeau)
   void SetCursorText(const wxString& t);
   void SetTideInfo(const wxString& t);
   void RefreshDb();                       // liste des sources de la base
@@ -117,7 +118,8 @@ class BathyDialog : public wxDialog {
   wxColourPickerCtrl* m_safeColour;
   // Affichage
   wxSlider *m_opacity, *m_shadeStrength, *m_spacing;
-  wxCheckBox *m_shade, *m_sound, *m_smooth, *m_legend;
+  wxCheckBox *m_shade, *m_sound, *m_smooth, *m_legend, *m_banner;
+  wxChoice* m_bannerPos;
   wxSpinCtrlDouble* m_exag;
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
   wxStaticText* m_cursor;

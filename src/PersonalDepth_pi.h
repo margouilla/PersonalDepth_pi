@@ -62,7 +62,9 @@ struct DisplaySettings {
   int spacingPx = 34;         // densité des sondes chiffrées
   int fontSize = 9;
   bool smooth = true;         // profondeur et ombrage interpolés entre cellules
-  bool legend = true;
+  bool legend = true;         // lecture au curseur
+  bool banner = true;         // bandeau de palette sur la carte
+  int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche
   unsigned version = 1;       // incrémenté à chaque changement de couleurs
   // Isobathes (calculées à la volée depuis la grille, mises en cache)
   bool contours = true;
@@ -86,6 +88,7 @@ struct DisplaySettings {
   int importSign = 0;               // LoadOptions::ZSign
   float importOffset = 0.f;         // décalage vertical (m)
   bool importZFeet = false;         // unité verticale des fichiers importés : pieds (sinon m)
+  std::string importFormat;         // format personnalisé des fichiers texte (TextFormat), "" = X Y Z
   float importRes = 0.f;            // résolution de stockage imposée (m), 0 = automatique
   bool importCache = true;          // cache binaire .pdpc
   bool importNodataOn = false;      // NODATA supplémentaires (Z brut du fichier)
@@ -109,6 +112,7 @@ struct DisplaySettings {
   int autoCount = 10;               // nombre de seuils
   bool autoNice = true;             // valeurs rondes (1-2-2,5-5)
   std::string autoBase;             // couleurs de référence (rampe sérialisée)
+  bool autoBaseFresh = false;       // (non sauvegardé) autoBase = couleurs affichées
   bool autoMinOn = false, autoMaxOn = false;  // bornes imposées (m)
   float autoMin = 0.f, autoMax = 50.f;
   // Base de bathymétrie (sources fusionnées)
@@ -209,7 +213,14 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void DbSetGroup(const std::vector<int64_t>& ids, const std::string& group);
   void DbZoomTo(const std::vector<int64_t>& ids);
   void DbSetPriority(int prio);
+  // Isobathes peu profonde / de sécurité / profonde des cartes vectorielles
+  // d'OpenCPN (Options › Cartes › Cartes vectorielles), en mètres
+  void EncContours(float& shallow, float& safety, float& deep);
   void AutoPaletteChanged();                             // réglages de la palette automatique
+  void SetAutoPalette(bool on);                          // bascule A / M (panneau ou bandeau)
+  void ApplyPreset(const std::string& name);             // préréglage de couleurs
+  // Bandeau de palette : clics sur la carte
+  bool MouseEventHook(wxMouseEvent& event) override;
   wxString AutoPaletteInfo() const { return m_autoInfo; }
   DisplaySettings& Settings() { return m_set; }
   void AddLayer(const pd::LayerParams& p);
@@ -234,6 +245,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
                   std::function<bool(pd::BathyDb&, std::string&, const pd::DbProgress&)> job);
   void UpdateDbView();
   void UpdateAutoPalette(bool force);
+  void BannerClick(int part, wxWindow* win, wxPoint pos);
+  void BannerRange(bool isMin, wxWindow* win);
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
   bool UpdateLanguage();  // langue d'OpenCPN (français / anglais) ; true si elle a changé

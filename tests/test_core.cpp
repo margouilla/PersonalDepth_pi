@@ -339,10 +339,24 @@ int main(int argc, char** argv) {
     CHECK(EpsgFromWkt("PROJCS[\"ETRS89 / UTM zone 30N\"]") == 25830);
     CHECK(EpsgFromWkt("PROJCRS[\"x\",ID[\"EPSG\",27700]]") == 27700);
     CHECK(EpsgFromWkt("GEOGCS[\"GCS_WGS_1984\"]") == 4326);
+    CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_Massachusetts_Mainland_FIPS_2001_Feet\",GEOGCS[\"GCS_North_American_1983\"]]") == 2249);
+    CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_Louisiana_North_FIPS_1701\",GEOGCS[\"GCS_North_American_1983\"]]") == 26981);
+    CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_California_VI_FIPS_0406_Feet\",GEOGCS[\"GCS_North_American_1983\"]]") == 2230);
     for (auto& e : CrsCatalog()) {  // chaque entrée du catalogue est valide
       Crs c; CHECK(Crs::Parse(CrsDefinition(e, e.zoneMin ? e.zoneMin : 1, e.zoneSouthDefault), c, err));
     }
     std::printf("Catalogue : %zu systèmes valides\n", CrsCatalog().size());
+    {  // NAD83 State Plane en pieds US : l'origine de la projection redonne lat_0 / lon_0
+      Crs sp;
+      CHECK(Crs::Parse("EPSG:2249", sp, err));  // Massachusetts Mainland (ftUS)
+      double lo, la;
+      const double ft = 1200.0 / 3937.0;
+      CHECK(sp.toWGS84(200000.0001016002 / ft, 750000.0 / ft, lo, la));
+      CHECK(std::fabs(lo + 71.5) < 1e-7 && std::fabs(la - 41.0) < 1e-7);
+      CHECK(Crs::Parse("EPSG:26958", sp, err));  // Florida East (m), Mercator transverse
+      CHECK(sp.toWGS84(200000.0, 0.0, lo, la) && std::fabs(lo + 81.0) < 1e-7 &&
+            std::fabs(la - 24.3333333333) < 1e-6);
+    }
 
     // Levé maillé à 2 m en Lambert-93 (rade de Brest), lu en EPSG:2154
     const std::string l93f = Tmp("pd_l93.xyz");
@@ -927,6 +941,82 @@ int main(int argc, char** argv) {
     const double rs = EstimateResolution(sh, g);
     CHECK(rs > 10.0);
     std::printf("Résolution des levés en lignes : %.2f m (ordre aléatoire : %.1f m) OK\n", rt, rs);
+  }
+  {  // format texte personnalisé : entête, date + heure, lat / lon, champs en trop
+    const std::string path = Tmp("pd_fmt.pos");
+    {
+      std::ofstream o(path);
+      o << "% programme : RTKPOST\n%\n"
+           "%  UTC                   latitude(deg) longitude(deg)  height(m)   Q  ns\n"
+           "2021/03/25 08:10:23.000   48.377952072   -4.489374333    55.2624   1   9\n"
+           "2021/03/25 08:10:24.000   48.377951922   -4.489374499    55.2605   1   9\n"
+           "2021/03/25 08:10:25.500   48.377951939   -4.489374485    55.2630   1   9\n";
+    }
+    std::vector<std::string> head;
+    std::string e;
+    CHECK(ReadTextHead(path, 100, head, e) && head.size() == 6);
+    TextFormat f = GuessTextFormat(head);
+    CHECK(f.custom && f.skipLines == 3 && f.colDate == 1 && f.colTime == 2 && f.colY == 3 &&
+          f.colX == 4 && f.colZ == 5);
+    TextFormat g;
+    CHECK(g.deserialize(f.serialize()) && g == f);
+    LoadOptions lo;
+    lo.text = f;
+    lo.zsign = LoadOptions::ZSign::DepthPositive;
+    PointCloud pc;
+    CHECK(LoadXYZ(path, lo, pc, e) && pc.size() == 3);
+    CHECK(std::fabs(pc.lon(0) + 4.489374333) < 2e-7 && std::fabs(pc.lat(0) - 48.377952072) < 2e-7);
+    CHECK(std::fabs(pc.z[0] - 55.2624f) < 1e-3f);
+    CHECK(pc.tMin == 1616659823LL && pc.tMax == 1616659825LL);  // 2021-03-25 08:10:23 UTC
+    // point-virgule, virgule décimale, date J/M/A
+    {
+      std::ofstream o(path);
+      o << "lat;lon;prof;date\n48,1;-4,2;12,5;25/03/2021\n48,1001;-4,2001;12,7;26/03/2021\n";
+    }
+    CHECK(ReadTextHead(path, 100, head, e));
+    f = GuessTextFormat(head);
+    CHECK(f.sep == ';' && f.decimal == ',' && f.skipLines == 1 && f.colY == 1 && f.colX == 2 &&
+          f.colZ == 3 && f.colDate == 4);
+    lo.text = f;
+    CHECK(LoadXYZ(path, lo, pc, e) && pc.size() == 2 && std::fabs(pc.z[1] - 12.7f) < 1e-4f);
+    long long t;
+    CHECK(ParseDateTime("2021-06-26T19:41:24Z", "", 0, t) && t == 1624736484LL);
+    CHECK(ParseDateTime("03/25/2021", "08:00", 0, t) && t == 1616659200LL);
+    // gabarits de date / heure (exemples de l'aide)
+    TextFormat df;
+    df.custom = true;
+    auto DT = [&](const char* txt, const char* pat, const char* tim, const char* tpat, long long& out) {
+      df.dateFmt = pat;
+      df.timeFmt = tpat;
+      return ParseFieldDateTime(txt, tim, df, out);
+    };
+    CHECK(DT("02/11/1983", "M/d/y", "", "", t) && t == 413769600LL);                // 1983-02-11
+    CHECK(DT("02/11/1983", "d/M/y", "", "", t) && t == 436579200LL);                // 1983-11-02
+    CHECK(DT("02/11/1983 8:07:34PM", "M/d/y h:m:sAP", "", "", t) && t == 413769600LL + 20 * 3600 + 7 * 60 + 34);
+    CHECK(DT("02/11/83 8:07:34", "M/d/yy h:m:s", "", "", t) && t == 413769600LL + 8 * 3600 + 7 * 60 + 34);
+    CHECK(DT("February 11, 1983 8:07:34", "MMM d, y h:m:s", "", "", t) && t == 413769600LL + 29254);
+    CHECK(DT("1983-Feb-11 8:07:34", "y-MMM-d h:m:s", "", "", t) && t == 413769600LL + 29254);
+    CHECK(DT("11 févr. 1983", "d MMM. y", "", "", t) && t == 413769600LL);
+    CHECK(DT("19830211080734", "yyyyMMddhhmmss", "", "", t) && t == 413769600LL + 29254);
+    CHECK(DT("1983y02M11d 8h07m34s", "y\\yM\\Md\\d h\\hm\\ms\\s", "", "", t) && t == 413769600LL + 29254);
+    CHECK(DT("2021/03/25", "y/M/d", "08:10:23.000", "h:m:s.s", t) && t == 1616659823LL);
+    CHECK(!DT("2021/13/25", "y/M/d", "", "", t));
+    // gabarits de coordonnées
+    double dg;
+    CHECK(ParseCoordPattern("45.95536", "D.D", dg) && std::fabs(dg - 45.95536) < 1e-9);
+    CHECK(ParseCoordPattern("-66 38.90778", "D M.M", dg) && std::fabs(dg + (66 + 38.90778 / 60)) < 1e-9);
+    CHECK(ParseCoordPattern("45 57 19.36", "D M S.S", dg) && std::fabs(dg - (45 + 57 / 60.0 + 19.36 / 3600)) < 1e-9);
+    CHECK(ParseCoordPattern("66 38' 54.47\" W", "D M' S.S\\\" X", dg) && dg < -66.6);
+    CHECK(ParseCoordPattern("45.95536 S", "D.D X", dg) && std::fabs(dg + 45.95536) < 1e-9);
+    CHECK(ParseCoordPattern("-66.648463 W", "D.D X", dg) && std::fabs(dg - 66.648463) < 1e-9);
+    CHECK(ParseCoordPattern("45D57M19.36S", "D\\DM\\MS.S\\S", dg) && std::fabs(dg - (45 + 57 / 60.0 + 19.36 / 3600)) < 1e-9);
+    CHECK(ParseCoordPattern("663854.47W", "DDMMS.SX", dg) && std::fabs(dg + (66 + 38 / 60.0 + 54.47 / 3600)) < 1e-9);
+    CHECK(ParseCoordPattern("4822.6771N", "DDMM.MX", dg) && std::fabs(dg - (48 + 22.6771 / 60)) < 1e-9);
+    TextFormat sf;
+    sf.custom = true; sf.dateFmt = "y/M/d"; sf.timeFmt = "h:m:s.s"; sf.xFmt = "D M' S.S\" X;=%"; sf.yFmt = "DDMM.MX";
+    TextFormat sg;
+    CHECK(sg.deserialize(sf.serialize()) && sg.xFmt == sf.xFmt && sg.yFmt == sf.yFmt && sg.dateFmt == "y/M/d");
+    std::printf("Format texte personnalisé : OK\n");
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;
