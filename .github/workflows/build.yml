@@ -95,7 +95,7 @@ jobs:
 
   macos:
     name: macOS 11+ (Intel et Apple Silicon)
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       WX_VERSION: 3.2.6
       MACOSX_DEPLOYMENT_TARGET: '11.0'
