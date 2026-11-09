@@ -93,6 +93,11 @@ add_library(pd_core STATIC
   src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp
   src/core/WaterLevel.cpp src/core/SurveyShape.cpp)
 target_include_directories(pd_core PUBLIC src third_party)
+# Triangulation (delaunator) : pas de fusion multiplication-addition (FMA,
+# active par défaut sur ARM) dans les tests géométriques
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set_source_files_properties(src/core/Triangulate.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 set_target_properties(pd_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 find_package(Threads REQUIRED)
 target_link_libraries(pd_core PUBLIC Threads::Threads pd_thirdparty)

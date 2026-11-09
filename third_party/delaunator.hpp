@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -141,9 +142,17 @@ inline bool in_circle(
     const double bp = ex * ex + ey * ey;
     const double cp = fx * fx + fy * fy;
 
-    return (dx * (ey * cp - bp * fy) -
-            dy * (ex * cp - bp * fx) +
-            ap * (ex * fy - ey * fx)) < 0.0;
+    // PersonalDepth : tolérance relative. Points cocirculaires (grilles) : le
+    // signe du déterminant n'est que du bruit d'arrondi (et diffère selon que
+    // le compilateur fusionne ou non les multiplications-additions, FMA, comme
+    // sur ARM) ; sans tolérance, legalize() pouvait retourner deux arêtes sans fin.
+    const double det = dx * (ey * cp - bp * fy) -
+                       dy * (ex * cp - bp * fx) +
+                       ap * (ex * fy - ey * fx);
+    const double mag = std::fabs(dx) * (std::fabs(ey * cp) + std::fabs(bp * fy)) +
+                       std::fabs(dy) * (std::fabs(ex * cp) + std::fabs(bp * fx)) +
+                       ap * (std::fabs(ex * fy) + std::fabs(ey * fx));
+    return det < -1e-12 * mag;
 }
 
 constexpr double EPSILON = std::numeric_limits<double>::epsilon();
@@ -443,6 +452,7 @@ std::size_t Delaunator::legalize(std::size_t a) {
     m_edge_stack.clear();
 
     // recursion eliminated with a fixed-size stack
+    std::size_t flips = 0;  // PersonalDepth : garde-fou contre une boucle sans fin
     while (true) {
         const size_t b = halfedges[a];
 
@@ -495,6 +505,7 @@ std::size_t Delaunator::legalize(std::size_t a) {
             coords[2 * p1 + 1]);
 
         if (illegal) {
+            if (++flips > 1000000) throw std::runtime_error("delaunator: legalize does not converge");
             triangles[a] = p1;
             triangles[b] = p0;
 
