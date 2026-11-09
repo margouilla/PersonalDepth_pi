@@ -43,6 +43,7 @@ class BathyDialog : public wxDialog {
   void RefreshPalette();  // recharge la grille des seuils depuis les réglages
   void RefreshUnits();    // unités d'affichage d'OpenCPN changées (m / ft)
   void SelectPreset(const std::string& name);  // préréglage choisi ailleurs (bandeau)
+  void RefreshPresetList();                    // préréglages + dossier de palettes
   void SetCursorText(const wxString& t);
   void SetTideInfo(const wxString& t);
   void RefreshDb();                       // liste des sources de la base
@@ -76,6 +77,9 @@ class BathyDialog : public wxDialog {
   void OnDelStop(wxCommandEvent&);
   void OnImportCPT(wxCommandEvent&);
   void OnExportCPT(wxCommandEvent&);
+  void OnSavePalette(wxCommandEvent&);   // enregistrer dans le dossier de palettes
+  void OnPaletteDir(wxCommandEvent&);    // choisir le dossier de palettes
+  std::vector<std::string> m_presetKeys;
   void OnSafety(wxCommandEvent&);
   void OnDisplay(wxCommandEvent&);
   void OnExaggeration(wxCommandEvent&);
@@ -120,6 +124,8 @@ class BathyDialog : public wxDialog {
   wxSlider *m_opacity, *m_shadeStrength, *m_spacing;
   wxCheckBox *m_shade, *m_sound, *m_smooth, *m_legend, *m_banner;
   wxChoice* m_bannerPos;
+  wxCheckBox* m_bannerLock;
+  wxCheckBox *m_interpShow, *m_interpDistinct;  // zones interpolées de la base
   wxSpinCtrlDouble* m_exag;
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
   wxStaticText* m_cursor;

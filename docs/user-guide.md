@@ -99,13 +99,17 @@ At the bottom of the chart, a banner shows the colour palette:
 | **View** / **All** (automatic only) | Thresholds computed from the displayed area or from all the data |
 | Minimum or maximum depth | Type a palette bound. Automatic: imposed bound (empty = computed); manual: thresholds stretched over the new range |
 | Colour bar | Choose a colour preset |
+| Small colour bar (next to ⚙) | Switch the banner between **horizontal** and **vertical**; the vertical banner also shows the intermediate thresholds |
 | ⚙ | Open the main panel |
 
-The mark on the colour bar is the safety depth. The banner can be hidden or
-moved (bottom centre, top centre, bottom left) in *Display*.
+The mark on the colour bar is the safety depth. **Drag the banner** with the
+mouse to put it anywhere on the chart (the position is kept). In *Display*
+you can hide it, choose a fixed position (bottom centre, top centre, bottom
+left, free) and **lock its position**.
 
-> 🧪 **Testers — check:** every click on the banner works, and the chart
-> does not move when clicking on it.
+> 🧪 **Testers — check:** every click on the banner works, the chart does
+> not move when clicking on or dragging the banner, and the locked banner
+> cannot be dragged.
 
 ## 3. The main panel
 
@@ -152,8 +156,39 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Offset | Constant added to the depths, in the Z unit |
 | NODATA | Values to ignore (e.g. `-9999 9999`), in addition to the NODATA of the grid header |
 | Z bounds | Keep only depths between Z1 and Z2 (e.g. −200 to 200 m removes fill values) |
-| Fixed resolution | Horizontal step of the database for this survey. Unticked: estimated (grid step, or spacing between consecutive soundings for sounding lines). A larger value (e.g. 10–20 m) gives a more continuous surface between widely spaced sounding lines |
+| Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below) |
+| Survey type | *Automatic*, single-beam echosounder, multibeam, bathymetric lidar, chart soundings, lead-line soundings. Sets the maximum interpolation distance (see below) |
+| Nature | *Automatic*, **grid** (regular step) or **point cloud**: forces the result of the survey analysis |
+| Interpolate between soundings | Point clouds only: surface triangulated between the soundings at import (see below) |
+| Fixed resolution | Horizontal step of the database for this survey. Unticked: given by the survey analysis (grid step, spacing along the tracks of a line survey, typical spacing of the soundings) |
 | Binary cache | `.pdpc` file next to the source for a faster re-import |
+
+**Grid or point cloud** — each file is analysed at import (the result is
+shown in the progress text and the import summary):
+- a **grid** (regular nodes, already processed: Litto3D, NONNA, EMODnet,
+  `.asc`…) is recognised even in projected coordinates with rounding noise or
+  written in degrees; it is stored at its own step, **without
+  interpolation**;
+- a **point cloud** (sounding lines, scattered soundings, chart soundings,
+  multibeam or lidar points) has no defined step: the analysis measures the
+  spacing between neighbours and, for a **line survey**, the gap between the
+  lines.
+
+**Interpolation** — for a point cloud, a surface is triangulated (TIN)
+between the soundings, filling the cells without a sounding, but **never
+across a gap wider than the maximum distance D**: D is the usual gap between
+lines for a line survey, otherwise twice the sounding spacing (three times
+for multibeam and lidar; for chart soundings and lead line, at least the
+usual large gaps between soundings, capped at 1,000 m / 500 m). Interpolated
+cells are marked as such in the database: a **measured** cell always wins,
+whatever the source and the priority rule; the *Display* panel can hide or
+lighten them (§ 7); soundings are never taken from them and the cursor shows
+*(interpolated)*. Set *Survey type* to the real kind of survey if the
+automatic result is not right (e.g. old lead-line survey).
+
+> 🧪 **Testers — check:** a single-beam survey in lines gives a continuous
+> surface between the lines but not across wide gaps; a grid file is not
+> interpolated (the analysis says "grid"); import time and database size.
 
 **Custom format** (*Columns* › *Custom format*, button **Format…**) — for
 text files that are not plain X Y Z: GNSS / RTK exports, sounder logs, CSV
@@ -164,7 +199,9 @@ added (files or folder), with a preview of the first added file, and shows the f
   semicolon, tab), *Decimal mark* (period or comma);
 - the column holding **X** (longitude / East), **Y** (latitude / North),
   **Z** (depth), and optionally the **date** (or date and time) and the
-  **time**; *Date order* for dates like 03/04/2021;
+  **time**; *Date order* for dates like 03/04/2021; under the date, the
+  **time zone** of the file (fixed offset from UTC, e.g. UTC+08:00, no
+  daylight saving change; dates are converted to UTC);
 - optional **patterns** under the columns, as in hydrographic software:
   date / time with `y M d h m s z AP` (e.g. `yyyy/M/d`, `d/M/y h:m:s.s`,
   `MMM d, y`, `yyyyMMddhhmmss`), X and Y coordinates (each its own pattern)
@@ -182,6 +219,39 @@ added (files or folder), with a preview of the first added file, and shows the f
 
 When a date column is set, the **survey date** of the source is the first
 date of the file (unless a fixed survey date is given).
+
+**Observed water levels** — for a survey whose soundings are measured from
+the water surface (single-beam sounder on a lake, a river…), each sounding
+can be corrected with the water level read on a staff gauge or a tide gauge
+at the time of the sounding. The water level files are text files with one
+level per line, in the Z unit:
+
+```
+[TIME],[DEPTH]
+2026-11-01 05:00:00,0.35
+2026-11-01 06:00:00,0.41
+```
+
+(a date alone, `2026-11-01,0.35`, is fine for daily values). Choose a
+**file** or a **folder**: all the `.txt`, `.csv`, `.dat` files of the
+folder form a single series (one gauge, successive periods). The **Format…**
+window (the same as for soundings) opens on the first file: header lines,
+separator, date / time / level columns and patterns, **unit** of the levels
+(metres or feet), **time zone**, and the convention. The level at
+the time of each sounding is interpolated between the two levels around it;
+outside the series, the end value is kept for one time step (1 hour to
+1 day), further away the sounding is discarded and counted in the import
+summary. By default **depth = sounding − level** (level above the datum);
+*depth = sounding + level* is the other convention. **Curve…** shows the
+water level series in UTC (mouse wheel to zoom on time, double-click for the
+whole period).
+
+The soundings must carry their date and time: use the **custom format** with
+a date column (and time). Soundings and levels are compared in UTC: set the
+**time zone** of each format to the one of its file.
+
+> 🧪 **Testers — check:** a survey with water levels gives the expected
+> corrected depths; the curve matches your gauge.
 
 ![Custom text format](images/en/10-text-format.png)
 
@@ -226,7 +296,9 @@ or re-import everything (replace).
 The list shows the sources grouped by class, with: survey date, resolution,
 number of soundings, rank, Z min / max, vertical reference, coordinate system,
 Z unit and import date. The tick box of a source (or a class) includes it or
-not in the merge. The bottom pane gives the details of the selection.
+not in the merge. The bottom pane gives the details of the selection,
+including the **covered area** (area of the database cells holding soundings,
+in km² and NM²; for several sources, the sum).
 
 | Action | Effect |
 |---|---|
@@ -255,6 +327,11 @@ not in the merge. The bottom pane gives the details of the selection.
 - **Table**: one line per threshold (depth, colour). Edit a depth directly,
   double-click a colour to change it; *+ threshold* / *− threshold*.
 - **Import .cpt… / Export .cpt…**: GMT palettes.
+- **My palettes**: *Save to my palettes…* stores the displayed palette
+  (thresholds, colours, steps or gradient, danger zone) as a `.cpt` file in
+  the palette folder; it then appears in the preset list (*My palette: …*)
+  and in the menu of the banner's colour bar. *Palette folder…* chooses the
+  folder; GMT `.cpt` palettes copied there are offered too.
 - **Automatic**: N thresholds spread between the minimum and maximum depth of
   *all data* or of the *displayed area* (recomputed when the chart moves),
   with *round values*, and optional *fixed min* / *fixed max* (e.g. fixed min
@@ -288,6 +365,7 @@ survey.
 | Soften relief | Smooths the shading only (colours, contours and soundings keep the true depths) |
 | Soundings | Exact soundings (shoalest per screen cell), spacing, decimals, text size |
 | Smoothing (interpolation) | Smooth colours between grid cells |
+| Interpolated areas of the database | Show the surface interpolated at import between soundings; *distinguish them (lighter)* lightens its colours |
 | Cursor readout | Depth and source next to the cursor |
 | Palette banner on the chart | Show the banner and choose where it sits |
 
@@ -380,3 +458,9 @@ On a Raspberry Pi, prefer importing on a PC and copying the `.pdb` files.
 - Not compatible with Android (OpenGL ES).
 - Mercator chart projection assumed; antimeridian not handled.
 - Older datums (NTF, ED50, OSGB36…): mean Helmert parameters (~1–2 m).
+- Interpolation is done at import: re-import a survey to apply a new survey
+  type or nature. *Clean…* on a source rebuilds its coarse levels without the
+  interpolation of widely spaced line surveys (re-import to get it back).
+- Text files over 200 MB are imported in blocks (limited memory); a very
+  dense survey makes a large database: a *Fixed resolution* (e.g. 0.5 m)
+  reduces it a lot.

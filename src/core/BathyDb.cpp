@@ -14,6 +14,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyDb.h"
+#include "SurveyShape.h"
+#include "Triangulate.h"
 #include "Lang.h"
 #include "FileUtil.h"
 
@@ -243,50 +245,9 @@ std::string GuessSourceGroup(const std::string& path) {
 double EstimateResolution(const PointCloud& pc, bool& gridded) {
   gridded = false;
   if (pc.empty()) return 0;
-  if (pc.srcStepX > 0 && pc.srcStepY > 0) {
-    gridded = true;
-    return std::max(pc.srcStepX, pc.srcStepY);
-  }
-  const double midLat = 0.5 * (pc.latMin + pc.latMax);
-  const double cosL = std::max(0.01, std::cos(midLat * M_PI / 180.0));
-  {
-    const size_t n = std::min<size_t>(pc.size(), 300000);
-    std::vector<int64_t> a(pc.qlat.begin(), pc.qlat.begin() + n), b(pc.qlon.begin(), pc.qlon.begin() + n);
-    const double sl = LatticeStepUnits(a), so = sl > 0 ? LatticeStepUnits(b) : 0;
-    if (sl > 0 && so > 0) {
-      gridded = true;
-      return std::max(sl * PointCloud::kQ * 110540.0, so * PointCloud::kQ * 111320.0 * cosL);
-    }
-  }
-  const double area = std::max(1.0, (pc.lonMax - pc.lonMin) * 111320.0 * cosL *
-                                        (pc.latMax - pc.latMin) * 110540.0);
-  const double byArea = std::sqrt(area / (double)pc.size());
-  // Semis non quadrillé : la surface / le nombre de points surestime le pas
-  // des levés en lignes (sondeur monofaisceau : un point tous les quelques
-  // mètres le long de la route, routes espacées de 100 m) ou à grandes zones
-  // vides. Les sondes consécutives d'un fichier sont en général voisines
-  // (route, profil, fauchée) : la médiane de leur espacement donne le pas
-  // réel. Fichier en ordre aléatoire : médiane grande, la surface l'emporte.
-  const size_t n = pc.size();
-  if (n >= 64) {
-    const size_t step = std::max<size_t>(1, n / 1000000);
-    std::vector<double> d;
-    d.reserve(n / step);
-    const double kx = PointCloud::kQ * 111320.0 * cosL, ky = PointCloud::kQ * 110540.0;
-    for (size_t i = 0; i + 1 < n; i += step) {
-      const double dx = (double)(pc.qlon[i + 1] - pc.qlon[i]) * kx;
-      const double dy = (double)(pc.qlat[i + 1] - pc.qlat[i]) * ky;
-      const double v = std::hypot(dx, dy);
-      if (v > 0.01) d.push_back(v);  // doublons (bateau arrêté) ignorés
-    }
-    if (d.size() >= 32) {
-      auto mid = d.begin() + d.size() / 2;
-      std::nth_element(d.begin(), mid, d.end());
-      const double med = std::max(0.05, *mid);
-      if (med < byArea) return med;
-    }
-  }
-  return byArea;
+  const SurveyShape sh = AnalyzeSurvey(pc);
+  gridded = sh.isGrid();
+  return sh.storeRes;
 }
 
 // Ordre de priorité des sources pour une règle donnée (la première l'emporte)
@@ -674,8 +635,11 @@ bool BathyDb::remergeTile(int z, int x, int y, DbPriority prio, std::string& err
   m.reset();
   std::vector<uint8_t> idx(DepthTile::kN, 0);
   std::vector<int64_t> ids;
-  DepthTile t;
+  // tuiles des sources, par ordre de priorité
+  std::vector<std::pair<const DbSource*, DepthTile>> got;
+  bool anyInterp = false;
   for (const DbSource* s : cand) {
+    DepthTile t;
     const int d = z - s->level;
     bool have;
     if (d <= 0) {
@@ -692,24 +656,37 @@ bool BathyDb::remergeTile(int z, int x, int y, DbPriority prio, std::string& err
           for (int i = 0; i < 256; ++i) {
             const long long si = ((gx0 + i) >> d) - px0;
             t.v[j * 256 + i] = p.v[sj * 256 + si];
+            if (p.isInterp((int)(sj * 256 + si))) t.setInterp(j * 256 + i, true);
           }
         }
       }
     }
     if (!have) continue;
-    int slot = -1;
-    for (int k = 0; k < DepthTile::kN; ++k) {
-      const int32_t v = t.v[k];
-      if (v == DepthTile::kEmpty) continue;
-      const bool take = m.v[k] == DepthTile::kEmpty || (prio == DbPriority::Shoalest && v < m.v[k]);
-      if (!take) continue;
-      if (slot < 0) {
-        if (ids.size() >= 255) break;
-        slot = (int)ids.size();
-        ids.push_back(s->id);
+    anyInterp = anyInterp || !t.interp.empty();
+    got.emplace_back(s, std::move(t));
+  }
+  // passe 1 : sondes mesurées ; passe 2 : valeurs interpolées dans les vides
+  std::vector<int> slotOf(got.size(), -1);
+  for (int pass = 0; pass < (anyInterp ? 2 : 1); ++pass) {
+    for (size_t g = 0; g < got.size(); ++g) {
+      const DepthTile& t = got[g].second;
+      for (int k = 0; k < DepthTile::kN; ++k) {
+        const int32_t v = t.v[k];
+        if (v == DepthTile::kEmpty || t.isInterp(k) != (pass == 1)) continue;
+        bool take;
+        if (pass == 0) take = m.v[k] == DepthTile::kEmpty || (prio == DbPriority::Shoalest && v < m.v[k]);
+        else take = m.v[k] == DepthTile::kEmpty ||
+                    (m.isInterp(k) && prio == DbPriority::Shoalest && v < m.v[k]);
+        if (!take) continue;
+        if (slotOf[g] < 0) {
+          if (ids.size() >= 255) continue;
+          slotOf[g] = (int)ids.size();
+          ids.push_back(got[g].first->id);
+        }
+        m.v[k] = v;
+        idx[k] = (uint8_t)slotOf[g];
+        if (pass == 1) m.setInterp(k, true);
       }
-      m.v[k] = v;
-      idx[k] = (uint8_t)slot;
     }
   }
   DbCell* c = cellFor(z, x, y, !ids.empty(), err);
@@ -776,16 +753,27 @@ bool BathyDb::importCloud(const PointCloud& pc, DbSource meta, bool gridded, DbP
                           std::string& err, const DbProgress& progress,
                           const std::atomic<bool>* cancel, int64_t* newId) {
   // échec ou arrêt : la source partiellement écrite est annulée
-  if (importCloudImpl(pc, meta, gridded, prio, err, progress, cancel, newId)) return true;
+  if (pc.empty()) { err = pd::tr("Source vide"); return false; }
+  if (importCloudImpl(&pc, nullptr, 0.5 * (pc.latMin + pc.latMax), meta, gridded, prio, err, progress,
+                      cancel, newId))
+    return true;
   rollbackAll();
   return false;
 }
 
-bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded, DbPriority prio,
-                              std::string& err, const DbProgress& progress,
-                              const std::atomic<bool>* cancel, int64_t* newId) {
-  if (pc.empty()) { err = pd::tr("Source vide"); return false; }
-  const double midLat = 0.5 * (pc.latMin + pc.latMax);
+bool BathyDb::importCloudStream(const CloudFeed& feed, double midLat, DbSource meta, bool gridded,
+                                DbPriority prio, std::string& err, const DbProgress& progress,
+                                const std::atomic<bool>* cancel, int64_t* newId) {
+  if (importCloudImpl(nullptr, &feed, midLat, meta, gridded, prio, err, progress, cancel, newId))
+    return true;
+  rollbackAll();
+  return false;
+}
+
+bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, double midLat,
+                              DbSource meta, bool gridded, DbPriority prio, std::string& err,
+                              const DbProgress& progress, const std::atomic<bool>* cancel,
+                              int64_t* newId) {
   const int zs = meta.level > 0 ? meta.level : LevelForResolution(meta.res, midLat);
   std::mt19937_64 rng((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count() ^
                       (uint64_t)std::random_device{}());
@@ -796,17 +784,26 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
   int maxRank = -1;
   for (const auto& s : sources_) maxRank = std::max(maxRank, s.rank);
   meta.rank = maxRank + 1;
-  meta.lonMin = pc.lonMin; meta.lonMax = pc.lonMax; meta.latMin = pc.latMin; meta.latMax = pc.latMax;
+  if (whole) {
+    meta.lonMin = whole->lonMin; meta.lonMax = whole->lonMax;
+    meta.latMin = whole->latMin; meta.latMax = whole->latMax;
+  } else {  // par blocs : emprise cumulée
+    meta.lonMin = meta.latMin = 1e9;
+    meta.lonMax = meta.latMax = -1e9;
+  }
 
   // Tuiles du niveau natif : en mémoire si la source est de taille raisonnable
   // (une seule écriture par tuile), sinon écrites au fil de l'eau
   using TK = std::pair<int, int>;
-  double gx0, gy0, gx1, gy1;
-  LonLatToPixel(zs, pc.lonMin, pc.latMax, gx0, gy0);
-  LonLatToPixel(zs, pc.lonMax, pc.latMin, gx1, gy1);
-  const double tileBound = (std::floor(gx1 / 256) - std::floor(gx0 / 256) + 1) *
-                           (std::floor(gy1 / 256) - std::floor(gy0 / 256) + 1);
-  const bool inMemory = tileBound <= 700;  // ~180 Mo au plus
+  bool inMemory = false;  // par blocs : toujours au fil de l'eau
+  if (whole) {
+    double gx0, gy0, gx1, gy1;
+    LonLatToPixel(zs, whole->lonMin, whole->latMax, gx0, gy0);
+    LonLatToPixel(zs, whole->lonMax, whole->latMin, gx1, gy1);
+    const double tileBound = (std::floor(gx1 / 256) - std::floor(gx0 / 256) + 1) *
+                             (std::floor(gy1 / 256) - std::floor(gy0 / 256) + 1);
+    inMemory = tileBound <= 700;  // ~180 Mo au plus
+  }
   std::map<TK, DepthTile> mem;             // tuiles en mémoire (toutes si inMemory)
   std::map<TK, uint64_t> used;
   std::set<TK> keysZs;                     // tuiles déjà écrites (mode flux)
@@ -826,10 +823,16 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
   };
 
   // 1) répartition des sondes par pixel : plus faible sonde du pixel
-  const size_t n = pc.size();
   size_t rejected = 0;
   DepthTile* curTile = nullptr;
   TK curKey(0, 0);
+  float fed0 = 0.f;  // part déjà lue (par blocs)
+  CloudSink bin = [&](const PointCloud& pc, float fed) -> bool {
+  if (!whole && !pc.empty()) {
+    meta.lonMin = std::min(meta.lonMin, pc.lonMin); meta.lonMax = std::max(meta.lonMax, pc.lonMax);
+    meta.latMin = std::min(meta.latMin, pc.latMin); meta.latMax = std::max(meta.latMax, pc.latMax);
+  }
+  const size_t n = pc.size();
   for (size_t k = 0; k < n; ++k) {
     const double mm = std::round((double)pc.z[k] * 1000.0);
     if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
@@ -857,8 +860,21 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
     }
     if ((k & 0xFFFFF) == 0) {
       if (cancel && *cancel) { err = "Annulé"; return false; }
-      if (progress) progress(0.4f * k / n, pd::tr("Répartition des sondes"));
+      if (progress) progress(0.4f * (fed0 + (fed - fed0) * k / n), pd::tr("Répartition des sondes"));
     }
+  }
+  fed0 = fed;
+  return true;
+  };
+  if (whole) {
+    if (!bin(*whole, 1.f)) return false;
+  } else {
+    // une erreur dans `bin` (écriture, arrêt) arrête la lecture : err renseigné
+    if (!(*feed)(bin, err) || !err.empty()) {
+      if (err.empty()) err = pd::tr("Aucune sonde importée");
+      return false;
+    }
+    if (meta.lonMin > meta.lonMax) { err = pd::tr("Aucune sonde importée"); return false; }
   }
   if (!inMemory) {
     while (!mem.empty())
@@ -935,6 +951,135 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
     rcache.clear();
   }
 
+  // 2 bis) nuage : surface interpolée (triangulation de Delaunay des pixels
+  //    mesurés, interpolation linéaire) dans les pixels vides, sans franchir
+  //    une arête de plus de D ni garder les sondes presque alignées. Calcul
+  //    tuile par tuile avec une marge de D (sommets des tuiles voisines).
+  //    Niveau : celui des sondes, sauf levé en lignes (D bien plus grand que
+  //    le pas des sondes) : niveau plus grossier, pixel ~ D / 8, la surface
+  //    entre les lignes étant reprise à l'affichage aux niveaux plus fins.
+  const int ilevel = meta.interpD > 0
+                         ? std::min(zs, LevelForResolution(std::max(meta.res, meta.interpD / 8.0), midLat))
+                         : zs;
+  long long nInterp = 0;
+  auto interpolate = [&](int zl, std::set<TK>& keys, const std::function<const DepthTile*(const TK&)>& get,
+                         const std::function<bool(const TK&, DepthTile&)>& put, float p0, float p1) -> bool {
+    const double pxM = 156543.03392804097 * std::cos(midLat * M_PI / 180.0) / std::ldexp(1.0, zl);
+    const double Dpx = meta.interpD / std::max(1e-6, pxM);
+    if (Dpx < 1.5) return true;
+    const int mt = std::max(1, (int)std::ceil(Dpx / 256.0));
+    struct Vx { int32_t x, y, v; };
+    std::map<TK, std::vector<Vx>> vcache;
+    auto vertsOf = [&](const TK& k) -> const std::vector<Vx>& {
+      auto it = vcache.find(k);
+      if (it != vcache.end()) return it->second;
+      std::vector<Vx>& out = vcache[k];
+      const DepthTile* t = get(k);
+      if (t)
+        for (int q = 0; q < DepthTile::kN; ++q)
+          if (t->v[q] != DepthTile::kEmpty && !t->isInterp(q))
+            out.push_back({k.first * 256 + (q & 255), k.second * 256 + (q >> 8), t->v[q]});
+      return out;
+    };
+    std::set<TK> tset;
+    for (const TK& k : keys)
+      for (int dy = -mt; dy <= mt; ++dy)
+        for (int dx = -mt; dx <= mt; ++dx) tset.insert(TK(k.first + dx, k.second + dy));
+    std::vector<TK> targets(tset.begin(), tset.end());
+    std::sort(targets.begin(), targets.end(), [](const TK& u, const TK& v) {
+      return u.second != v.second ? u.second < v.second : u.first < v.first;
+    });
+    std::set<TK> added;
+    size_t q = 0;
+    std::vector<double> xy;
+    std::vector<int32_t> val;
+    const double D2 = Dpx * Dpx;
+    for (const TK& T : targets) {
+      if (cancel && *cancel) { err = "Annulé"; return false; }
+      if (progress && (++q % 16 == 0))
+        progress(p0 + (p1 - p0) * q / targets.size(), pd::tr("Interpolation entre les sondes"));
+      for (auto it = vcache.begin(); it != vcache.end();)  // rangées passées
+        it = it->first.second < T.second - mt ? vcache.erase(it) : std::next(it);
+      const double bx0 = T.first * 256.0 - Dpx, bx1 = T.first * 256.0 + 256 + Dpx;
+      const double by0 = T.second * 256.0 - Dpx, by1 = T.second * 256.0 + 256 + Dpx;
+      xy.clear();
+      val.clear();
+      for (int dy = -mt; dy <= mt; ++dy)
+        for (int dx = -mt; dx <= mt; ++dx) {
+          const TK k(T.first + dx, T.second + dy);
+          if (!keys.count(k)) continue;
+          for (const Vx& p : vertsOf(k)) {
+            const double px = p.x + 0.5, py = p.y + 0.5;
+            if (px < bx0 || px > bx1 || py < by0 || py > by1) continue;
+            xy.push_back(px - T.first * 256.0);
+            xy.push_back(py - T.second * 256.0);
+            val.push_back(p.v);
+          }
+        }
+      if (val.size() < 3) continue;
+      const DepthTile* base = keys.count(T) ? get(T) : nullptr;
+      DepthTile out;
+      if (base) out = *base;
+      else out.reset();
+      bool changed = false;
+      const auto tri = Triangulate(xy);
+      for (size_t t = 0; t + 2 < tri.size(); t += 3) {
+        const size_t ia = tri[t], ib = tri[t + 1], ic = tri[t + 2];
+        const double x0 = xy[2 * ia], y0 = xy[2 * ia + 1], x1 = xy[2 * ib], y1 = xy[2 * ib + 1];
+        const double x2 = xy[2 * ic], y2 = xy[2 * ic + 1];
+        if (std::max({x0, x1, x2}) < 0 || std::min({x0, x1, x2}) > 256 ||
+            std::max({y0, y1, y2}) < 0 || std::min({y0, y1, y2}) > 256)
+          continue;  // hors de la tuile
+        const double e0 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+        const double e1 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+        const double e2 = (x0 - x2) * (x0 - x2) + (y0 - y2) * (y0 - y2);
+        const double L2 = std::max({e0, e1, e2});
+        if (L2 > D2) continue;  // arête plus longue que D
+        const double den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+        if (std::fabs(den) < 1e-9) continue;
+        {  // sondes presque alignées (profil unique, route sinueuse) : plus grand angle
+           // proche de 180° ; les triangles fins entre deux lignes sont gardés
+          const double b2 = std::min({e0, e1, e2}), a2 = e0 + e1 + e2 - L2 - b2;
+          if ((a2 + b2 - L2) / (2 * std::sqrt(a2 * b2) + 1e-30) < -0.985) continue;
+        }
+        const int i0 = std::max(0, (int)std::floor(std::min({x0, x1, x2})));
+        const int i1 = std::min(255, (int)std::ceil(std::max({x0, x1, x2})));
+        const int j0 = std::max(0, (int)std::floor(std::min({y0, y1, y2})));
+        const int j1 = std::min(255, (int)std::ceil(std::max({y0, y1, y2})));
+        for (int j = j0; j <= j1; ++j)
+          for (int i = i0; i <= i1; ++i) {
+            const int k = j * 256 + i;
+            if (out.v[k] != DepthTile::kEmpty) continue;  // mesuré (ou déjà rempli)
+            const double px = i + 0.5, py = j + 0.5;
+            const double wa = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / den;
+            const double wb = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / den;
+            const double wc = 1 - wa - wb;
+            if (wa < -1e-9 || wb < -1e-9 || wc < -1e-9) continue;
+            out.v[k] = (int32_t)std::lround(wa * val[ia] + wb * val[ib] + wc * val[ic]);
+            out.setInterp(k, true);
+            changed = true;
+            ++nInterp;
+          }
+      }
+      if (!changed) continue;
+      if (!keys.count(T)) added.insert(T);
+      if (!put(T, out)) return false;
+    }
+    for (const TK& k : added) keys.insert(k);
+    return true;
+  };
+  if (!gridded && meta.interpD > 0 && ilevel == zs) {  // au niveau des sondes
+    if (!interpolate(
+            zs, keysZs, tileAt,
+            [&](const TK& T, DepthTile& out) {
+              if (inMemory) { mem[T] = std::move(out); return true; }
+              rcache.erase(T);
+              return writeSrc(meta.id, zs, T.first, T.second, out, err);
+            },
+            0.4f, 0.5f))
+      return false;
+  }
+
   // 3) statistiques, écriture et pyramide de la source (plus faible sonde de 2 × 2)
   long long count = 0;
   int32_t lo = INT32_MAX, hi = INT32_MIN;
@@ -942,8 +1087,10 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
   for (const TK& key : keysZs) {
     const DepthTile* t = tileAt(key);
     if (!t) continue;
-    for (int32_t v : t->v)
-      if (v != DepthTile::kEmpty) { ++count; lo = std::min(lo, v); hi = std::max(hi, v); }
+    for (int q = 0; q < DepthTile::kN; ++q) {  // sondes mesurées seulement
+      const int32_t v = t->v[q];
+      if (v != DepthTile::kEmpty && !t->isInterp(q)) { ++count; lo = std::min(lo, v); hi = std::max(hi, v); }
+    }
     if (inMemory && !writeSrc(meta.id, zs, key.first, key.second, *t, err)) return false;
     touched.insert(Key(zs, key.first, key.second));
   }
@@ -957,6 +1104,36 @@ bool BathyDb::importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded,
                     [&](float f) { if (progress) progress(0.5f + 0.1f * f, pd::tr("Pyramide de la source")); },
                     cancel))
     return false;
+  // levé en lignes : surface interpolée au niveau grossier, puis sa pyramide
+  if (!gridded && meta.interpD > 0 && ilevel < zs) {
+    std::set<TK> keys;
+    for (const Key& k : touched)
+      if (std::get<0>(k) == ilevel) keys.insert(TK(std::get<1>(k), std::get<2>(k)));
+    std::map<TK, DepthTile> lc;  // tuiles du niveau grossier (peu nombreuses)
+    auto get = [&](const TK& k) -> const DepthTile* {
+      auto it = lc.find(k);
+      if (it != lc.end()) return &it->second;
+      DepthTile t;
+      if (!readSrc(meta.id, ilevel, k.first, k.second, t)) return nullptr;
+      return &lc.emplace(k, std::move(t)).first->second;
+    };
+    std::set<TK> written;
+    if (!interpolate(
+            ilevel, keys, get,
+            [&](const TK& T, DepthTile& out) {
+              written.insert(T);
+              touched.insert(Key(ilevel, T.first, T.second));
+              return writeSrc(meta.id, ilevel, T.first, T.second, out, err);
+            },
+            0.6f, 0.65f))
+      return false;
+    lc.clear();
+    std::map<TK, DepthTile> none;
+    if (!written.empty() &&
+        !buildPyramid(meta.id, ilevel, keys, none, false, touched, err, nullptr, cancel))
+      return false;
+  }
+  meta.interpCount = nInterp;
 
   // 4) inscription de la source, puis fusion des tuiles concernées
   if (!upsertSource(meta, err)) return false;
@@ -1125,8 +1302,14 @@ bool BathyDb::buildPyramid(int64_t id, int zs, std::set<std::pair<int, int>> chi
             for (int i = 0; i < 256; ++i) {
               const int32_t v = c->v[j * 256 + i];
               if (v == DepthTile::kEmpty) continue;
-              int32_t& o = out.v[(size_t)(dy * 128 + j / 2) * 256 + dx * 128 + i / 2];
-              if (o == DepthTile::kEmpty || v < o) o = v;
+              const int ko = (dy * 128 + j / 2) * 256 + dx * 128 + i / 2;
+              int32_t& o = out.v[ko];
+              // une sonde mesurée l'emporte sur une valeur interpolée, puis la plus faible
+              const bool vi = c->isInterp(j * 256 + i), oi = out.isInterp(ko);
+              if (o == DepthTile::kEmpty || (oi && !vi) || (oi == vi && v < o)) {
+                o = v;
+                out.setInterp(ko, vi);
+              }
               any = true;
             }
         }
@@ -1423,9 +1606,11 @@ int BathyDb::maxMergedLevel(double lonMin, double lonMax, double latMin, double 
 bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latMax, int z,
                         size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                         std::string& err, const std::atomic<bool>* cancel,
-                        std::vector<int64_t>* srcIds) {
+                        std::vector<int64_t>* srcIds, std::vector<uint8_t>* interp,
+                        bool skipInterp) {
   out.clear();
   if (srcIds) srcIds->clear();
+  if (interp) interp->clear();
   const int zmax = maxMergedLevel(lonMin, lonMax, latMin, latMax);
   if (zmax < kDbMinLevel) { err = pd::tr("Base vide dans cette zone"); return false; }
   int zz = std::max(kDbMinLevel, std::min(z, zmax));
@@ -1464,22 +1649,75 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   // tuiles fusionnées ; là où le niveau demandé n'existe pas (zone couverte
   // seulement par des sources plus grossières), on remonte la pyramide
   std::map<std::tuple<int, long long, long long>, DepthTile> tiles;
-  auto pixel = [&](long long gx, long long gy, int32_t& v, int64_t& src) -> bool {
-    for (int d = 0; zz - d >= kDbMinLevel; ++d) {
-      const long long px = gx >> d, py = gy >> d;
-      const auto key = std::make_tuple(zz - d, px >> 8, py >> 8);
-      auto it = tiles.find(key);
-      if (it == tiles.end()) {
-        DepthTile t;
-        if (!readMerged(zz - d, (int)(px >> 8), (int)(py >> 8), t)) t = DepthTile();
-        it = tiles.emplace(key, std::move(t)).first;
+  auto tileOf = [&](int L, long long tx, long long ty) -> const DepthTile* {
+    const auto key = std::make_tuple(L, tx, ty);
+    auto it = tiles.find(key);
+    if (it == tiles.end()) {
+      DepthTile t;
+      if (!readMerged(L, (int)tx, (int)ty, t)) t = DepthTile();
+      it = tiles.emplace(key, std::move(t)).first;
+    }
+    return it->second.allocated() ? &it->second : nullptr;
+  };
+  // Surface interpolée lissée (bilinéaire) depuis le niveau L = zz - d :
+  // 1 = valeur (au moins un pixel interpolé parmi les quatre), 0 = sinon (voir
+  // un niveau plus haut). Un trou entouré de sondes mesurées seulement (levé
+  // dense) n'est jamais rempli : aucun pixel interpolé autour, à aucun niveau.
+  auto bilinear = [&](int d, long long gx, long long gy, int32_t& v, int64_t& src) -> int {
+    const int L = zz - d;
+    const double sc = std::ldexp(1.0, -d);
+    const double fx = (gx + 0.5) * sc - 0.5, fy = (gy + 0.5) * sc - 0.5;
+    const long long i0 = (long long)std::floor(fx), j0 = (long long)std::floor(fy);
+    const double tx = fx - i0, ty = fy - j0;
+    double acc = 0, ws = 0;
+    int n = 0, ni = 0;
+    for (int dj = 0; dj <= 1; ++dj)
+      for (int di = 0; di <= 1; ++di) {
+        const long long px = i0 + di, py = j0 + dj;
+        if (px < 0 || py < 0) continue;
+        const DepthTile* t = tileOf(L, px >> 8, py >> 8);
+        if (!t) continue;
+        const int k = (int)((py & 255) * 256 + (px & 255));
+        if (t->v[k] == DepthTile::kEmpty) continue;
+        const double w = (di ? tx : 1 - tx) * (dj ? ty : 1 - ty) + 1e-6;
+        acc += w * t->v[k];
+        ws += w;
+        ++n;
+        if (t->isInterp(k)) { ++ni; src = t->sourceAt(k); }
       }
-      if (!it->second.allocated()) continue;  // tuile absente : niveau inférieur
+    if (!ni && n == 4) {  // entouré de mesures : surface interpolée juste autour ?
+      // (croisement de lignes d'un levé : rempli ; trou d'un levé dense : non)
+      for (int dj = -1; dj <= 2 && !ni; ++dj)
+        for (int di = -1; di <= 2 && !ni; ++di) {
+          const long long px = i0 + di, py = j0 + dj;
+          if (px < 0 || py < 0 || (di >= 0 && di <= 1 && dj >= 0 && dj <= 1)) continue;
+          const DepthTile* t = tileOf(L, px >> 8, py >> 8);
+          if (t && t->isInterp((int)((py & 255) * 256 + (px & 255)))) ni = 1;
+        }
+    }
+    if (!ni) return 0;  // mesures seulement (ou rien) : voir un niveau plus haut
+    v = (int32_t)std::lround(acc / ws);
+    return 1;
+  };
+  auto pixel = [&](long long gx, long long gy, int32_t& v, int64_t& src, bool& ip) -> bool {
+    bool fineExists = false;  // une tuile plus fine existe : pas de valeur mesurée grossière
+    for (int d = 0; zz - d >= kDbMinLevel && d <= 10; ++d) {
+      const long long px = gx >> d, py = gy >> d;
+      const DepthTile* t = tileOf(zz - d, px >> 8, py >> 8);
+      if (!t) {  // tuile absente : niveau inférieur (rien plus haut si un niveau fin existait)
+        if (fineExists) return false;
+        continue;
+      }
       const int k = (int)((py & 255) * 256 + (px & 255));
-      v = it->second.v[k];
-      if (v == DepthTile::kEmpty) return false;
-      src = it->second.sourceAt(k);
-      return true;
+      v = t->v[k];
+      if (v != DepthTile::kEmpty && (d == 0 || (!fineExists && !t->isInterp(k)))) {
+        src = t->sourceAt(k);
+        ip = t->isInterp(k);
+        return true;  // valeur du niveau (ou d'une source plus grossière)
+      }
+      // vide ici, ou surface interpolée d'un niveau plus grossier : lissée
+      if (bilinear(d, gx, gy, v, src) == 1) { ip = true; return true; }
+      fineExists = true;  // niveau plus grossier
     }
     return false;
   };
@@ -1490,11 +1728,14 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
     for (int i = 0; i < nx; ++i) {
       int32_t v;
       int64_t src;
+      bool ip = false;
       const double lon = lon0 + (i + 0.5) * dlon;
       if (hiddenAt(lon, lat)) continue;  // fichier .pdb masqué
-      if (!pixel(gxs[i], gys[j], v, src)) continue;
+      if (!pixel(gxs[i], gys[j], v, src, ip)) continue;
+      if (ip && skipInterp) continue;    // zones interpolées masquées
       out.add(lon, lat, v / 1000.f);
       if (srcIds) srcIds->push_back(src);
+      if (interp) interp->push_back(ip ? 1 : 0);
     }
     if (tiles.size() > 600) tiles.clear();  // mémoire bornée (vues très larges)
   }

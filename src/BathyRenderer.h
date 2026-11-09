@@ -34,10 +34,10 @@ struct DisplaySettings;
 // Bandeau de palette posé sur la carte : zones cliquables (pixels du canevas,
 // tels que les donne le point de vue d'OpenCPN)
 struct BannerHit {
-  enum Part { None = 0, Min, Mode, Source, Max, Bar, Gear, Body };
+  enum Part { None = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body };
   bool valid = false;
-  wxRect box, minR, modeR, srcR, maxR, barR, gearR;
-  int pixW = 0;  // largeur du point de vue (rapport avec les coordonnées souris)
+  wxRect box, minR, modeR, srcR, maxR, barR, gearR, orientR;
+  int pixW = 0, pixH = 0;  // taille du point de vue (rapport avec les coordonnées souris)
   Part PartAt(const wxPoint& p) const {
     if (!valid || !box.Contains(p)) return None;
     if (minR.Contains(p)) return Min;
@@ -45,6 +45,7 @@ struct BannerHit {
     if (!srcR.IsEmpty() && srcR.Contains(p)) return Source;
     if (maxR.Contains(p)) return Max;
     if (gearR.Contains(p)) return Gear;
+    if (orientR.Contains(p)) return Orient;
     if (barR.Contains(p)) return Bar;
     return Body;
   }
@@ -84,16 +85,8 @@ class BathyRenderer {
   static void FormatDepth(float z, int decimals, wxString& ip, wxString& dp);
   void DrawGLText(float x, float y, const wxString& t, float scale, bool center);
   float GLTextWidth(const wxString& t, float scale) const;
-  // Géométrie du bandeau (largeurs de texte fournies par l'appelant : GL ou DC)
-  struct BannerLayout {
-    wxRect box, minR, modeR, srcR, maxR, barR, gearR;  // srcR vide en manuel
-    wxString minT, maxT, modeT, srcT, tide;
-    int lineH = 0, rowY = 0, tideY = 0;
-    float lo = 0, hi = 0;
-  };
-  bool LayoutBanner(PlugIn_ViewPort* vp, const DisplaySettings& s,
-                    const std::function<int(const wxString&)>& textW, int lineH,
-                    BannerLayout& L);
+  // Bandeau : une seule mise en page, dessinée en OpenGL ou en wxDC
+  void DrawBanner(struct BannerPainter& p, PlugIn_ViewPort* vp, const DisplaySettings& s);
   void DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s);
   void DrawBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s);
   void BuildGlyphs(int fontSize);

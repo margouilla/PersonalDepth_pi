@@ -19,6 +19,7 @@
 #include <wx/colordlg.h>
 #include <wx/dir.h>
 #include <wx/dirdlg.h>
+#include <wx/textdlg.h>
 #include <wx/filename.h>
 #include <wx/tokenzr.h>
 #include <wx/filedlg.h>
@@ -385,9 +386,7 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   wxWindow* sb = box->GetStaticBox();
   auto* row = new wxBoxSizer(wxHORIZONTAL);
   m_preset = new wxChoice(sb, wxID_ANY);
-  m_preset->Append(U8("(personnalisée)"));
-  for (auto& n : ColorRamp::PresetNames()) m_preset->Append(U8(n.c_str()));
-  m_preset->SetSelection(0);
+  RefreshPresetList();
   wxString modes[] = {U8("Dégradé continu"), U8("Paliers")};
   m_mode = new wxRadioBox(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 2, modes, 2);
   row->Add(m_preset, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
@@ -472,6 +471,21 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   b->Add(plus, 0, wxRIGHT, 4); b->Add(minus, 0, wxRIGHT, 12);
   b->Add(imp, 0, wxRIGHT, 4); b->Add(exp);
   box->Add(b, 0, wxALL, 4);
+  // Palettes de l'utilisateur : un fichier .cpt par palette dans un dossier
+  auto* pb = new wxBoxSizer(wxHORIZONTAL);
+  auto* psave = new wxButton(sb, wxID_ANY, U8("Enregistrer dans mes palettes…"), wxDefaultPosition,
+                             wxDefaultSize, wxBU_EXACTFIT);
+  psave->SetToolTip(U8("Enregistre la palette affichée (seuils, couleurs, mode, zone dangereuse) "
+                       "dans le dossier de palettes : elle apparaît ensuite dans la liste et dans "
+                       "le menu du bandeau."));
+  auto* pdir = new wxButton(sb, wxID_ANY, U8("Dossier de palettes…"), wxDefaultPosition,
+                            wxDefaultSize, wxBU_EXACTFIT);
+  pdir->SetToolTip(U8("Choisir le dossier des palettes (.cpt). Les palettes GMT déposées dans ce "
+                      "dossier sont aussi proposées."));
+  pb->Add(psave, 0, wxRIGHT, 4); pb->Add(pdir);
+  box->Add(pb, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
+  psave->Bind(wxEVT_BUTTON, &BathyDialog::OnSavePalette, this);
+  pdir->Bind(wxEVT_BUTTON, &BathyDialog::OnPaletteDir, this);
 
   auto* s = new wxBoxSizer(wxHORIZONTAL);
   m_safeOn = new wxCheckBox(sb, wxID_ANY, U8("Zone dangereuse si prof. <"));
@@ -586,8 +600,13 @@ void BathyDialog::RefreshPalette() {
   m_smooth->SetValue(s.smooth);
   m_legend->SetValue(s.legend);
   m_banner->SetValue(s.banner);
-  m_bannerPos->SetSelection(std::max(0, std::min(2, s.bannerPos)));
+  m_bannerPos->SetSelection(std::max(0, std::min(3, s.bannerPos)));
   m_bannerPos->Enable(s.banner);
+  m_bannerLock->SetValue(s.bannerLock);
+  m_interpShow->SetValue(s.interpShow);
+  m_interpDistinct->SetValue(s.interpDistinct);
+  m_interpDistinct->Enable(s.interpShow);
+  m_bannerLock->Enable(s.banner);
   m_ctOn->SetValue(s.contours);
   m_ctMode->SetSelection(s.contourMode);
   m_ctStep->SetValue(s.contourStep * K());
@@ -668,14 +687,64 @@ void BathyDialog::ApplyPaletteFromUI() {
 
 void BathyDialog::OnPreset(wxCommandEvent&) {
   int k = m_preset->GetSelection();
-  if (k <= 0) return;
-  m_pi->ApplyPreset(ColorRamp::PresetNames()[k - 1]);
+  if (k <= 0 || k > (int)m_presetKeys.size()) return;
+  m_pi->ApplyPreset(m_presetKeys[k - 1]);
 }
 
 void BathyDialog::SelectPreset(const std::string& name) {
-  const auto names = ColorRamp::PresetNames();
-  for (size_t k = 0; k < names.size(); ++k)
-    if (names[k] == name) { m_preset->SetSelection((int)k + 1); return; }
+  for (size_t k = 0; k < m_presetKeys.size(); ++k)
+    if (m_presetKeys[k] == name) { m_preset->SetSelection((int)k + 1); return; }
+}
+
+void BathyDialog::RefreshPresetList() {
+  const std::string cur = m_preset->GetSelection() > 0 &&
+                                  m_preset->GetSelection() <= (int)m_presetKeys.size()
+                              ? m_presetKeys[m_preset->GetSelection() - 1] : std::string();
+  m_preset->Clear();
+  m_presetKeys.clear();
+  m_preset->Append(U8("(personnalisée)"));
+  const size_t nBuilt = ColorRamp::PresetNames().size();
+  size_t k = 0;
+  for (const auto& e : m_pi->PaletteList()) {
+    m_preset->Append(k++ < nBuilt ? e.label : wxString(U8("Ma palette : ")) + e.label);
+    m_presetKeys.push_back(e.key);
+  }
+  m_preset->SetSelection(0);
+  if (!cur.empty()) SelectPreset(cur);
+}
+
+void BathyDialog::OnSavePalette(wxCommandEvent&) {
+  DisplaySettings& s = m_pi->Settings();
+  wxString name = wxGetTextFromUser(U8("Nom de la palette"), U8("Enregistrer dans mes palettes"),
+                                    "", this);
+  name.Trim(true).Trim(false);
+  if (name.empty()) return;
+  for (wxUniChar bad : wxString("\\/:*?\"<>|")) name.Replace(wxString(bad), "_");
+  const wxString dir = W8(s.paletteDir.c_str());
+  if (!wxDirExists(dir) && !wxFileName::Mkdir(dir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL)) {
+    wxMessageBox(U8("Impossible de créer le dossier ") + dir, "PersonalDepth", wxICON_WARNING, this);
+    return;
+  }
+  const wxString path = dir + wxFileName::GetPathSeparator() + name + ".cpt";
+  if (wxFileExists(path) &&
+      wxMessageBox(U8("Remplacer la palette existante ?"), "PersonalDepth", wxYES_NO | wxICON_QUESTION,
+                   this) != wxYES)
+    return;
+  if (!s.ramp.saveCPT(path.ToUTF8().data())) {
+    wxMessageBox(U8("Échec de l'écriture"), "PersonalDepth", wxICON_WARNING, this);
+    return;
+  }
+  RefreshPresetList();
+  SelectPreset(std::string("file:") + path.ToUTF8().data());
+}
+
+void BathyDialog::OnPaletteDir(wxCommandEvent&) {
+  DisplaySettings& s = m_pi->Settings();
+  wxDirDialog dd(this, U8("Dossier de palettes"), W8(s.paletteDir.c_str()));
+  if (dd.ShowModal() != wxID_OK) return;
+  s.paletteDir = dd.GetPath().ToUTF8().data();
+  m_pi->SaveConfig();
+  RefreshPresetList();
 }
 
 void BathyDialog::OnMode(wxCommandEvent&) {
@@ -862,7 +931,7 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   m_banner->SetToolTip(U8("A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée "
                           "ou toutes les données ; clic sur une profondeur : "
                           "borne de la palette ; clic sur les couleurs : préréglages ; "
-                          "roue : ce panneau."));
+                          "petite rampe : bandeau horizontal ou vertical ; roue : ce panneau."));
   g->Add(L("Opacité"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_opacity, 0, wxEXPAND);
   g->Add(m_shade, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeStrength, 0, wxEXPAND);
   g->Add(L("Exagération verticale"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_exag, 0, wxEXPAND);
@@ -876,8 +945,20 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   g->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_font, 0);
   g->Add(m_smooth, 0); g->Add(m_legend, 0);
   m_bannerPos = new wxChoice(sb, wxID_ANY);
-  for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche"}) m_bannerPos->Append(U8(t));
+  for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche", "libre (déplacé à la souris)"})
+    m_bannerPos->Append(U8(t));
+  m_bannerPos->SetToolTip(U8("Le bandeau se déplace aussi en le faisant glisser sur la carte."));
   g->Add(m_banner, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_bannerPos, 0, wxEXPAND);
+  m_bannerLock = new wxCheckBox(sb, wxID_ANY, U8("Verrouiller la position du bandeau"));
+  g->Add(m_bannerLock, 0); g->AddSpacer(0);
+  m_interpShow = new wxCheckBox(sb, wxID_ANY, U8("Zones interpolées de la base"));
+  m_interpShow->SetToolTip(U8("Surface calculée entre les sondes d'un nuage de points à l'import "
+                              "(levés en lignes, sondes de carte…). Décoché : seules les cases "
+                              "mesurées sont affichées."));
+  m_interpDistinct = new wxCheckBox(sb, wxID_ANY, U8("les distinguer (plus claires)"));
+  m_interpDistinct->SetToolTip(U8("Couleur des zones interpolées éclaircie pour les distinguer des "
+                                  "zones mesurées. Les sondes affichées ne sont jamais interpolées."));
+  g->Add(m_interpShow, 0); g->Add(m_interpDistinct, 0);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   m_cursor = new wxStaticText(sb, wxID_ANY, U8("Curseur : —"));
   m_cursor->SetFont(m_cursor->GetFont().Bold());
@@ -885,7 +966,7 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
 
   for (wxSlider* s : {m_opacity, m_shadeStrength, m_spacing})
     s->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
-  for (wxCheckBox* c : {m_shade, m_sound, m_smooth, m_legend, m_banner})
+  for (wxCheckBox* c : {m_shade, m_sound, m_smooth, m_legend, m_banner, m_bannerLock, m_interpShow, m_interpDistinct})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
   m_bannerPos->Bind(wxEVT_CHOICE, &BathyDialog::OnDisplay, this);
   for (wxSpinCtrl* c : {m_decimals, m_font})
@@ -917,8 +998,17 @@ void BathyDialog::OnDisplay(wxCommandEvent&) {
   s.legend = m_legend->GetValue();
   s.banner = m_banner->GetValue();
   s.bannerPos = m_bannerPos->GetSelection();
+  s.bannerLock = m_bannerLock->GetValue();
   m_bannerPos->Enable(s.banner);
-  if (colors) m_pi->ColorsChanged(); else m_pi->ViewChanged();
+  m_bannerLock->Enable(s.banner);
+  const bool interpChanged = s.interpShow != m_interpShow->GetValue();
+  colors = colors || s.interpDistinct != m_interpDistinct->GetValue();
+  s.interpShow = m_interpShow->GetValue();
+  s.interpDistinct = m_interpDistinct->GetValue();
+  m_interpDistinct->Enable(s.interpShow);
+  if (interpChanged) m_pi->InterpDisplayChanged();
+  else if (colors) m_pi->ColorsChanged();
+  else m_pi->ViewChanged();
 }
 
 void BathyDialog::OnExaggeration(wxCommandEvent&) {

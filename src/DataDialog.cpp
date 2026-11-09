@@ -45,6 +45,21 @@ wxString Bytes(long long b) {
   return wxString::Format(U8("%.0f ko"), b / 1024.0);
 }
 
+// Surface couverte : pixels renseignés au niveau natif × aire d'un pixel
+// Web Mercator à la latitude moyenne de l'emprise (m²)
+double CoveredArea(const pd::DbSource& d) {
+  const double lat = 0.5 * (d.latMin + d.latMax) * 3.14159265358979323846 / 180.0;
+  const double px = 40075016.686 * std::cos(lat) / (256.0 * std::ldexp(1.0, d.level));
+  return (double)d.count * px * px;
+}
+
+wxString AreaText(double m2) {
+  const wxString sq = wxString::FromUTF8("\xC2\xB2");  // exposant 2
+  if (m2 < 1e4) return wxString::Format("%.0f m", m2) + sq;
+  return wxString::Format("%.3f km", m2 / 1e6) + sq +
+         wxString::Format(" (%.3f NM", m2 / (1852.0 * 1852.0)) + sq + ")";
+}
+
 wxString Count(long long n) {
   if (n >= 1000000) return wxString::Format("%.1f M", n / 1e6);
   if (n >= 10000) return wxString::Format("%.0f k", n / 1e3);
@@ -509,6 +524,7 @@ void DataDialog::UpdateDetails() {
       t << U8("Coordonnées : ") << U8(d.crs.c_str()) << U8("   Réf. verticale : ") << U8(d.vref.c_str()) << "\n";
       t << wxString::Format(U8("Emprise     : lon %.5f … %.5f   lat %.5f … %.5f\n"), d.lonMin, d.lonMax,
                             d.latMin, d.latMax);
+      t << U8("Surface couverte : ") << AreaText(CoveredArea(d)) << "\n";
       wxString files;
       for (const auto& c : m_pi->DbCells())
         if (c.lonW < d.lonMax && c.lonW + c.deg > d.lonMin && c.latS < d.latMax && c.latS + c.deg > d.latMin)
@@ -518,12 +534,14 @@ void DataDialog::UpdateDetails() {
     }
   } else {
     long long n = 0;
+    double area = 0;
     float zlo = 1e9f, zhi = -1e9f;
     double rlo = 1e9, rhi = 0;
     std::string dlo = "9999", dhi = "0000";
     for (const auto& d : m_pi->DbSources())
       if (std::find(ids.begin(), ids.end(), d.id) != ids.end()) {
         n += d.count;
+        area += CoveredArea(d);
         zlo = std::min(zlo, d.zmin); zhi = std::max(zhi, d.zmax);
         rlo = std::min(rlo, d.res); rhi = std::max(rhi, d.res);
         dlo = std::min(dlo, d.date); dhi = std::max(dhi, d.date);
@@ -531,6 +549,7 @@ void DataDialog::UpdateDetails() {
     t << wxString::Format(U8("%d sources sélectionnées — %s sondes\n"), (int)ids.size(), Count(n));
     t << wxString::Format(U8("Résolution %.2f … %.2f m   Z %.2f … %.2f %s (ZH)\n"), rlo, rhi, zlo * dk,
                           zhi * dk, du);
+    t << U8("Surface couverte : ") << AreaText(area) << U8(" (cumulée, recouvrements comptés pour chaque source)\n");
     t << U8("Levés du ") << W8(dlo.c_str()) << U8(" au ") << W8(dhi.c_str());
   }
   m_details->ChangeValue(t);

@@ -155,6 +155,8 @@ struct GLHostState {
 static const int kTile = 512;   // cellules par tuile de texture
 static const int kMesh = 8;     // subdivisions par tuile (suivi de la projection)
 static const uint32_t kInk = RGBA(15, 25, 60), kHalo = RGBA(255, 255, 255);
+// Zones interpolées « distinguées » : couleur mêlée de blanc dans cette proportion
+static const float kInterpLighten = 0.45f;
 // Bandeau de palette : fond sombre, badge « A » (automatique) / « M » (manuel)
 static const uint32_t kBannerBg = RGBA(32, 38, 48), kBadgeAuto = RGBA(0, 132, 196),
                       kBadgeMan = RGBA(96, 104, 118), kBadgeSrc = RGBA(70, 84, 104);
@@ -198,7 +200,7 @@ const char* kFS =
     "uniform sampler1D lutTex;\n"
     "uniform sampler2D tideTex;\n"
     "uniform vec4 tideXf;\n"
-    "uniform float lutScale, lutOffset, shadeK, opacity, tideScale;\n"
+    "uniform float lutScale, lutOffset, shadeK, opacity, tideScale, interpK;\n"
     "void main() {\n"
     "  vec4 d = texture2D(depthTex, gl_TexCoord[0].st);\n"
     "  if (d.a < 0.5) discard;\n"
@@ -206,7 +208,9 @@ const char* kFS =
     "                                   tideXf.z + tideXf.w * gl_TexCoord[0].t)).r;\n"
     "  vec4 c = texture1D(lutTex, clamp(d.r * lutScale + lutOffset + t * tideScale, 0.0, 0.99999));\n"
     "  float f = 1.0 + shadeK * (d.g * (65535.0 / 160.0 / 256.0) - 1.0);\n"
-    "  gl_FragColor = vec4(min(c.rgb * f, vec3(1.0)), c.a * opacity);\n"
+    "  vec3 rgb = min(c.rgb * f, vec3(1.0));\n"
+    "  rgb = mix(rgb, vec3(1.0), interpK * d.b);\n"  // zones interpolées éclaircies
+    "  gl_FragColor = vec4(rgb, c.a * opacity);\n"
     "}\n";
 }  // namespace
 
@@ -215,7 +219,7 @@ struct BathyRenderer::SmoothGL {
   GLuint prog = 0, lutTex = 0, tideTex = 0;
   unsigned lutStamp = 0, tideVersion = ~0u;
   bool tideGrid = false;  // texture de marée maillée valide
-  GLint uDepth = -1, uLut = -1, uScale = -1, uOffset = -1, uShade = -1, uOpacity = -1;
+  GLint uDepth = -1, uLut = -1, uScale = -1, uOffset = -1, uShade = -1, uOpacity = -1, uInterp = -1;
   GLint uTide = -1, uTideXf = -1, uTideScale = -1;
   PFN_Uniform4f uniform4f = nullptr;
   PFN_UseProgram2 useProgram = nullptr;
@@ -294,6 +298,7 @@ bool BathyRenderer::InitSmoothGL() {
   S.uOffset = getUniform(S.prog, "lutOffset");
   S.uShade = getUniform(S.prog, "shadeK");
   S.uOpacity = getUniform(S.prog, "opacity");
+  S.uInterp = getUniform(S.prog, "interpK");
   S.uTide = getUniform(S.prog, "tideTex");
   S.uTideXf = getUniform(S.prog, "tideXf");
   S.uTideScale = getUniform(S.prog, "tideScale");
@@ -322,8 +327,10 @@ void BathyRenderer::UploadDepthTile(Tile& t, const GridLevel& g, const BathyLaye
       float z = Z(i, j);
       float sv = 160.f;
       bool valid = !std::isnan(z);
+      float ip = 0.f;  // part de cellules interpolées (bord des données : voisines)
       if (valid) {
         if (sh) sv = g.shade[(size_t)j * g.nx + i];
+        ip = g.isInterp((size_t)j * g.nx + i) ? 1.f : 0.f;
       } else {
         double acc = 0, sacc = 0;
         int n = 0;
@@ -333,14 +340,16 @@ void BathyRenderer::UploadDepthTile(Tile& t, const GridLevel& g, const BathyLaye
             if (std::isnan(v)) continue;
             acc += v; ++n;
             sacc += sh ? g.shade[(size_t)(j + dj) * g.nx + (i + di)] : 160.f;
+            ip += g.isInterp((size_t)(j + dj) * g.nx + (i + di)) ? 1.f : 0.f;
           }
         z = n ? (float)(acc / n) : z0;
         sv = n ? (float)(sacc / n) : 160.f;
+        ip = n ? ip / n : 0.f;
       }
       uint16_t* o = &buf[((size_t)y * W + x) * 4];
       o[0] = (uint16_t)std::lround(std::min(1.f, std::max(0.f, (z - z0) / zr)) * 65535.f);
       o[1] = (uint16_t)std::lround(sv * 256.f);  // 0..255 -> 0..65280
-      o[2] = 0;
+      o[2] = (uint16_t)std::lround(ip * 65535.f);
       o[3] = valid ? 65535 : 0;
     }
   if (!t.dtex) glGenTextures(1, &t.dtex);
@@ -619,6 +628,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
     S.uniform1i(S.uTide, 2);
     S.uniform1f(S.uShade, s.hillshade ? s.shadeStrength : 0.f);
     S.uniform1f(S.uOpacity, s.opacity / 100.f);
+    S.uniform1f(S.uInterp, s.interpDistinct ? kInterpLighten : 0.f);
   }
 
   for (auto& l : layers) {
@@ -653,7 +663,8 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
         } else if (!t.tex || t.stamp != m_lutStamp) {  // (re)coloration : LUT seulement
           buf.resize((size_t)t.w * t.h);
           Colorize(g, ti * kTile, tj * kTile, t.w, t.h, m_lut,
-                   s.hillshade ? s.shadeStrength : 0.f, buf.data(), t.w, &TideOf(s));
+                   s.hillshade ? s.shadeStrength : 0.f, buf.data(), t.w, &TideOf(s),
+                   s.interpDistinct ? kInterpLighten : 0.f);
           if (!t.tex) glGenTextures(1, &t.tex);
           glBindTexture(GL_TEXTURE_2D, t.tex);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1003,68 +1014,16 @@ void BathyRenderer::DrawCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& 
 }
 
 // ------------------------------------------------- bandeau de palette
-// [min]  (A|M)  [max unité]  ⚙   puis la rampe de couleurs entre min et max ;
-// une ligne de marée éventuelle au-dessus. Remplace l'ancienne légende.
-bool BathyRenderer::LayoutBanner(PlugIn_ViewPort* vp, const DisplaySettings& s,
-                                 const std::function<int(const wxString&)>& textW, int lineH,
-                                 BannerLayout& L) {
-  const auto& st = s.ramp.stops;
-  if (st.empty()) return false;
-  L.lo = st.front().depth;
-  L.hi = st.back().depth;
-  L.lineH = lineH;
-  L.minT = DepthText(s, L.lo);
-  L.maxT = DepthText(s, L.hi) + " " + s.depthUnit;
-  L.modeT = s.autoPalette ? "A" : "M";
-  // source du mode automatique : zone affichée / toutes les données (texte ASCII)
-  if (s.autoPalette) L.srcT = wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout"));
-  L.tide = s.tideLegend;
-  const int pad = 8, gap = 16, barH = 14;
-  const int rowH = lineH + 6, gear = lineH + 2;
-  const int badgeW = std::max(textW("M") + 12, rowH), wMin = textW(L.minT), wMax = textW(L.maxT);
-  const int srcW = L.srcT.empty() ? 0 : std::max(textW("Tout"), textW(L.srcT)) + 12;
-  const int midW = badgeW + (srcW ? 3 + srcW : 0);
-  // boutons au centre : chaque côté doit contenir sa valeur (et la roue à droite)
-  const int leftNeed = pad + std::max(wMin, textW("-000.0")) + gap;
-  const int rightNeed = gap + std::max(wMax, textW("000.0 ft")) + gap + gear + pad;
-  int boxW = midW + 2 * std::max(leftNeed, rightNeed);
-  boxW = std::max(boxW, 360);
-  if (!L.tide.empty()) boxW = std::max(boxW, textW(L.tide) + 2 * pad);
-  const int tideH = L.tide.empty() ? 0 : lineH + 2;
-  const int boxH = pad + tideH + rowH + 6 + barH + pad;
-  // hors de la marge où OpenCPN fait défiler la carte (5 % de la largeur),
-  // hors de l'échelle des distances (bas gauche) et des boutons de zoom (bas droite)
-  const int W = vp->pix_width, H = vp->pix_height;
-  const int m = std::max(24, W * 5 / 100 + 10);
-  int x, y;
-  switch (s.bannerPos) {
-    case 1: x = (W - boxW) / 2; y = m; break;               // haut, centré
-    case 2: x = m; y = H - m - boxH; break;                  // bas gauche
-    default: x = (W - boxW) / 2; y = H - m - boxH; break;   // bas, centré
-  }
-  x = std::max(0, x); y = std::max(0, y);
-  L.box = wxRect(x, y, boxW, boxH);
-  L.tideY = y + pad + lineH / 2;
-  L.rowY = y + pad + tideH;
-  const int bx = x + (boxW - midW) / 2;
-  L.modeR = wxRect(bx, L.rowY, badgeW, rowH);
-  if (srcW) L.srcR = wxRect(bx + badgeW + 3, L.rowY, srcW, rowH);
-  const int midR = bx + midW;
-  L.gearR = wxRect(x + boxW - pad - gear, L.rowY + (rowH - gear) / 2, gear, gear);
-  L.minR = wxRect(x + 2, L.rowY - 2, bx - x - 6, rowH + 4);
-  L.maxR = wxRect(midR + 4, L.rowY - 2, L.gearR.x - 6 - (midR + 4), rowH + 4);
-  L.barR = wxRect(x + pad, L.rowY + rowH + 6, boxW - 2 * pad, barH);
-  m_banner.valid = true;
-  m_banner.box = L.box;
-  m_banner.minR = L.minR;
-  m_banner.modeR = L.modeR;
-  m_banner.srcR = L.srcR;
-  m_banner.maxR = L.maxR;
-  m_banner.barR = wxRect(L.barR.x, L.barR.y - 3, L.barR.width, L.barR.height + 6);
-  m_banner.gearR = wxRect(L.gearR.x - 4, L.gearR.y - 4, L.gearR.width + 8, L.gearR.height + 8);
-  m_banner.pixW = vp->pix_width;
-  return true;
-}
+// Primitives de dessin du bandeau (OpenGL ou wxDC)
+struct BannerPainter {
+  virtual ~BannerPainter() = default;
+  virtual int textW(const wxString& t) = 0;
+  virtual int lineH() = 0;
+  virtual void fill(const wxRect& r, uint32_t c, float alpha, int radius) = 0;
+  // align : 0 x = bord gauche, 1 x = centre, 2 x = bord droit ; cy = ligne médiane
+  virtual void text(int x, float cy, const wxString& t, int align) = 0;
+  virtual void gear(const wxRect& r, uint32_t bg) = 0;
+};
 
 #ifndef GL_TRIANGLE_FAN
 #define GL_TRIANGLE_FAN 0x0006
@@ -1082,124 +1041,282 @@ static std::vector<wxPoint2DDouble> GearShape(double cx, double cy, double r) {
   return p;
 }
 
-void BathyRenderer::DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s) {
-  BannerLayout L;
-  const int lh = m_glyphs->lineH;
-  if (!LayoutBanner(vp, s, [this](const wxString& t) { return (int)GLTextWidth(t, 1.f); }, lh, L)) {
-    m_banner.valid = false;
-    return;
+// Horizontal :  marée (hauteur, date courte) sur une ligne en tête, puis
+//               [min]  (A)(Vue)  [max unité] [⇕] ⚙   puis la rampe.
+// Vertical :    marée sur deux lignes en tête (hauteur / date)
+//               [⇔]        ⚙
+//                (A)(Vue)
+//                 min
+//                 ▇ – seuils
+//                 ▇ – …
+//                 max unité
+void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  m_banner.valid = false;
+  const auto& st = s.ramp.stops;
+  if (st.empty()) return;
+  const ColorRamp& ramp = s.ramp;
+  const float lo = st.front().depth, hi = st.back().depth;
+  const int lineH = P.lineH();
+  const wxString minT = DepthText(s, lo), maxT = DepthText(s, hi) + " " + s.depthUnit;
+  const wxString modeT = s.autoPalette ? "A" : "M";
+  // source du mode automatique : zone affichée / toutes les données (texte ASCII)
+  const wxString srcT =
+      s.autoPalette ? wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout")) : wxString();
+  // marée : hauteur et date courte (horizontal : une ligne ; vertical : deux)
+  const wxString tide = s.tideLegend.empty() ? wxString() : s.tideLegend + "  " + s.tideWhen;
+  const wxString tide1 = s.tideLegend, tide2 = s.tideLegend.empty() ? wxString() : s.tideWhen;
+  const bool vert = s.bannerVertical;
+  const int pad = 8, gap = 16, barT = 14;  // barT : épaisseur de la rampe
+  const int rowH = lineH + 6, icon = lineH + 2;
+  const int badgeW = std::max(P.textW("M") + 12, rowH);
+  const int srcW = srcT.empty() ? 0 : std::max(P.textW("Tout"), P.textW(srcT)) + 12;
+  const int midW = badgeW + (srcW ? 3 + srcW : 0);
+  const int W = vp->pix_width, H = vp->pix_height;
+
+  // ---- mise en page relative (origine 0,0 du bandeau)
+  wxRect minR, maxR, modeR, srcR, gearR, orientR, barR;
+  int boxW, boxH, tideH = 0;
+  struct Tick { int pos; wxString t; };
+  std::vector<Tick> ticks;  // seuils intermédiaires (vertical)
+  if (!vert) {
+    const int leftNeed = pad + std::max(P.textW(minT), P.textW("-000.0")) + gap;
+    const int rightNeed = gap + std::max(P.textW(maxT), P.textW("000.0 ft")) + gap + icon + 8 + icon + pad;
+    boxW = std::max(380, midW + 2 * std::max(leftNeed, rightNeed));
+    if (!tide.empty()) boxW = std::max(boxW, P.textW(tide) + 2 * pad);
+    tideH = tide.empty() ? 0 : lineH + 2;
+    boxH = pad + tideH + rowH + 6 + barT + pad;
+    const int rowY = pad + tideH, bx = (boxW - midW) / 2;
+    modeR = wxRect(bx, rowY, badgeW, rowH);
+    if (srcW) srcR = wxRect(bx + badgeW + 3, rowY, srcW, rowH);
+    gearR = wxRect(boxW - pad - icon, rowY + (rowH - icon) / 2, icon, icon);
+    orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
+    minR = wxRect(2, rowY - 2, bx - 6, rowH + 4);
+    maxR = wxRect(bx + midW + 4, rowY - 2, orientR.x - 6 - (bx + midW + 4), rowH + 4);
+    barR = wxRect(pad, rowY + rowH + 6, boxW - 2 * pad, barT);
+  } else {
+    const int barLen = std::max(140, std::min(320, H * 35 / 100));
+    // étiquettes des seuils intermédiaires, espacées d'au moins une ligne
+    int labW = 0;
+    if (hi > lo) {
+      int last = -1000;
+      for (size_t i = 1; i + 1 < st.size(); ++i) {
+        const int pos = (int)std::lround(barLen * (st[i].depth - lo) / (hi - lo));
+        if (pos - last < lineH + 2 || pos < lineH / 2 + 2 || barLen - pos < lineH / 2 + 2) continue;
+        ticks.push_back({pos, DepthText(s, st[i].depth)});
+        labW = std::max(labW, P.textW(ticks.back().t));
+        last = pos;
+      }
+    }
+    boxW = std::max({pad + midW + pad, pad + icon + 12 + icon + pad, P.textW(minT) + 2 * pad,
+                     P.textW(maxT) + 2 * pad, pad + barT + 8 + labW + pad, 96,
+                     tide1.empty() ? 0 : P.textW(tide1) + 2 * pad,
+                     tide2.empty() ? 0 : P.textW(tide2) + 2 * pad});
+    int y = pad;
+    if (!tide1.empty()) {  // marée en tête du bandeau, sur deux lignes
+      tideH = 2 * (lineH + 2) + 4;
+      y += tideH;
+    }
+    orientR = wxRect(pad, y, icon, icon);
+    gearR = wxRect(boxW - pad - icon, y, icon, icon);
+    y += icon + 6;
+    const int bx = (boxW - midW) / 2;
+    modeR = wxRect(bx, y, badgeW, rowH);
+    if (srcW) srcR = wxRect(bx + badgeW + 3, y, srcW, rowH);
+    y += rowH + 4;
+    minR = wxRect(2, y, boxW - 4, lineH + 4);
+    y += lineH + 6;
+    barR = wxRect(pad, y, barT, barLen);
+    for (auto& t : ticks) t.pos += y;
+    y += barLen + 4;
+    maxR = wxRect(2, y, boxW - 4, lineH + 4);
+    y += lineH + 4;
+    boxH = y + pad - 4;
   }
-  auto rect = [](const wxRect& r) {
+  // ---- position sur la carte : hors de la marge où OpenCPN fait défiler la
+  // carte (5 % de la largeur), de l'échelle (bas gauche) et du zoom (bas droite)
+  const int m = std::max(24, W * 5 / 100 + 10);
+  const int fullH = boxH;
+  int x, y;
+  switch (s.bannerPos) {
+    case 1: x = (W - boxW) / 2; y = m; break;               // haut, centré
+    case 2: x = m; y = H - m - fullH; break;                 // bas gauche
+    case 3:                                                  // libre (déplacé à la souris)
+      x = (int)std::lround(s.bannerFx * W - boxW / 2.0);
+      y = (int)std::lround(s.bannerFy * H - fullH / 2.0);
+      break;
+    default: x = (W - boxW) / 2; y = H - m - fullH; break;  // bas, centré
+  }
+  x = std::max(0, std::min(x, W - boxW));
+  y = std::max(0, std::min(y, H - fullH));
+  auto mv = [&](wxRect r) { r.Offset(x, y); return r; };
+  minR = mv(minR); maxR = mv(maxR); modeR = mv(modeR); gearR = mv(gearR); orientR = mv(orientR);
+  barR = mv(barR);
+  if (!srcR.IsEmpty()) srcR = mv(srcR);
+  for (auto& t : ticks) t.pos += y;  // seuils : position relative -> carte
+  const wxRect box(x, y, boxW, boxH);
+
+  // ---- dessin
+  P.fill(box, kBannerBg, 0.86f, 5);
+  P.fill(modeR, s.autoPalette ? kBadgeAuto : kBadgeMan, 1.f, 3);
+  if (!srcR.IsEmpty()) P.fill(srcR, kBadgeSrc, 1.f, 3);
+  // rampe : une tranche par pixel, couleur exacte de la palette (paliers, sécurité)
+  const int len = vert ? barR.height : barR.width;
+  for (int i = 0; i < len; ++i) {
+    const float d = hi > lo ? lo + (hi - lo) * (i + 0.5f) / len : lo;
+    const wxRect sl = vert ? wxRect(barR.x, barR.y + i, barR.width, 1) : wxRect(barR.x + i, barR.y, 1, barR.height);
+    P.fill(sl, ramp.colorAt(d), 1.f, 0);
+  }
+  // profondeur de sécurité : repère sur la rampe
+  if (ramp.safetyOn && hi > lo && ramp.safetyDepth > lo && ramp.safetyDepth < hi) {
+    const int q = (int)(len * (ramp.safetyDepth - lo) / (hi - lo));
+    if (vert) {
+      P.fill(wxRect(barR.x - 3, barR.y + q - 1, barR.width + 6, 3), RGBA(255, 255, 255), 1.f, 0);
+      P.fill(wxRect(barR.x - 2, barR.y + q, barR.width + 4, 1), ramp.safetyColor, 1.f, 0);
+    } else {
+      P.fill(wxRect(barR.x + q - 1, barR.y - 3, 3, barR.height + 6), RGBA(255, 255, 255), 1.f, 0);
+      P.fill(wxRect(barR.x + q, barR.y - 2, 1, barR.height + 4), ramp.safetyColor, 1.f, 0);
+    }
+  }
+  // seuils intermédiaires (vertical) : petit trait et valeur
+  for (const auto& t : ticks)
+    P.fill(wxRect(barR.GetRight() + 2, t.pos, 4, 1), RGBA(220, 225, 232), 1.f, 0);
+  // bouton d'orientation : petite rampe dans l'autre sens
+  {
+    const wxRect& o = orientR;
+    const wxRect ic = vert ? wxRect(o.x, o.y + o.height / 2 - 3, o.width, 7)    // vers horizontal
+                           : wxRect(o.x + o.width / 2 - 3, o.y, 7, o.height);  // vers vertical
+    P.fill(wxRect(ic.x - 1, ic.y - 1, ic.width + 2, ic.height + 2), RGBA(220, 225, 232), 1.f, 0);
+    const int n = vert ? ic.width : ic.height;
+    for (int i = 0; i < n; ++i) {
+      const float d = hi > lo ? lo + (hi - lo) * (i + 0.5f) / n : lo;
+      P.fill(vert ? wxRect(ic.x + i, ic.y, 1, ic.height) : wxRect(ic.x, ic.y + i, ic.width, 1),
+             ramp.colorAt(d), 1.f, 0);
+    }
+  }
+  P.gear(gearR, kBannerBg);
+  // textes
+  const float cyMode = modeR.y + modeR.height / 2.f;
+  P.text(modeR.x + modeR.width / 2, cyMode, modeT, 1);
+  if (!srcR.IsEmpty()) P.text(srcR.x + srcR.width / 2, cyMode, srcT, 1);
+  if (!vert) {
+    if (tideH) P.text(x + pad, y + pad + lineH / 2.f, tide, 0);
+    P.text(x + pad, cyMode, minT, 0);
+    P.text(orientR.x - 10, cyMode, maxT, 2);
+  } else {
+    P.text(x + pad, minR.y + minR.height / 2.f, minT, 0);
+    P.text(x + pad, maxR.y + maxR.height / 2.f, maxT, 0);
+    for (const auto& t : ticks) P.text(barR.GetRight() + 8, (float)t.pos, t.t, 0);
+    if (tideH) {
+      P.text(x + pad, y + pad + lineH / 2.f, tide1, 0);
+      P.text(x + pad, y + pad + lineH + 2 + lineH / 2.f, tide2, 0);
+    }
+  }
+
+  // ---- zones cliquables
+  m_banner.valid = true;
+  m_banner.box = box;
+  m_banner.minR = minR;
+  m_banner.maxR = maxR;
+  m_banner.modeR = modeR;
+  m_banner.srcR = srcR;
+  m_banner.barR = vert ? wxRect(barR.x - 3, barR.y, barR.width + 6, barR.height)
+                       : wxRect(barR.x, barR.y - 3, barR.width, barR.height + 6);
+  if (vert) m_banner.barR.width = boxW - 2 * pad + 3;  // rampe et étiquettes
+  m_banner.gearR = wxRect(gearR.x - 4, gearR.y - 4, gearR.width + 8, gearR.height + 8);
+  m_banner.orientR = wxRect(orientR.x - 3, orientR.y - 3, orientR.width + 6, orientR.height + 6);
+  m_banner.pixW = W;
+  m_banner.pixH = H;
+}
+
+namespace {
+struct GLBannerPainter : BannerPainter {
+  BathyRenderer& R;
+  std::function<void(float, float, const wxString&, bool)> draw;
+  std::function<float(const wxString&)> width;
+  int lh;
+  GLBannerPainter(BathyRenderer& r, std::function<void(float, float, const wxString&, bool)> d,
+                  std::function<float(const wxString&)> w, int l)
+      : R(r), draw(std::move(d)), width(std::move(w)), lh(l) {}
+  int textW(const wxString& t) override { return (int)width(t); }
+  int lineH() override { return lh; }
+  void fill(const wxRect& r, uint32_t c, float a, int) override {
+    glDisable(GL_TEXTURE_2D);
+    glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, a);
     glBegin(GL_QUADS);
     glVertex2f(r.x, r.y); glVertex2f(r.x + r.width, r.y);
     glVertex2f(r.x + r.width, r.y + r.height); glVertex2f(r.x, r.y + r.height);
     glEnd();
-  };
-  auto col = [](uint32_t c, float a) { glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, a); };
-  glDisable(GL_TEXTURE_2D);
-  col(kBannerBg, 0.86f);
-  rect(L.box);
-  // badge du mode
-  col(s.autoPalette ? kBadgeAuto : kBadgeMan, 1.f);
-  rect(L.modeR);
-  if (!L.srcR.IsEmpty()) { col(kBadgeSrc, 1.f); rect(L.srcR); }
-  // rampe : une tranche par pixel, couleur exacte de la palette (paliers, sécurité)
-  const wxRect& b = L.barR;
-  const ColorRamp& r = s.ramp;
-  glBegin(GL_QUADS);
-  for (int i = 0; i < b.width; ++i) {
-    const float d = L.hi > L.lo ? L.lo + (L.hi - L.lo) * (i + 0.5f) / b.width : L.lo;
-    const uint32_t c = r.colorAt(d);
-    glColor4ub(R_(c), G_(c), B_(c), 255);
-    glVertex2f(b.x + i, b.y); glVertex2f(b.x + i + 1, b.y);
-    glVertex2f(b.x + i + 1, b.y + b.height); glVertex2f(b.x + i, b.y + b.height);
   }
-  glEnd();
-  // profondeur de sécurité : repère sur la rampe
-  if (r.safetyOn && L.hi > L.lo && r.safetyDepth > L.lo && r.safetyDepth < L.hi) {
-    const float xs = b.x + b.width * (r.safetyDepth - L.lo) / (L.hi - L.lo);
+  void text(int x, float cy, const wxString& t, int align) override {
+    glEnable(GL_TEXTURE_2D);
     glColor4f(1, 1, 1, 1);
-    rect(wxRect((int)xs - 1, b.y - 3, 3, b.height + 6));
-    col(r.safetyColor, 1.f);
-    rect(wxRect((int)xs, b.y - 2, 1, b.height + 4));
+    if (align == 1) draw((float)x, cy, t, true);
+    else draw(align == 2 ? x - width(t) : (float)x, cy, t, false);
   }
-  // roue des réglages
-  glColor4f(0.85f, 0.88f, 0.92f, 1);
-  const double gr = L.gearR.width / 2.0, gx = L.gearR.x + gr, gy = L.gearR.y + gr;
-  const auto g = GearShape(gx, gy, gr);
-  glBegin(GL_TRIANGLE_FAN);
-  glVertex2d(gx, gy);
-  for (const auto& p : g) glVertex2d(p.m_x, p.m_y);
-  glVertex2d(g.front().m_x, g.front().m_y);
-  glEnd();
-  col(kBannerBg, 1.f);
-  glBegin(GL_TRIANGLE_FAN);
-  glVertex2d(gx, gy);
-  for (int k = 0; k <= 16; ++k)
-    glVertex2d(gx + gr * 0.32 * std::cos(k * kPiB / 8), gy + gr * 0.32 * std::sin(k * kPiB / 8));
-  glEnd();
-  // textes
-  glEnable(GL_TEXTURE_2D);
-  glColor4f(1, 1, 1, 1);
+  void gear(const wxRect& r, uint32_t bg) override {
+    glDisable(GL_TEXTURE_2D);
+    glColor4f(0.85f, 0.88f, 0.92f, 1);
+    const double gr = r.width / 2.0, gx = r.x + gr, gy = r.y + gr;
+    const auto g = GearShape(gx, gy, gr);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2d(gx, gy);
+    for (const auto& p : g) glVertex2d(p.m_x, p.m_y);
+    glVertex2d(g.front().m_x, g.front().m_y);
+    glEnd();
+    glColor4f(R_(bg) / 255.f, G_(bg) / 255.f, B_(bg) / 255.f, 1);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2d(gx, gy);
+    for (int k = 0; k <= 16; ++k)
+      glVertex2d(gx + gr * 0.32 * std::cos(k * kPiB / 8), gy + gr * 0.32 * std::sin(k * kPiB / 8));
+    glEnd();
+  }
+};
+
+struct DCBannerPainter : BannerPainter {
+  wxDC& dc;
+  explicit DCBannerPainter(wxDC& d) : dc(d) {}
+  static wxColour wc(uint32_t c) { return wxColour(R_(c), G_(c), B_(c)); }
+  int textW(const wxString& t) override { return dc.GetTextExtent(t).x; }
+  int lineH() override { return dc.GetTextExtent("0").y + 2; }
+  void fill(const wxRect& r, uint32_t c, float, int radius) override {
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(wxBrush(wc(c)));
+    if (radius > 0) dc.DrawRoundedRectangle(r, radius);
+    else dc.DrawRectangle(r);
+  }
+  void text(int x, float cy, const wxString& t, int align) override {
+    const wxSize e = dc.GetTextExtent(t);
+    const int tx = align == 1 ? x - e.x / 2 : align == 2 ? x - e.x : x;
+    dc.SetTextForeground(*wxWHITE);
+    dc.DrawText(t, tx, (int)std::lround(cy - e.y / 2.0));
+  }
+  void gear(const wxRect& r, uint32_t bg) override {
+    const double gr = r.width / 2.0, gx = r.x + gr, gy = r.y + gr;
+    std::vector<wxPoint> gp;
+    for (const auto& p : GearShape(gx, gy, gr))
+      gp.emplace_back((int)std::lround(p.m_x), (int)std::lround(p.m_y));
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(wxBrush(wxColour(217, 224, 235)));
+    dc.DrawPolygon((int)gp.size(), gp.data());
+    dc.SetBrush(wxBrush(wc(bg)));
+    dc.DrawCircle((int)std::lround(gx), (int)std::lround(gy), (int)std::lround(gr * 0.32));
+  }
+};
+}  // namespace
+
+void BathyRenderer::DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  GLBannerPainter P(
+      *this, [this](float x, float y, const wxString& t, bool c) { DrawGLText(x, y, t, 1.f, c); },
+      [this](const wxString& t) { return GLTextWidth(t, 1.f); }, m_glyphs->lineH);
   m_glLight = true;
-  const float cy = L.rowY + L.modeR.height / 2.f;
-  if (!L.tide.empty()) DrawGLText(L.box.x + 8, L.tideY, L.tide, 1.f, false);
-  DrawGLText(L.box.x + 8, cy, L.minT, 1.f, false);
-  DrawGLText(L.modeR.x + L.modeR.width / 2.f, cy, L.modeT, 1.f, true);
-  if (!L.srcR.IsEmpty()) DrawGLText(L.srcR.x + L.srcR.width / 2.f, cy, L.srcT, 1.f, true);
-  DrawGLText(L.gearR.x - 10 - GLTextWidth(L.maxT, 1.f), cy, L.maxT, 1.f, false);
+  DrawBanner(P, vp, s);
   m_glLight = false;
+  glDisable(GL_TEXTURE_2D);
 }
 
 void BathyRenderer::DrawBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s) {
-  BannerLayout L;
-  const int lh = dc.GetTextExtent("0").y + 2;
-  if (!LayoutBanner(vp, s, [&dc](const wxString& t) { return dc.GetTextExtent(t).x; }, lh, L)) {
-    m_banner.valid = false;
-    return;
-  }
-  auto wc = [](uint32_t c) { return wxColour(R_(c), G_(c), B_(c)); };
-  dc.SetPen(*wxTRANSPARENT_PEN);
-  dc.SetBrush(wxBrush(wc(kBannerBg)));
-  dc.DrawRoundedRectangle(L.box, 5);
-  dc.SetBrush(wxBrush(wc(s.autoPalette ? kBadgeAuto : kBadgeMan)));
-  dc.DrawRoundedRectangle(L.modeR, 3);
-  if (!L.srcR.IsEmpty()) {
-    dc.SetBrush(wxBrush(wc(kBadgeSrc)));
-    dc.DrawRoundedRectangle(L.srcR, 3);
-  }
-  const wxRect& b = L.barR;
-  const ColorRamp& r = s.ramp;
-  for (int i = 0; i < b.width; ++i) {
-    const float d = L.hi > L.lo ? L.lo + (L.hi - L.lo) * (i + 0.5f) / b.width : L.lo;
-    dc.SetPen(wxPen(wc(r.colorAt(d)), 1));
-    dc.DrawLine(b.x + i, b.y, b.x + i, b.y + b.height);
-  }
-  if (r.safetyOn && L.hi > L.lo && r.safetyDepth > L.lo && r.safetyDepth < L.hi) {
-    const int xs = (int)(b.x + b.width * (r.safetyDepth - L.lo) / (L.hi - L.lo));
-    dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.SetBrush(*wxWHITE_BRUSH);
-    dc.DrawRectangle(xs - 1, b.y - 3, 3, b.height + 6);
-    dc.SetPen(wxPen(wc(r.safetyColor), 1));
-    dc.DrawLine(xs, b.y - 2, xs, b.y + b.height + 2);
-  }
-  const double gr = L.gearR.width / 2.0, gx = L.gearR.x + gr, gy = L.gearR.y + gr;
-  std::vector<wxPoint> gp;
-  for (const auto& p : GearShape(gx, gy, gr))
-    gp.emplace_back((int)std::lround(p.m_x), (int)std::lround(p.m_y));
-  dc.SetPen(*wxTRANSPARENT_PEN);
-  dc.SetBrush(wxBrush(wxColour(217, 224, 235)));
-  dc.DrawPolygon((int)gp.size(), gp.data());
-  dc.SetBrush(wxBrush(wc(kBannerBg)));
-  dc.DrawCircle((int)std::lround(gx), (int)std::lround(gy), (int)std::lround(gr * 0.32));
-  dc.SetTextForeground(*wxWHITE);
-  const int ty = L.rowY + (L.modeR.height - dc.GetTextExtent("0").y) / 2;
-  if (!L.tide.empty()) dc.DrawText(L.tide, L.box.x + 8, L.tideY - dc.GetTextExtent("0").y / 2);
-  dc.DrawText(L.minT, L.box.x + 8, ty);
-  dc.DrawText(L.modeT, L.modeR.x + (L.modeR.width - dc.GetTextExtent(L.modeT).x) / 2, ty);
-  if (!L.srcR.IsEmpty())
-    dc.DrawText(L.srcT, L.srcR.x + (L.srcR.width - dc.GetTextExtent(L.srcT).x) / 2, ty);
-  dc.DrawText(L.maxT, L.gearR.x - 10 - dc.GetTextExtent(L.maxT).x, ty);
+  DCBannerPainter P(dc);
+  DrawBanner(P, vp, s);
 }
 
 // ---------------------------------------------------------------- wxDC
@@ -1268,9 +1385,11 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
           uint32_t col = m_lut(z + (TT.gridded() ? TT.at(lon, lat) : TT.h0));
           float f = sh ? 1.f + k * (shv / 160.f - 1.f) : 1.f;
           size_t o = (size_t)y * W + x;
-          rgb[3 * o] = (unsigned char)std::min(255.f, R_(col) * f);
-          rgb[3 * o + 1] = (unsigned char)std::min(255.f, G_(col) * f);
-          rgb[3 * o + 2] = (unsigned char)std::min(255.f, B_(col) * f);
+          const float li = (s.interpDistinct && g.isInterp(c)) ? kInterpLighten : 0.f;
+          auto L = [li](float v) { return v + (255.f - v) * li; };  // zones interpolées éclaircies
+          rgb[3 * o] = (unsigned char)L(std::min(255.f, R_(col) * f));
+          rgb[3 * o + 1] = (unsigned char)L(std::min(255.f, G_(col) * f));
+          rgb[3 * o + 2] = (unsigned char)L(std::min(255.f, B_(col) * f));
           al[o] = (unsigned char)(A_(col) * op);
         }
       }

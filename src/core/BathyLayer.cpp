@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyLayer.h"
+#include "WaterLevel.h"
 #include "Lang.h"
 #include "FileUtil.h"
 
@@ -51,6 +52,100 @@ static std::string lowerExt(const std::string& p) {
   return e;
 }
 
+void BathyLayer::setupCrs(LoadOptions& lo) {
+  // Système de coordonnées : .prj voisin, sinon choix de l'utilisateur
+  std::string def = params.crsDef, label = params.crsName;
+  if (params.readPrj) {
+    fs::path base = U8Path(params.path);
+    for (fs::path prj : {U8Path(params.path + ".prj"), base.replace_extension(".prj")}) {
+      std::error_code ec;
+      if (!fs::exists(prj, ec)) continue;
+      std::ifstream f(prj);
+      std::stringstream ss; ss << f.rdbuf();
+      int code = EpsgFromWkt(ss.str());
+      if (code) { def = "EPSG:" + std::to_string(code); label = def + " (.prj)"; }
+      break;
+    }
+  }
+  if (!def.empty()) {
+    auto crs = std::make_shared<Crs>();
+    std::string cerr;
+    if (!Crs::Parse(def, *crs, cerr)) throw std::runtime_error(cerr);
+    if (!crs->isWGS84LonLat()) lo.crs = crs;
+  }
+  crsUsed_ = lo.crs ? (label.empty() ? def : label) : std::string();
+}
+
+bool BathyLayer::IsStreamable(const LayerParams& p) {
+  if (p.custom) return false;
+  const std::string ext = lowerExt(p.path);
+  return !(ext == ".asc" || ext == ".xml" || ext == ".landxml" || ext == ".tif" || ext == ".tiff" ||
+           ext == ".bag" || ext == ".nc" || ext == ".grd" || ext == ".pdpc");
+}
+
+bool BathyLayer::streamXYZ(size_t blockN, const std::function<bool(PointCloud&)>& sink,
+                           std::string& err) {
+  cancel_ = false;
+  state_ = Loading;
+  LoadOptions lo = params.load;
+  bool ok = false;
+  try {
+    setupCrs(lo);
+    float cmin = 1e30f, cmax = -1e30f;
+    size_t miss = 0, seen = 0, kept = 0;
+    XYZBlockSink each = [&](PointCloud& b) -> bool {
+      if (params.vref.active()) {  // référence verticale : grilles chargées sur l'emprise du bloc
+        VerticalCorrection v;
+        std::string verr;
+        if (!v.build(params.vref, b.lonMin, b.lonMax, b.latMin, b.latMax, verr))
+          throw std::runtime_error(verr);
+        float a, c;
+        seen += b.size();
+        miss += v.apply(b, a, c);
+        cmin = std::min(cmin, a); cmax = std::max(cmax, c);
+      }
+      if (params.depthBounds) b.keepDepths(params.depthMin, params.depthMax);
+      if (b.empty()) return true;
+      kept += b.size();
+      return sink(b);
+    };
+    ok = LoadXYZ(params.path, lo, cloud, err, [this](float f) { progress_ = f; }, stopFlag(), &each,
+                 blockN);
+    cloud.clear();
+    if (ok && !kept) {
+      ok = false;
+      if (params.vref.active() && miss == seen)
+        err = pd::tr("Aucune sonde dans la couverture de la référence verticale");
+      else if (params.depthBounds) {
+        char b[160];
+        std::snprintf(b, sizeof b, pd::tr("Aucune sonde entre %.1f et %.1f m (bornes d'import)"),
+                      params.depthMin, params.depthMax);
+        err = b;
+      }
+    }
+    vrefInfo_.clear();
+    if (ok && params.vref.active()) {
+      char b[200];
+      std::snprintf(b, sizeof b, "%s → ZH (%+.2f…%+.2f m)",
+                    params.vref.label.empty() ? pd::tr("Réf. terrestre") : params.vref.label.c_str(), cmin, cmax);
+      vrefInfo_ = b;
+      if (miss) {
+        std::snprintf(b, sizeof b, pd::tr(" — %zu sondes hors couverture NON converties"), miss);
+        vrefInfo_ += b;
+      }
+    }
+  } catch (const std::bad_alloc&) {
+    ok = false; err = pd::tr("Mémoire insuffisante : augmenter la taille de cellule");
+  } catch (const std::exception& e) {
+    ok = false; err = e.what();
+  }
+  if (stopped()) { ok = false; err = "Annulé"; }
+  error_ = err;
+  progress_ = 1.f;
+  state_.store(ok ? Ready : Failed, std::memory_order_release);
+  return ok;
+}
+
 void BathyLayer::run() {
   std::string err;
   bool ok = false;
@@ -59,32 +154,12 @@ void BathyLayer::run() {
   const std::string ext = lowerExt(params.path);
   LoadOptions lo = params.load;
   try {
-    // Système de coordonnées : .prj voisin, sinon choix de l'utilisateur
-    std::string def = params.crsDef, label = params.crsName;
-    if (params.readPrj) {
-      fs::path base = U8Path(params.path);
-      for (fs::path prj : {U8Path(params.path + ".prj"), base.replace_extension(".prj")}) {
-        std::error_code ec;
-        if (!fs::exists(prj, ec)) continue;
-        std::ifstream f(prj);
-        std::stringstream ss; ss << f.rdbuf();
-        int code = EpsgFromWkt(ss.str());
-        if (code) { def = "EPSG:" + std::to_string(code); label = def + " (.prj)"; }
-        break;
-      }
-    }
-    if (!def.empty()) {
-      auto crs = std::make_shared<Crs>();
-      std::string cerr;
-      if (!Crs::Parse(def, *crs, cerr)) throw std::runtime_error(cerr);
-      if (!crs->isWGS84LonLat()) lo.crs = crs;
-    }
-    crsUsed_ = lo.crs ? (label.empty() ? def : label) : std::string();
+    setupCrs(lo);
     const bool projected = lo.crs && !lo.crs->isGeographic();
 
     if (params.custom) {
       double dl = 0, dt = 0;
-      ok = params.custom(cloud, dl, dt, pointSource, err);
+      ok = params.custom(cloud, dl, dt, pointSource, pointInterp, err);
       gp.forceDLon = dl; gp.forceDLat = dt;
       gp.mode = GridMode::Shoalest;
     } else if (ext == ".asc") {
@@ -117,6 +192,10 @@ void BathyLayer::run() {
       if (params.load.text.custom)  // format personnalisé : autre cache
         std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_f%06zx",
                       std::hash<std::string>()(params.load.text.serialize()) & 0xFFFFFF);
+      if (params.load.water)  // sondes corrigées des hauteurs d'eau : autre cache
+        std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_w%06zx",
+                      std::hash<std::string>()(params.load.water->key() +
+                                               (params.load.waterSubtract ? "-" : "+")) & 0xFFFFFF);
       if (params.load.zToMeters != 1.0)  // fichier en pieds : autre cache
         std::snprintf(rng + std::strlen(rng), sizeof rng - std::strlen(rng), "_u%g",
                       params.load.zToMeters);
@@ -137,6 +216,22 @@ void BathyLayer::run() {
     }
     // Référence verticale : profondeurs ramenées au zéro hydrographique
     vrefInfo_.clear();
+    if (ok && params.load.water) {  // résumé de la correction par hauteurs d'eau
+      char b[300];
+      if (cloud.waterApplied) {
+        const double k = params.load.zToMeters;
+        std::snprintf(b, sizeof b, pd::tr("hauteurs d'eau observées (%+.2f…%+.2f m)"),
+                      cloud.waterCorrMin * k, cloud.waterCorrMax * k);
+        vrefInfo_ = b;
+        if (cloud.waterNoTime || cloud.waterMiss) {
+          std::snprintf(b, sizeof b, pd::tr(" — %lld sondes sans date et %lld hors période écartées"),
+                        cloud.waterNoTime, cloud.waterMiss);
+          vrefInfo_ += b;
+        }
+      } else {
+        vrefInfo_ = pd::tr("hauteurs d'eau observées");
+      }
+    }
     if (ok && !stopped() && params.vref.active() && !params.custom) {
       progress_ = 0.62f;
       VerticalCorrection vc;
@@ -148,7 +243,7 @@ void BathyLayer::run() {
       if (miss == cloud.size()) throw std::runtime_error(pd::tr("Aucune sonde dans la couverture de la référence verticale"));
       char b[200];
       std::snprintf(b, sizeof b, "%s → ZH (%+.2f…%+.2f m)", params.vref.label.empty() ? pd::tr("Réf. terrestre") : params.vref.label.c_str(), cmin, cmax);
-      vrefInfo_ = b;
+      vrefInfo_ = vrefInfo_.empty() ? std::string(b) : vrefInfo_ + " — " + b;
       if (miss) {
         std::snprintf(b, sizeof b, pd::tr(" — %zu sondes hors couverture NON converties"), miss);
         vrefInfo_ += b;
@@ -174,14 +269,15 @@ void BathyLayer::run() {
     }
     if (ok && !stopped()) {
       progress_ = 0.65f;
-      ok = grid.build(cloud, gp, tris.empty() ? nullptr : &tris, err);
+      ok = grid.build(cloud, gp, tris.empty() ? nullptr : &tris, err,
+                      pointInterp.empty() ? nullptr : &pointInterp);
       progress_ = 0.8f;
       if (ok) {
         grid.shadeSmooth = params.shadeSmooth;
         grid.computeHillshade(params.exaggeration);
       }
       progress_ = 0.9f;
-      if (ok) index.build(cloud);
+      if (ok) index.build(cloud, pointInterp.empty() ? nullptr : &pointInterp);
     }
   } catch (const std::bad_alloc&) {
     ok = false; err = pd::tr("Mémoire insuffisante : augmenter la taille de cellule");
@@ -261,12 +357,14 @@ std::string BathyLayer::summary() const {
 }
 
 bool BathyLayer::probe(double lon, double lat, double radiusDeg, float& gz,
-                       float& sz, double& sdist, int64_t* sourceId) const {
+                       float& sz, double& sdist, int64_t* sourceId, bool* gridInterp) const {
   if (sourceId) *sourceId = 0;
+  if (gridInterp) *gridInterp = false;
   if (state() != Ready || grid.empty()) return false;
   const GridLevel& g = grid.levels[0];
   int i, j;
   gz = g.cellOf(lon, lat, i, j) ? g.at(i, j) : NAN;
+  if (gridInterp && !std::isnan(gz)) *gridInterp = g.isInterp((size_t)j * g.nx + i);
   sz = NAN; sdist = -1;
   uint32_t k;
   if (index.nearest(cloud, lon, lat, radiusDeg, k)) {

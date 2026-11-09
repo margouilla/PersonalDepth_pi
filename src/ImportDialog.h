@@ -88,6 +88,21 @@ class ImportDialog : public wxDialog {
   wxCheckBox *m_nodataOn = nullptr, *m_boundsOn = nullptr;
   wxCheckBox* m_resOn = nullptr;          // résolution de stockage imposée
   wxSpinCtrlDouble* m_res = nullptr;
+  wxChoice* m_instr = nullptr;            // type de levé
+  wxChoice* m_nature = nullptr;           // grille / nuage
+  wxCheckBox* m_interp = nullptr;         // surface interpolée entre les sondes
+  wxCheckBox* m_waterOn = nullptr;        // hauteurs d'eau observées
+  wxTextCtrl* m_water = nullptr;
+  wxStaticText* m_waterInfo = nullptr;    // résumé du format des hauteurs
+  wxButton* m_waterFmtBtn = nullptr;
+  pd::TextFormat m_waterFmt;              // format des fichiers de hauteurs
+  int m_waterSignV = 0;                   // 0 sonde − hauteur, 1 sonde + hauteur
+  bool m_waterFeet = false;
+  void OnWaterFormat();
+  void UpdateWaterInfo();
+  wxButton* m_waterFile = nullptr;
+  wxButton* m_waterDir = nullptr;
+  wxButton* m_waterCurve = nullptr;
   wxComboBox* m_nodata = nullptr;
   wxSpinCtrlDouble *m_boundMin = nullptr, *m_boundMax = nullptr;
   // Coordonnées

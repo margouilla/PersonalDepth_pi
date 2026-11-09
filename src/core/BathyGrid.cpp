@@ -130,7 +130,11 @@ void BathyGrid::closeGaps(GridLevel& g) {
 }
 
 bool BathyGrid::build(const PointCloud& pc, const GridParams& p,
-                      const std::vector<uint32_t>* tris, std::string& err) {
+                      const std::vector<uint32_t>* tris, std::string& err,
+                      const std::vector<uint8_t>* pinterp) {
+  if (pinterp && (pinterp->size() != pc.size() ||
+                  std::find(pinterp->begin(), pinterp->end(), 1) == pinterp->end()))
+    pinterp = nullptr;  // aucune sonde interpolée
   levels.clear();
   nativeLattice = false;
   filledGaps = 0;
@@ -192,6 +196,18 @@ bool BathyGrid::build(const PointCloud& pc, const GridParams& p,
       sum[c] += pc.z[k]; ++cnt[c];
     }
     for (size_t c = 0; c < N; ++c) if (cnt[c]) g.z[c] = (float)(sum[c] / cnt[c]);
+  } else if (pinterp) {  // mesuré avant interpolé, puis plus faible
+    g.interp.assign(N, 0);
+    for (size_t k = 0; k < pc.size(); ++k) {
+      int i, j;
+      if (!g.cellOf(pc.lon(k), pc.lat(k), i, j)) continue;
+      const size_t c = (size_t)j * g.nx + i;
+      const uint8_t pi = (*pinterp)[k];
+      if (std::isnan(g.z[c]) || (g.interp[c] && !pi) || (g.interp[c] == pi && pc.z[k] < g.z[c])) {
+        g.z[c] = pc.z[k];
+        g.interp[c] = pi;
+      }
+    }
   } else {
     for (size_t k = 0; k < pc.size(); ++k) {
       int i, j;
@@ -294,19 +310,27 @@ void BathyGrid::buildPyramid() {
     d.dlon = s.dlon * 2; d.dlat = s.dlat * 2;
     d.lonW = s.lonW; d.latN = s.latN;
     d.z.assign((size_t)d.nx * d.ny, NaNf);
+    const bool fl = !s.interp.empty();
+    if (fl) d.interp.assign(d.z.size(), 0);
     for (int j = 0; j < d.ny; ++j)
       for (int i = 0; i < d.nx; ++i) {
         float acc = mean ? 0.f : NaNf; int n = 0;
+        uint8_t ai = 1;  // interpolée seulement si aucune cellule mesurée
         for (int dj = 0; dj < 2; ++dj)
           for (int di = 0; di < 2; ++di) {
             int ii = 2 * i + di, jj = 2 * j + dj;
             if (ii >= s.nx || jj >= s.ny) continue;
             float v = s.at(ii, jj);
             if (std::isnan(v)) continue;
-            if (mean) acc += v; else if (std::isnan(acc) || v < acc) acc = v;
+            const uint8_t vi = fl ? s.interp[(size_t)jj * s.nx + ii] : 0;
+            if (mean) acc += v;
+            else if (std::isnan(acc) || (ai && !vi) || (ai == vi && v < acc)) { acc = v; ai = vi; }
             ++n;
           }
-        if (n) d.z[(size_t)j * d.nx + i] = mean ? acc / n : acc;
+        if (n) {
+          d.z[(size_t)j * d.nx + i] = mean ? acc / n : acc;
+          if (fl && !mean) d.interp[(size_t)j * d.nx + i] = ai;
+        }
       }
     levels.push_back(std::move(d));
   }

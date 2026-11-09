@@ -105,14 +105,18 @@ En bas de la carte, un bandeau présente la palette de couleurs :
 | **Vue** / **Tout** (automatique seulement) | Seuils calculés sur la zone affichée ou sur toutes les données |
 | Profondeur minimale ou maximale | Saisie d'une borne de la palette. Automatique : borne imposée (vide = calculée) ; manuel : seuils étirés sur la nouvelle plage |
 | Rampe de couleurs | Choix d'un préréglage de couleurs |
+| Petite rampe (à côté de ⚙) | Bascule le bandeau entre **horizontal** et **vertical** ; le bandeau vertical montre aussi les seuils intermédiaires |
 | ⚙ | Ouvre le panneau principal |
 
-Le trait sur la rampe marque la profondeur de sécurité. Le bandeau peut être
-masqué ou déplacé (en bas au centre, en haut au centre, en bas à gauche) dans
-*Affichage*.
+Le trait sur la rampe marque la profondeur de sécurité. **Faites glisser le
+bandeau** à la souris pour le placer n'importe où sur la carte (la position
+est gardée). Dans *Affichage*, on peut le masquer, choisir une position fixe
+(en bas au centre, en haut au centre, en bas à gauche, libre) et **verrouiller
+sa position**.
 
-> 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne, et la
-> carte ne se déplace pas quand on clique dessus.
+> 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne, la
+> carte ne se déplace pas quand on clique sur le bandeau ou qu'on le fait
+> glisser, et le bandeau verrouillé ne se déplace pas.
 
 ## 3. Le panneau principal
 
@@ -160,8 +164,41 @@ avec GDAL.
 | Décalage | Constante ajoutée aux profondeurs, dans l'unité de Z |
 | NODATA | Valeurs à ignorer (ex. `-9999 9999`), en plus du NODATA de l'entête des grilles |
 | Bornes de Z | Ne garder que les profondeurs entre Z1 et Z2 (ex. −200 à 200 m écarte les remplissages) |
-| Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : estimé (pas de la grille, ou espacement des sondes consécutives pour les lignes de sonde). Une valeur plus grande (ex. 10–20 m) donne une surface plus continue entre des lignes de sonde espacées |
+| Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) |
+| Type de levé | *Automatique*, sondeur classique (un faisceau), multifaisceaux, lidar bathymétrique, sondes de carte, sondes au plomb. Règle la distance maximale d'interpolation (voir plus bas) |
+| Nature | *Automatique*, **grille** (pas régulier) ou **nuage de points** : impose le résultat de l'analyse du levé |
+| Interpoler entre les sondes | Nuages de points seulement : surface triangulée entre les sondes à l'import (voir plus bas) |
+| Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : donné par l'analyse du levé (pas de la grille, espacement le long des routes d'un levé en lignes, espacement typique des sondes) |
 | Cache binaire | Fichier `.pdpc` à côté de la source pour un réimport rapide |
+
+**Grille ou nuage de points** — chaque fichier est analysé à l'import (le
+résultat s'affiche dans le texte de progression et le bilan d'import) :
+- une **grille** (nœuds réguliers, donnée déjà traitée : Litto3D, NONNA,
+  EMODnet, `.asc`…) est reconnue même en coordonnées projetées avec un bruit
+  d'arrondi ou écrite en degrés ; elle est stockée à son pas, **sans
+  interpolation** ;
+- un **nuage de points** (lignes de sonde, sondes éparses, sondes de carte,
+  points multifaisceaux ou lidar) n'a pas de pas défini : l'analyse mesure
+  l'espacement entre voisins et, pour un **levé en lignes**, l'écart entre
+  les lignes.
+
+**Interpolation** — pour un nuage, une surface est triangulée (TIN) entre
+les sondes et remplit les cases sans sonde, mais **sans jamais franchir un
+vide plus large que la distance maximale D** : D vaut l'écart habituel entre
+les lignes pour un levé en lignes, sinon deux fois l'espacement des sondes
+(trois fois en multifaisceaux et lidar ; pour les sondes de carte et au
+plomb, au moins les grands écarts courants entre sondes, plafond 1 000 m /
+500 m). Les cases interpolées sont marquées comme telles dans la base : une
+case **mesurée** l'emporte toujours, quelles que soient la source et la
+règle de priorité ; le panneau *Affichage* peut les masquer ou les
+éclaircir (§ 7) ; les sondes affichées n'en viennent jamais et le curseur
+indique *(interpolé)*. Choisir le *Type de levé* réel si le résultat
+automatique ne convient pas (ex. ancien levé au plomb).
+
+> 🧪 **Testeurs — à vérifier :** un levé monofaisceau en lignes donne une
+> surface continue entre les lignes mais pas au travers des grands vides ;
+> un fichier grille n'est pas interpolé (l'analyse indique « grille ») ;
+> temps d'import et taille de la base.
 
 **Format personnalisé** (*Colonnes* › *Format personnalisé*, bouton
 **Format…**) — pour les fichiers texte qui ne sont pas de simples X Y Z :
@@ -174,7 +211,9 @@ avec l'aperçu du premier fichier ajouté, et montre les premières lignes du fi
   ou virgule) ;
 - la colonne de **X** (longitude / Est), de **Y** (latitude / Nord), de
   **Z** (profondeur), et au besoin de la **date** (ou date et heure) et de
-  l'**heure** ; *Ordre des dates* pour les dates comme 03/04/2021 ;
+  l'**heure** ; *Ordre des dates* pour les dates comme 03/04/2021 ; sous la
+  date, le **fuseau horaire** du fichier (décalage fixe sur UTC, ex.
+  UTC+08:00, sans passage à l'heure d'été ; les dates sont ramenées en UTC) ;
 - des **gabarits** facultatifs sous les colonnes, comme dans les logiciels
   d'hydrographie : date / heure avec `y M d h m s z AP` (ex. `yyyy/M/d`,
   `d/M/y h:m:s.s`, `MMM d, y`, `yyyyMMddhhmmss`), coordonnées X et Y
@@ -193,6 +232,40 @@ avec l'aperçu du premier fichier ajouté, et montre les premières lignes du fi
 
 Avec une colonne de date, la **date du levé** de la source est la première
 date du fichier (sauf date du levé imposée).
+
+**Hauteurs d'eau observées** — pour un levé dont les sondes sont mesurées
+depuis la surface de l'eau (sondeur monofaisceau sur un lac, une rivière…),
+chaque sonde peut être corrigée de la hauteur d'eau lue sur une échelle
+limnimétrique ou un marégraphe à l'heure de la sonde. Les fichiers de
+hauteurs sont des fichiers texte, une hauteur par ligne, dans l'unité de Z :
+
+```
+[TIME],[DEPTH]
+2026-11-01 05:00:00,0.35
+2026-11-01 06:00:00,0.41
+```
+
+(une date seule, `2026-11-01,0.35`, convient pour des valeurs journalières).
+Choisir un **fichier** ou un **dossier** : tous les fichiers `.txt`, `.csv`,
+`.dat` du dossier forment une seule série (une échelle, périodes
+successives). La fenêtre **Format…** (la même que pour les sondes) s'ouvre
+sur le premier fichier : lignes d'entête, séparateur, colonnes et gabarits
+de date / heure / hauteur, **unité** des hauteurs (mètres ou pieds),
+**fuseau horaire** et convention. La hauteur à l'heure de chaque sonde est interpolée entre les
+deux hauteurs qui l'encadrent ; hors de la série, la valeur extrême est
+gardée pendant un pas de temps (1 heure à 1 jour), au-delà la sonde est
+écartée et comptée dans le résumé d'import. Par défaut **profondeur = sonde −
+hauteur** (hauteur au-dessus du zéro) ; *profondeur = sonde + hauteur* est
+l'autre convention. **Courbe…** affiche la série des hauteurs en UTC
+(molette : zoom sur le temps, double-clic : toute la période).
+
+Les sondes doivent porter leur date et heure : utiliser le **format
+personnalisé** avec une colonne date (et heure). Sondes et hauteurs sont
+comparées en UTC : régler le **fuseau horaire** de chaque format sur celui
+de son fichier.
+
+> 🧪 **Testeurs — à vérifier :** un levé avec hauteurs d'eau donne les
+> profondeurs corrigées attendues ; la courbe correspond à votre échelle.
 
 ![Format du fichier texte](images/fr/10-text-format.png)
 
@@ -240,7 +313,9 @@ nouveaux, ou tout réimporter (remplacement).
 La liste montre les sources par classe : date du levé, résolution, nombre de
 sondes, rang, Z min / max, référence verticale, système de coordonnées, unité
 de Z et date d'import. La case d'une source (ou d'une classe) l'inclut ou non
-dans la fusion. Le cadre du bas détaille la sélection.
+dans la fusion. Le cadre du bas détaille la sélection, dont la **surface
+couverte** (surface des cellules de la base contenant des sondes, en km² et
+NM² ; pour plusieurs sources, la somme).
 
 | Action | Effet |
 |---|---|
@@ -272,6 +347,12 @@ dans la fusion. Le cadre du bas détaille la sélection.
   profondeur directement, double-cliquer sur une couleur pour la changer ;
   *+ seuil* / *− seuil*.
 - **Importer .cpt… / Exporter .cpt…** : palettes GMT.
+- **Mes palettes** : *Enregistrer dans mes palettes…* range la palette
+  affichée (seuils, couleurs, paliers ou dégradé, zone dangereuse) dans un
+  fichier `.cpt` du dossier de palettes ; elle apparaît ensuite dans la liste
+  des préréglages (*Ma palette : …*) et dans le menu de la rampe du bandeau.
+  *Dossier de palettes…* choisit le dossier ; les palettes GMT `.cpt` qui y
+  sont copiées sont aussi proposées.
 - **Automatique** : N seuils répartis entre la profondeur minimale et maximale
   de *toutes les données* ou de la *zone affichée* (recalculé quand la carte
   bouge), *valeurs rondes*, *min imposé* / *max imposé* facultatifs (ex. min
@@ -306,6 +387,7 @@ ligne n'est tracée dans les trous du levé.
 | Adoucir le relief | Lisse l'ombrage seul (couleurs, isobathes et sondes gardent les vraies profondeurs) |
 | Sondes chiffrées | Sondes exactes (la plus faible par case d'écran), espacement, décimales, taille du texte |
 | Lissage (interpolation) | Couleurs fondues entre les mailles |
+| Zones interpolées de la base | Affiche la surface interpolée à l'import entre les sondes ; *les distinguer (plus claires)* éclaircit ses couleurs |
 | Lecture au curseur | Profondeur et source à côté du curseur |
 | Bandeau de palette sur la carte | Affiche le bandeau et choisit sa position |
 
@@ -402,3 +484,10 @@ un PC puis copier les fichiers `.pdb`.
 - Pas compatible Android (OpenGL ES).
 - Projection de carte supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36…) : paramètres de Helmert moyens (~1–2 m).
+- L'interpolation est faite à l'import : réimporter un levé pour appliquer
+  un autre type de levé ou une autre nature. *Nettoyer…* une source
+  reconstruit ses niveaux grossiers sans l'interpolation des levés en lignes
+  très espacées (réimporter pour la retrouver).
+- Les fichiers texte de plus de 200 Mo sont importés par blocs (mémoire
+  limitée) ; un levé très dense donne une grosse base : une *Résolution
+  imposée* (ex. 0,5 m) la réduit fortement.

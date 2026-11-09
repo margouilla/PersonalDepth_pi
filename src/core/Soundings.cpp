@@ -36,9 +36,11 @@ bool ScreenMapper::fit(const double lon[3], const double lat[3], const double x[
   return true;
 }
 
-void SoundingIndex::build(const PointCloud& pc) {
+void SoundingIndex::build(const PointCloud& pc, const std::vector<uint8_t>* skip) {
   perm_.clear(); start_.clear();
   if (pc.empty()) return;
+  if (skip && skip->size() != pc.size()) skip = nullptr;
+  auto keep = [&](size_t k) { return !skip || !(*skip)[k]; };
   double spanLon = std::max(pc.lonMax - pc.lonMin, 1e-9);
   double spanLat = std::max(pc.latMax - pc.latMin, 1e-9);
   double cosL = std::cos(0.5 * (pc.latMin + pc.latMax) * M_PI / 180.0);
@@ -51,7 +53,10 @@ void SoundingIndex::build(const PointCloud& pc) {
   size_t NB = (size_t)nbx_ * nby_;
   std::vector<uint32_t> bucket(pc.size());
   start_.assign(NB + 1, 0);
+  size_t kept = 0;
   for (size_t k = 0; k < pc.size(); ++k) {
+    if (!keep(k)) continue;
+    ++kept;
     int bx = std::min(nbx_ - 1, (int)((pc.lon(k) - lon0_) / blon_));
     int by = std::min(nby_ - 1, (int)((pc.lat(k) - lat0_) / blat_));
     bucket[k] = (uint32_t)((size_t)by * nbx_ + bx);
@@ -59,8 +64,9 @@ void SoundingIndex::build(const PointCloud& pc) {
   }
   for (size_t b = 0; b < NB; ++b) start_[b + 1] += start_[b];
   std::vector<uint32_t> fill(start_.begin(), start_.end() - 1);
-  perm_.resize(pc.size());
-  for (size_t k = 0; k < pc.size(); ++k) perm_[fill[bucket[k]]++] = (uint32_t)k;
+  perm_.resize(kept);
+  for (size_t k = 0; k < pc.size(); ++k)
+    if (keep(k)) perm_[fill[bucket[k]]++] = (uint32_t)k;
 }
 
 bool SoundingIndex::bucketRange(double lonMin, double lonMax, double latMin,
@@ -166,7 +172,8 @@ std::vector<Label> SelectSoundings(const PointCloud& pc, const SoundingIndex& id
     for (int j = j0; j <= j1; ++j)
       for (int i = i0; i <= i1; ++i) {
         float z = g.at(i, j);
-        if (!std::isnan(z)) offer(g.cellLon(i), g.cellLat(j), z, true);
+        if (!std::isnan(z) && !g.isInterp((size_t)j * g.nx + i))  // pas de sonde interpolée
+          offer(g.cellLon(i), g.cellLat(j), z, true);
       }
   }
   for (auto& L : best)

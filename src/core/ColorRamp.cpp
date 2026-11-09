@@ -124,6 +124,13 @@ bool ColorRamp::loadCPT(const std::string& path, std::string& err) {
   bool allFlat = true;
   std::string line;
   while (std::getline(in, line)) {
+    // palette écrite par PersonalDepth : réglages exacts (mode, sécurité, seuils)
+    if (line.rfind("# PD-RAMP ", 0) == 0) {
+      ColorRamp r;
+      std::string v = line.substr(10);
+      while (!v.empty() && (v.back() == '\r' || v.back() == ' ')) v.pop_back();
+      if (r.deserialize(v)) { *this = r; return true; }
+    }
     if (line.empty() || line[0] == '#' || line[0] == 'B' || line[0] == 'F' || line[0] == 'N')
       continue;
     for (char& ch : line) if (ch == '/') ch = ' ';
@@ -148,6 +155,7 @@ bool ColorRamp::saveCPT(const std::string& path) const {
   std::ofstream o(U8Path(path));
   if (!o || stops.size() < 2) return false;
   o << "# PersonalDepth_pi - " << (mode == Mode::Stepped ? "paliers" : "continu") << "\n";
+  o << "# PD-RAMP " << serialize() << "\n";  // relu tel quel par PersonalDepth
   for (size_t i = 0; i + 1 < stops.size(); ++i) {
     uint32_t a = stops[i].rgba, b = mode == Mode::Stepped ? a : stops[i + 1].rgba;
     o << stops[i].depth << ' ' << R_(a) << '/' << G_(a) << '/' << B_(a) << ' '
@@ -268,7 +276,9 @@ void ColorLUT::build(const ColorRamp& r, float zMin, float zMax, int n, float of
 }
 
 void Colorize(const GridLevel& g, int i0, int j0, int w, int h,
-              const ColorLUT& lut, float k, uint32_t* out, int stride, const TideField* tide) {
+              const ColorLUT& lut, float k, uint32_t* out, int stride, const TideField* tide,
+              float li) {
+  const bool fl = li > 0.f && !g.interp.empty();
   const bool tg = tide && tide->gridded();
   const float t0 = tide ? tide->h0 : 0.f;
   const bool sh = k > 0.f && g.shade.size() == g.z.size();
@@ -287,6 +297,10 @@ void Colorize(const GridLevel& g, int i0, int j0, int w, int h,
         float f = 1.f + k * (sr[i] * (1.f / 160.f) - 1.f);
         auto M = [f](int v) { int q = (int)(v * f); return q > 255 ? 255 : q; };
         c = RGBA(M(R_(c)), M(G_(c)), M(B_(c)), A_(c));
+      }
+      if (fl && g.interp[(size_t)j * g.nx + i]) {
+        auto W = [li](int v) { return (int)(v + (255 - v) * li); };
+        c = RGBA(W(R_(c)), W(G_(c)), W(B_(c)), A_(c));
       }
       o[x] = c;
     }

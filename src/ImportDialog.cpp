@@ -16,6 +16,8 @@
 #include "core/Lang.h"
 #include "ImportDialog.h"
 #include "TextFormatDialog.h"
+#include "WaterLevelDialog.h"
+#include "core/WaterLevel.h"
 
 #include <wx/display.h>
 
@@ -343,23 +345,117 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   m_res = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
                                wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
   m_res->SetDigits(2);
-  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé : pas "
-                         "de la grille, ou espacement des sondes consécutives (lignes de "
-                         "sonde), ou surface / nombre de sondes. Une valeur plus grande donne une "
-                         "surface plus continue entre des lignes de sonde espacées ; dans chaque "
-                         "case, la sonde la plus faible est gardée.");
+  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé par "
+                         "l'analyse du levé : pas de la grille, ou espacement des sondes le long "
+                         "des routes (levé en lignes), ou espacement typique des sondes. Dans "
+                         "chaque case, la sonde la plus faible est gardée.");
   m_resOn->SetToolTip(rt);
   m_res->SetToolTip(rt);
   auto* resr = new wxBoxSizer(wxHORIZONTAL);
   resr->Add(m_res, 0, wxRIGHT, 4);
   resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
   g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
+
+  // nature du levé et surface interpolée entre les sondes
+  m_instr = new wxChoice(sb, wxID_ANY);
+  for (const char* t : {"automatique (d'après les données)", "sondeur classique (un faisceau, routes ou profils)",
+                        "sondeur multifaisceaux (large fauchée)", "lidar bathymétrique",
+                        "sondes de carte (sélection)", "sondes au plomb (levés anciens)"})
+    m_instr->Append(U8(t));
+  m_instr->SetSelection(std::max(0, std::min(5, st.importInstrument)));
+  m_instr->SetToolTip(U8("Règle la distance maximale d'interpolation entre les sondes. "
+                         "Automatique : levé en lignes reconnu à l'écart entre les routes, sinon "
+                         "deux fois l'espacement des sondes. Multifaisceaux et lidar : trois fois. "
+                         "Sondes de carte et plomb : au moins les grands écarts courants entre sondes, plafond de 1 000 m / 500 m."));
+  g->Add(L("Type de levé"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_instr, 0);
+  m_nature = new wxChoice(sb, wxID_ANY);
+  for (const char* t : {"automatique", "grille (pas régulier)", "nuage de points"}) m_nature->Append(U8(t));
+  m_nature->SetSelection(std::max(0, std::min(2, st.importNature)));
+  m_nature->SetToolTip(U8("Grille : nœuds réguliers, déjà traitée, stockée à son pas sans "
+                          "interpolation. Nuage : sondes sans pas défini, surface interpolée entre "
+                          "elles. Automatique : réseau régulier cherché dans le système du fichier, "
+                          "en lon/lat et en UTM."));
+  m_interp = new wxCheckBox(sb, wxID_ANY, U8("Interpoler entre les sondes (nuages de points)"));
+  m_interp->SetValue(st.importInterp);
+  m_interp->SetToolTip(U8("Surface triangulée entre les sondes, sans franchir un vide plus large "
+                          "que la distance maximale. Marquée « interpolée » dans la base : une sonde "
+                          "mesurée l'emporte toujours, et l'affichage peut la masquer ou "
+                          "l'éclaircir."));
+  auto* nr = new wxBoxSizer(wxHORIZONTAL);
+  nr->Add(m_nature, 0, wxRIGHT, 12);
+  nr->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(L("Nature"), 0, wxALIGN_CENTER_VERTICAL); g->Add(nr, 0);
+
+  // hauteurs d'eau observées (échelle, marégraphe) : sondes horodatées corrigées
+  m_waterOn = new wxCheckBox(sb, wxID_ANY, U8("Hauteurs d'eau observées"));
+  m_waterOn->SetValue(st.importWaterOn);
+  m_water = new wxTextCtrl(sb, wxID_ANY, W8(st.importWater.c_str()), wxDefaultPosition,
+                           wxSize(FromDIP(230), -1));
+  m_waterFile = new wxButton(sb, wxID_ANY, U8("Fichier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterDir = new wxButton(sb, wxID_ANY, U8("Dossier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterCurve = new wxButton(sb, wxID_ANY, U8("Courbe…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterFmtBtn = new wxButton(sb, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterInfo = new wxStaticText(sb, wxID_ANY, "");
+  m_waterFmt.deserialize(st.importWaterFormat);
+  m_waterSignV = std::max(0, std::min(1, st.importWaterSign));
+  m_waterFeet = st.importWaterFeet;
+  const wxString wt = U8("Fichiers texte d'une échelle ou d'un marégraphe : date (et heure) et hauteur "
+                         "d'eau (ex. 2026-11-01 05:00:00,0.35). Un dossier : tous ses fichiers .txt, "
+                         ".csv, .dat forment une seule série. Colonnes, unité, convention et fuseau "
+                         "horaire se règlent avec « Format… ». Chaque sonde est corrigée de la "
+                         "hauteur interpolée à son heure : le format des sondes doit indiquer la "
+                         "colonne date (et heure).");
+  for (wxWindow* w : std::initializer_list<wxWindow*>{m_waterOn, m_water}) w->SetToolTip(wt);
+  auto* wr = new wxBoxSizer(wxHORIZONTAL);
+  wr->Add(m_water, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  wr->Add(m_waterFile, 0, wxRIGHT, 2);
+  wr->Add(m_waterDir, 0, wxRIGHT, 2);
+  wr->Add(m_waterFmtBtn, 0, wxRIGHT, 2);
+  wr->Add(m_waterCurve, 0);
+  g->Add(m_waterOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(wr, 0, wxEXPAND);
+  g->AddSpacer(0); g->Add(m_waterInfo, 0, wxEXPAND);
+  UpdateWaterInfo();
+  m_waterFile->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    wxFileDialog fd(this, U8("Fichier de hauteurs d'eau"), "", "",
+                    U8("Hauteurs d'eau (*.txt;*.csv;*.dat)|*.txt;*.csv;*.dat|Tous les fichiers|*.*"),
+                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (fd.ShowModal() != wxID_OK) return;
+    m_water->SetValue(fd.GetPath());
+    m_waterOn->SetValue(true);
+    wxCommandEvent e(wxEVT_CHECKBOX); m_waterOn->GetEventHandler()->ProcessEvent(e);
+    CallAfter([this] { OnWaterFormat(); });  // format réglé sur ce fichier
+  });
+  m_waterDir->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    wxDirDialog dd(this, U8("Dossier des hauteurs d'eau"), m_water->GetValue());
+    if (dd.ShowModal() != wxID_OK) return;
+    m_water->SetValue(dd.GetPath());
+    m_waterOn->SetValue(true);
+    wxCommandEvent e(wxEVT_CHECKBOX); m_waterOn->GetEventHandler()->ProcessEvent(e);
+    CallAfter([this] { OnWaterFormat(); });
+  });
+  m_waterFmtBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnWaterFormat(); });
+  m_waterCurve->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    auto ser = std::make_shared<WaterLevelSeries>();
+    std::string err;
+    if (!ser->load(m_water->GetValue().Trim().Trim(false).ToStdString(wxConvUTF8), m_waterFmt,
+                   m_waterFeet ? 0.3048 : 1.0, err)) {
+      wxMessageBox(W8(err.c_str()), "PersonalDepth", wxOK | wxICON_WARNING, this);
+      return;
+    }
+    WaterLevelDialog d(this, ser, m_waterFeet ? 0.3048 : 1.0, m_waterFeet ? "ft" : "m");
+    d.ShowModal();
+  });
   auto sync = [this]() {
     m_nodata->Enable(m_nodataOn->GetValue());
     m_boundMin->Enable(m_boundsOn->GetValue());
     m_boundMax->Enable(m_boundsOn->GetValue());
     m_res->Enable(m_resOn->GetValue());
+    const bool w = m_waterOn->GetValue();
+    for (wxWindow* c : std::initializer_list<wxWindow*>{m_water, m_waterFile, m_waterDir, m_waterCurve,
+                                                        m_waterFmtBtn, m_waterInfo})
+      c->Enable(w);
   };
+  m_waterOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_resOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
@@ -701,6 +797,32 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importOffset = toM(m_offset->GetValue(), s.importOffset, 100.0);
   s.importCache = m_cache->GetValue();
   s.importRes = m_resOn->GetValue() ? (float)m_res->GetValue() : 0.f;
+  s.importInstrument = m_instr->GetSelection();
+  s.importNature = m_nature->GetSelection();
+  s.importInterp = m_interp->GetValue();
+  // hauteurs d'eau observées : série lue une fois, partagée par tous les fichiers
+  std::shared_ptr<const WaterLevelSeries> water;
+  if (m_waterOn->GetValue()) {
+    if (m_order->GetSelection() != 2 || m_fmt.colDate <= 0) {
+      wxMessageBox(U8("La correction par hauteurs d'eau demande des sondes horodatées : choisir "
+                      "« Format personnalisé » et indiquer la colonne date (et heure)."),
+                   "PersonalDepth", wxOK | wxICON_WARNING, this);
+      return;
+    }
+    auto ser = std::make_shared<WaterLevelSeries>();
+    std::string err;
+    if (!ser->load(m_water->GetValue().Trim().Trim(false).ToStdString(wxConvUTF8), m_waterFmt,
+                   m_waterFeet ? 0.3048 : 1.0, err)) {
+      wxMessageBox(W8(err.c_str()), "PersonalDepth", wxOK | wxICON_WARNING, this);
+      return;
+    }
+    water = ser;
+  }
+  s.importWaterOn = m_waterOn->GetValue();
+  s.importWater = m_water->GetValue().Trim().Trim(false).ToUTF8().data();
+  s.importWaterSign = m_waterSignV;
+  s.importWaterFormat = m_waterFmt.serialize();
+  s.importWaterFeet = m_waterFeet;
   // NODATA : liste de nombres
   std::vector<double> nodata;
   if (m_nodataOn->GetValue()) {
@@ -771,12 +893,17 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.load.zOffset = s.importOffset;
     p.load.zToMeters = s.importZFeet ? 0.3048 : 1.0;
     p.load.nodata = nodata;
+    p.load.water = water;
+    p.load.waterSubtract = s.importWaterSign == 0;
     p.depthBounds = s.importBoundsOn;
     p.depthMin = s.boundMin;
     p.depthMax = s.boundMax;
     p.useCache = s.importCache;
     p.importPrefs = prefs;
     p.storeRes = s.importRes;
+    p.instrument = s.importInstrument;
+    p.nature = s.importNature;
+    p.interpolate = s.importInterp;
     p.surveyDate = m_date;
     if (m_edit && k < m_srcs.size()) {  // relecture : date et classe de la source gardées
       if (p.surveyDate.empty()) p.surveyDate = m_srcs[k].date;
@@ -785,6 +912,29 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     m_out.push_back(p);
   }
   EndModal(wxID_OK);
+}
+
+// Format des fichiers de hauteurs d'eau (aperçu sur le premier fichier du chemin)
+void ImportDialog::OnWaterFormat() {
+  const std::string sample =
+      WaterLevelSeries::FirstFile(m_water->GetValue().Trim().Trim(false).ToStdString(wxConvUTF8));
+  TextFormatDialog d(this, sample, m_waterFmt, m_waterSignV, m_waterFeet, true);
+  if (d.ShowModal() != wxID_OK) return;
+  m_waterFmt = d.Format();
+  m_waterSignV = d.ZSign();
+  m_waterFeet = d.ZFeet();
+  UpdateWaterInfo();
+}
+
+void ImportDialog::UpdateWaterInfo() {
+  wxString t = m_waterFmt.custom ? TextFormatDialog::Describe(m_waterFmt)
+                                 : U8("format : reconnaissance automatique (date heure, hauteur)");
+  t += W8(" ; ") + (m_waterFeet ? U8("pieds") : U8("mètres"));
+  t += W8(" ; ") + (m_waterSignV == 1 ? U8("profondeur = sonde + hauteur")
+                                      : U8("profondeur = sonde − hauteur"));
+  m_waterInfo->SetLabel(t);
+  m_waterInfo->Wrap(FromDIP(420));
+  Layout();
 }
 
 // Format personnalisé des fichiers texte (aperçu sur le premier fichier texte de la liste)

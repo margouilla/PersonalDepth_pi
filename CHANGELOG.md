@@ -4,6 +4,47 @@
 
 ## English
 
+### 0.1.0-beta.7 (2026-11-09)
+
+- **Observed water levels** at import: each time-stamped sounding is
+  corrected with the level of a staff gauge or tide gauge at its time (text
+  files `date time, level`, one file or a folder), with the same format
+  window as the soundings (columns, unit m / ft, convention, time zone) and
+  a curve window.
+- **Time zone** of the dates in the custom text format (soundings and water
+  levels), converted to UTC.
+- **Banner**: drag it anywhere on the chart; position can be locked;
+  **horizontal or vertical** with a button on the banner (the vertical banner
+  shows the intermediate thresholds).
+- **My palettes**: palettes saved as `.cpt` files in a palette folder, offered
+  in the preset list and in the banner menu (GMT palettes copied there too);
+  `.cpt` files written by PersonalDepth keep the mode and danger zone.
+- **Covered area** of the selected sources in *Data management*.
+- **Grid or cloud** recognised at import: regular grids (even in projected
+  coordinates with rounding noise, or written in degrees) keep their own
+  cell; scattered soundings, survey lines and chart soundings are analysed
+  (spacing between neighbours, gaps between lines). The nature can be forced
+  and a **survey type** given in simple words (single-beam echo sounder,
+  multibeam, lidar, chart soundings, lead line).
+- **Interpolation at import** of point clouds (sounding lines, scattered
+  soundings): triangulation (TIN) of the soundings, limited to a maximum
+  distance worked out from the survey (gaps wider than that stay empty).
+  Measured cells always win over interpolated ones, from any source.
+  *Display* panel: show or hide the interpolated areas, and show them
+  lighter or not. Soundings are never taken from interpolated cells; the
+  cursor shows "(interpolated)".
+- **Very large text files** (over 200 MB, tens of millions of soundings) are
+  read and imported in blocks: memory stays around 300 MB instead of growing
+  with the file (fixes "Insufficient memory" with the 32-bit Windows build).
+- **Tide on the banner** shortened to the height and a short date and time
+  (`04/11/26 12:32` in French, `04 Nov 26 12:32` in English), inside the
+  banner in both orientations.
+- Fixed: after choosing a palette from the banner, the chart followed the
+  mouse as if the button were still pressed (Windows).
+- Databases written by this version (interpolated areas) need beta.7 or
+  newer; databases from earlier versions are read as before (re-import a
+  survey to get its interpolation).
+
 ### 0.1.0-beta.6 (2026-11-06)
 
 - **Palette banner on the chart** replaces the legend: minimum depth,
@@ -76,6 +117,49 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.7 (2026-11-09)
+
+- **Hauteurs d'eau observées** à l'import : chaque sonde horodatée est
+  corrigée de la hauteur d'une échelle ou d'un marégraphe à son heure
+  (fichiers texte `date heure, hauteur`, un fichier ou un dossier), avec la
+  même fenêtre de format que les sondes (colonnes, unité m / ft, convention,
+  fuseau horaire) et une fenêtre de courbe.
+- **Fuseau horaire** des dates dans le format texte personnalisé (sondes et
+  hauteurs d'eau), ramenées en UTC.
+- **Bandeau** : déplaçable à la souris n'importe où sur la carte ; position
+  verrouillable ; **horizontal ou vertical** par un bouton sur le bandeau (le
+  bandeau vertical montre les seuils intermédiaires).
+- **Mes palettes** : palettes enregistrées en fichiers `.cpt` dans un dossier
+  de palettes, proposées dans la liste des préréglages et dans le menu du
+  bandeau (y compris les palettes GMT qui y sont copiées) ; les `.cpt` écrits
+  par PersonalDepth gardent le mode et la zone dangereuse.
+- **Surface couverte** des sources sélectionnées dans *Gestion des données*.
+- **Grille ou nuage** reconnu à l'import : les grilles régulières (même en
+  coordonnées projetées avec un bruit d'arrondi, ou écrites en degrés)
+  gardent leur maille ; les sondes éparses, profils et sondes de carte sont
+  analysés (espacement entre voisins, écart entre profils). La nature peut
+  être forcée et un **type de levé** indiqué en termes simples (sondeur
+  monofaisceau, multifaisceau, lidar, sondes de carte, plomb).
+- **Interpolation à l'import** des nuages (profils, sondes éparses) :
+  triangulation (TIN) des sondes, limitée à une distance maximale déduite du
+  levé (les trous plus larges restent vides). Les cellules mesurées
+  l'emportent toujours sur les interpolées, quelle que soit la source.
+  Panneau *Affichage* : afficher ou masquer les zones interpolées, les
+  montrer plus claires ou non. Les sondes ne sont jamais prises dans les
+  cellules interpolées ; le curseur indique « (interpolé) ».
+- **Très gros fichiers texte** (plus de 200 Mo, dizaines de millions de
+  sondes) lus et importés par blocs : la mémoire reste vers 300 Mo au lieu de
+  croître avec le fichier (corrige « Mémoire insuffisante » avec la version
+  Windows 32 bits).
+- **Marée sur le bandeau** réduite à la hauteur et à une date et heure
+  courtes (`04/11/26 12:32` en français, `04 Nov 26 12:32` en anglais), dans
+  le bandeau quelle que soit son orientation.
+- Corrigé : après le choix d'une palette depuis le bandeau, la carte suivait
+  la souris comme si le bouton restait enfoncé (Windows).
+- Les bases écrites par cette version (zones interpolées) demandent la
+  beta.7 ou plus récente ; les bases des versions précédentes sont lues comme
+  avant (réimporter un levé pour obtenir son interpolation).
 
 ### 0.1.0-beta.6 (2026-11-06)
 

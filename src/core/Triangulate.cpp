@@ -15,12 +15,18 @@
 
 #include "Triangulate.h"
 
+#include <stdexcept>
+
 #include "delaunator.hpp"
 
 namespace pd {
 std::vector<size_t> Triangulate(const std::vector<double>& xy) {
   if (xy.size() < 6) return {};
-  delaunator::Delaunator d(xy);
-  return d.triangles;
+  try {
+    delaunator::Delaunator d(xy);
+    return d.triangles;
+  } catch (const std::exception&) {  // points tous alignés : aucun triangle
+    return {};
+  }
 }
 }  // namespace pd

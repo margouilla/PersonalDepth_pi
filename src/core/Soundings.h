@@ -44,7 +44,8 @@ struct ScreenMapper {
 
 class SoundingIndex {
  public:
-  void build(const PointCloud& pc);
+  // skip : sondes exclues (valeurs interpolées de la base), facultatif
+  void build(const PointCloud& pc, const std::vector<uint8_t>* skip = nullptr);
   size_t estimateInBox(double lonMin, double lonMax, double latMin, double latMax) const;
   // Sonde réelle la plus proche (distance en degrés "équivalents")
   bool nearest(const PointCloud& pc, double lon, double lat, double maxDeg,

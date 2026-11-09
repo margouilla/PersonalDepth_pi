@@ -36,6 +36,7 @@
 #include "TideChart.h"
 #include "BathyRenderer.h"
 #include "core/WebMerc.h"
+#include "core/SurveyShape.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -101,6 +102,7 @@ int PersonalDepth_pi::Init() {
   UpdateLanguage();  // langue de l'interface d'OpenCPN
   UpdateUnits();  // unités d'affichage d'OpenCPN (m / ft)
   if (m_set.vrefFranceDir.empty()) m_set.vrefFranceDir = DefaultReferenceDir().ToUTF8().data();
+  if (m_set.paletteDir.empty()) m_set.paletteDir = DefaultPaletteDir().ToUTF8().data();
   DbOpen();
 
   wxString svg = GetPluginDataDir("PersonalDepth_pi") + wxFileName::GetPathSeparator() +
@@ -195,6 +197,11 @@ void PersonalDepth_pi::ColorsChanged() {
   ++m_set.version;  // la LUT et les tuiles visibles seront recolorées au prochain rendu
   SaveConfig();
   RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void PersonalDepth_pi::InterpDisplayChanged() {
+  ++m_dbEpoch;  // vue de la base reconstruite (zones interpolées omises ou non)
+  ColorsChanged();
 }
 
 void PersonalDepth_pi::ExaggerationChanged() {
@@ -342,6 +349,32 @@ void PersonalDepth_pi::OnTick() {
   }
 }
 
+// Dossier des palettes de l'utilisateur (créé au premier enregistrement)
+wxString PersonalDepth_pi::DefaultPaletteDir() {
+  const wxString sep = wxFileName::GetPathSeparator();
+  wxString local;
+  if (wxGetEnv("LOCALAPPDATA", &local))
+    return local + sep + "opencpn" + sep + "plugins" + sep + "PersonalDepth_pi" + sep + "palettes";
+  const wxString* priv = GetpPrivateApplicationDataLocation();
+  if (priv && !priv->empty())
+    return *priv + sep + "plugins" + sep + "PersonalDepth_pi" + sep + "palettes";
+  return GetPluginDataDir("PersonalDepth_pi") + sep + "palettes";
+}
+
+std::vector<PersonalDepth_pi::PaletteEntry> PersonalDepth_pi::PaletteList() const {
+  std::vector<PaletteEntry> v;
+  for (const auto& n : ColorRamp::PresetNames()) v.push_back({U8(n.c_str()), n});
+  const wxString dir = W8(m_set.paletteDir.c_str());
+  if (!dir.empty() && wxDirExists(dir)) {
+    wxArrayString files;
+    wxDir::GetAllFiles(dir, &files, "*.cpt", wxDIR_FILES);
+    files.Sort();
+    for (const auto& f : files)
+      v.push_back({wxFileName(f).GetName(), std::string("file:") + f.ToUTF8().data()});
+  }
+  return v;
+}
+
 // -------------------------------------------------------------- marée
 // Dossier des références verticales livrées avec le plugin
 wxString PersonalDepth_pi::DefaultReferenceDir() {
@@ -419,6 +452,7 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
   s.tideOk = false;
   s.tideH = 0.f;
   s.tideLegend.clear();
+  s.tideWhen.clear();
   auto setUniform = [&](float h) {
     if (oldTide && !oldTide->gridded() && oldTide->h0 == h) { s.tide = oldTide; return; }
     auto f = std::make_shared<TideField>();
@@ -446,6 +480,19 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
     const double clat = 0.5 * (la0 + la1), clon = 0.5 * (lo0 + lo1);
     const time_t t = TideChartTime();
     const wxString when = wxDateTime((time_t)t).Format("%d/%m %H:%M");
+    // bandeau : date courte JJ/MM/AA HH:MM (français) ou JJ Mmm AA HH:MM (anglais)
+    {
+      static const char* kMon[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+      const wxDateTime dt((time_t)t);
+      s.tideWhen = pd::IsEnglish()
+                       ? wxString::Format("%02d %s %02d %s", dt.GetDay(), kMon[(int)dt.GetMonth()],
+                                          dt.GetYear() % 100, dt.Format("%H:%M"))
+                       : dt.Format("%d/%m/%y %H:%M");
+    }
+    auto legend = [&](float h) {
+      return AsciiOnly(wxString::Format("%s %+.2f %s", U8("Marée"), h * s.heightK, s.heightUnit));
+    };
 
     if (s.tideSource == 1) {  // ------------------------------- FES2022 maillé
       if (s.tideAtlas.empty() || !wxFileExists(W8(s.tideAtlas.c_str())))
@@ -504,8 +551,7 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
       s.tideOk = true;
       const float hk = s.heightK;
       const wxString hu = s.heightUnit;
-      s.tideLegend = AsciiOnly(wxString::Format(U8("Maree FES %+.2f %s (%+.2f a %+.2f) %s"), hc * hk, hu,
-                                                F.hMin * hk, F.hMax * hk, when));
+      s.tideLegend = legend(hc);
       wxString info = wxString::Format(
           U8("FES2022 le %s : hauteur d'eau %+.2f %s au centre (FES %+.2f %s sur le NM, "
              "Z0 %.2f %s), de %+.2f à %+.2f %s sur la zone\n%s"),
@@ -543,8 +589,7 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
     s.tideH = h;
     s.tideOk = true;
     setUniform(h);
-    s.tideLegend = AsciiOnly(wxString::Format(U8("Maree %+.2f %s %s %s"), h * s.heightK, s.heightUnit,
-                                              when, m_tideStationName));
+    s.tideLegend = legend(h);
     wxString info = wxString::Format(U8("Station %s (%.1f km) : hauteur d'eau %+.2f %s le %s"),
                                      m_tideStationName, m_tideStationDistKm, h * s.heightK,
                                      s.heightUnit, when);
@@ -654,7 +699,8 @@ void PersonalDepth_pi::UpdateCursorText() {
     if (!(*it)->visible) continue;
     float gz, sz; double dist;
     int64_t sid = 0;
-    if (!(*it)->probe(m_curLon, m_curLat, radiusDeg, gz, sz, dist, &sid)) continue;
+    bool gi = false;
+    if (!(*it)->probe(m_curLon, m_curLat, radiusDeg, gz, sz, dist, &sid, &gi)) continue;
     // Texte ASCII (atlas de glyphes OpenGL)
     const float v = !std::isnan(sz) ? sz : gz;
     const float dk = m_set.depthK;
@@ -667,6 +713,7 @@ void PersonalDepth_pi::UpdateCursorText() {
                               th * m_set.heightK, m_set.heightUnit);
     }
     if (!std::isnan(sz)) base += wxString::Format(U8("  (a %.1f m)"), dist);
+    else if (gi) base += U8("  (interpole)");  // valeur interpolée entre les sondes
     if (sid)  // vue de la base : source retenue pour ce pixel
       for (const auto& d : m_dbSources)
         if (d.id == sid) {
@@ -699,6 +746,10 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("Legend", m_set.legend);
   c->Write("Banner", m_set.banner);
   c->Write("BannerPos", m_set.bannerPos);
+  c->Write("BannerFx", (double)m_set.bannerFx);
+  c->Write("BannerFy", (double)m_set.bannerFy);
+  c->Write("BannerLock", m_set.bannerLock);
+  c->Write("BannerVertical", m_set.bannerVertical);
   c->Write("Contours", m_set.contours);
   c->Write("ContourMode", m_set.contourMode);
   c->Write("ContourStep", (double)m_set.contourStep);
@@ -717,7 +768,17 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ImportOffset", (double)m_set.importOffset);
   c->Write("ImportZFeet", m_set.importZFeet);
   c->Write("ImportRes", (double)m_set.importRes);
+  c->Write("ImportInstrument", m_set.importInstrument);
+  c->Write("ImportNature", m_set.importNature);
+  c->Write("ImportInterp", m_set.importInterp);
+  c->Write("InterpShow", m_set.interpShow);
+  c->Write("InterpDistinct", m_set.interpDistinct);
   c->Write("ImportFormat", W8(m_set.importFormat.c_str()));
+  c->Write("ImportWaterOn", m_set.importWaterOn);
+  c->Write("ImportWater", W8(m_set.importWater.c_str()));
+  c->Write("ImportWaterSign", m_set.importWaterSign);
+  c->Write("ImportWaterFormat", W8(m_set.importWaterFormat.c_str()));
+  c->Write("ImportWaterFeet", m_set.importWaterFeet);
   c->Write("ImportCache", m_set.importCache);
   c->Write("ImportNodataOn", m_set.importNodataOn);
   c->Write("ImportNodata", W8(m_set.importNodata.c_str()));
@@ -725,6 +786,7 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("BoundMin", (double)m_set.boundMin);
   c->Write("BoundMax", (double)m_set.boundMax);
   c->Write("VrefFranceDir", W8(m_set.vrefFranceDir.c_str()));
+  c->Write("PaletteDir", W8(m_set.paletteDir.c_str()));
   c->Write("VrefZh", W8(m_set.vrefZh.c_str()));
   c->Write("VrefGeoid", W8(m_set.vrefGeoid.c_str()));
   c->Write("VrefDirect", W8(m_set.vrefDirect.c_str()));
@@ -776,6 +838,15 @@ void PersonalDepth_pi::LoadConfig() {
   c->Read("Legend", &m_set.legend, m_set.legend);
   c->Read("Banner", &m_set.banner, m_set.banner);
   c->Read("BannerPos", &m_set.bannerPos, m_set.bannerPos);
+  {
+    double fx = m_set.bannerFx, fy = m_set.bannerFy;
+    c->Read("BannerFx", &fx, fx);
+    c->Read("BannerFy", &fy, fy);
+    m_set.bannerFx = (float)std::min(1.0, std::max(0.0, fx));
+    m_set.bannerFy = (float)std::min(1.0, std::max(0.0, fy));
+  }
+  c->Read("BannerLock", &m_set.bannerLock, m_set.bannerLock);
+  c->Read("BannerVertical", &m_set.bannerVertical, m_set.bannerVertical);
   c->Read("Contours", &m_set.contours, m_set.contours);
   c->Read("ContourMode", &m_set.contourMode, m_set.contourMode);
   if (c->Read("ContourStep", &d) && d > 0) m_set.contourStep = (float)d;
@@ -802,10 +873,20 @@ void PersonalDepth_pi::LoadConfig() {
   {
     double v;
     if (c->Read("ImportRes", &v)) m_set.importRes = (float)std::max(0.0, v);
+    c->Read("ImportInstrument", &m_set.importInstrument, m_set.importInstrument);
+    c->Read("ImportNature", &m_set.importNature, m_set.importNature);
+    c->Read("ImportInterp", &m_set.importInterp, m_set.importInterp);
+    c->Read("InterpShow", &m_set.interpShow, m_set.interpShow);
+    c->Read("InterpDistinct", &m_set.interpDistinct, m_set.interpDistinct);
   }
   c->Read("ImportNodataOn", &m_set.importNodataOn, m_set.importNodataOn);
   if (c->Read("ImportNodata", &ws)) m_set.importNodata = ws.ToUTF8().data();
   if (c->Read("ImportFormat", &ws)) m_set.importFormat = ws.ToUTF8().data();
+  c->Read("ImportWaterOn", &m_set.importWaterOn, m_set.importWaterOn);
+  if (c->Read("ImportWater", &ws)) m_set.importWater = ws.ToUTF8().data();
+  c->Read("ImportWaterSign", &m_set.importWaterSign, m_set.importWaterSign);
+  if (c->Read("ImportWaterFormat", &ws)) m_set.importWaterFormat = ws.ToUTF8().data();
+  c->Read("ImportWaterFeet", &m_set.importWaterFeet, m_set.importWaterFeet);
   c->Read("ImportBoundsOn", &m_set.importBoundsOn, m_set.importBoundsOn);
   {
     double v;
@@ -813,6 +894,7 @@ void PersonalDepth_pi::LoadConfig() {
     if (c->Read("BoundMax", &v)) m_set.boundMax = (float)v;
   }
   if (c->Read("VrefFranceDir", &ws)) m_set.vrefFranceDir = ws.ToUTF8().data();
+  if (c->Read("PaletteDir", &ws)) m_set.paletteDir = ws.ToUTF8().data();
   if (c->Read("VrefZh", &ws)) m_set.vrefZh = ws.ToUTF8().data();
   if (c->Read("VrefGeoid", &ws)) m_set.vrefGeoid = ws.ToUTF8().data();
   if (c->Read("VrefDirect", &ws)) m_set.vrefDirect = ws.ToUTF8().data();
@@ -928,6 +1010,11 @@ void PersonalDepth_pi::StartDbJob(
   if (m_dlg) m_dlg->SetDbStatus(DbStatus());
 }
 
+// Import par blocs au-delà de 200 Mo de texte (~7 millions de sondes) : la
+// version Windows 32 bits n'a que 2 Go d'adresses, un nuage coûte 12 o / sonde.
+static constexpr uintmax_t kStreamBytes = 200ull << 20;
+static constexpr size_t kStreamBlock = 4u << 20;  // sondes par bloc (~50 Mo)
+
 void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std::string& group,
                                 const std::vector<std::vector<int64_t>>& replace) {
   const DbPriority prio = (DbPriority)m_set.dbPriority;
@@ -951,24 +1038,47 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  const float f0 = (float)i / files.size(), f1 = (float)(i + 1) / files.size();
                  const std::string tag = "[" + std::to_string(i + 1) + "/" + std::to_string(files.size()) + "] ";
                  prog(f0, tag + name + pd::tr(" : lecture"));
+                 // très gros fichier texte : lecture et import par blocs (mémoire limitée)
+                 std::error_code fec;
+                 const auto fsize = std::filesystem::file_size(std::filesystem::u8path(p.path), fec);
+                 const bool streamed = BathyLayer::IsStreamable(p) && !fec && fsize > kStreamBytes;
                  BathyLayer L(p);
-                 L.loadSync();
-                 if (*cancel) return stopped();
-                 if (L.state() != BathyLayer::Ready || L.cloud.empty()) {
-                   errors += name + " : " + (L.error().empty() ? std::string(pd::tr("lecture impossible")) : L.error()) + "\n";
-                   continue;
+                 PointCloud sample;  // nuage entier, ou premier bloc (analyse du levé)
+                 if (streamed) {
+                   std::string se;
+                   const bool sok = L.streamXYZ(kStreamBlock, [&](PointCloud& b) {
+                     sample = b;
+                     return false;  // premier bloc seulement
+                   }, se);
+                   if (*cancel) return stopped();
+                   if (!sok || sample.empty()) {
+                     errors += name + " : " + (se.empty() ? std::string(pd::tr("lecture impossible")) : se) + "\n";
+                     continue;
+                   }
+                 } else {
+                   L.loadSync();
+                   if (*cancel) return stopped();
+                   if (L.state() != BathyLayer::Ready || L.cloud.empty()) {
+                     errors += name + " : " + (L.error().empty() ? std::string(pd::tr("lecture impossible")) : L.error()) + "\n";
+                     continue;
+                   }
                  }
-                 bool gridded = false;
+                 const PointCloud& cloud = streamed ? sample : L.cloud;
+                 // nature du levé (grille / nuage), résolution et distance D
+                 prog(f0, tag + name + pd::tr(" : analyse du levé"));
+                 const SurveyShape shape = AnalyzeSurvey(cloud, (Instrument)p.instrument, p.nature);
+                 const bool gridded = shape.isGrid();
                  DbSource m;
                  m.name = name;
                  m.path = p.path;
-                 m.res = EstimateResolution(L.cloud, gridded);
+                 m.interpD = (!gridded && p.interpolate) ? shape.maxEdge : 0;
+                 m.res = m.interpD > 0 ? shape.interpRes : shape.storeRes;
                  if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
                  // date du levé : imposée, sinon première date de la colonne
                  // date du fichier, sinon nom du fichier ou date du fichier
                  m.date = p.surveyDate;
-                 if (m.date.empty() && L.cloud.tMin > 0) {
-                   const time_t t0 = (time_t)L.cloud.tMin;
+                 if (m.date.empty() && cloud.tMin > 0) {
+                   const time_t t0 = (time_t)cloud.tMin;
                    char b[16];
                    std::strftime(b, sizeof b, "%Y-%m-%d", std::gmtime(&t0));
                    m.date = b;
@@ -983,7 +1093,19 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  auto sub = [&](float f, const std::string& step) {
                    prog(f0 + (f1 - f0) * (rep ? 0.7f * f : f), tag + name + " : " + step);
                  };
-                 if (!db.importCloud(L.cloud, m, gridded, prio, e, sub, cancel)) {
+                 bool iok;
+                 if (streamed) {
+                   const double midLat = 0.5 * (sample.latMin + sample.latMax);
+                   sample = PointCloud();  // libéré avant la lecture complète
+                   BathyDb::CloudFeed feed = [&](const BathyDb::CloudSink& sink, std::string& fe) {
+                     BathyLayer L2(p);
+                     return L2.streamXYZ(kStreamBlock, [&](PointCloud& b) { return sink(b, L2.progress()); }, fe);
+                   };
+                   iok = db.importCloudStream(feed, midLat, m, gridded, prio, e, sub, cancel);
+                 } else {
+                   iok = db.importCloud(L.cloud, m, gridded, prio, e, sub, cancel);
+                 }
+                 if (!iok) {
                    if (*cancel || e == "Annulé") return stopped();
                    errors += name + " : " + e + "\n";
                    continue;
@@ -1173,13 +1295,16 @@ void PersonalDepth_pi::UpdateDbView() {
   const std::string folder = m_set.dbFolder;
   const std::set<std::string> hidden = m_set.dbHidden;
   const double b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
-  p.custom = [folder, hidden, b0, b1, b2, b3, target](PointCloud& pc, double& dl, double& dt,
-                                                     std::vector<int64_t>& src, std::string& err) {
+  const bool skipInterp = !m_set.interpShow;
+  p.custom = [folder, hidden, b0, b1, b2, b3, target, skipInterp](
+                 PointCloud& pc, double& dl, double& dt, std::vector<int64_t>& src,
+                 std::vector<uint8_t>& interp, std::string& err) {
     BathyDb db;
     int used = 0;
     if (!db.open(folder, err)) return false;
     db.setHiddenCells(hidden);
-    return db.buildView(b0, b1, b2, b3, target, 4000000, pc, dl, dt, used, err, nullptr, &src);
+    return db.buildView(b0, b1, b2, b3, target, 4000000, pc, dl, dt, used, err, nullptr, &src,
+                        &interp, skipInterp);
   };
   for (int k = 0; k < 4; ++k) m_dbViewBox[k] = box[k];
   m_dbViewTarget = target;
@@ -1210,7 +1335,16 @@ void PersonalDepth_pi::SetAutoPalette(bool on) {
 void PersonalDepth_pi::ApplyPreset(const std::string& name) {
   DisplaySettings& s = m_set;
   ColorRamp& r = s.ramp;
-  ColorRamp p = ColorRamp::Preset(name);
+  ColorRamp p;
+  if (name.rfind("file:", 0) == 0) {  // palette du dossier de l'utilisateur
+    std::string err;
+    if (!p.loadCPT(name.substr(5), err)) {
+      wxMessageBox(U8(err.c_str()), "PersonalDepth", wxOK | wxICON_WARNING);
+      return;
+    }
+  } else {
+    p = ColorRamp::Preset(name);
+  }
   if (name == ColorRamp::kEncName) {  // isobathes des cartes vectorielles d'OpenCPN
     float sh, sa, de;
     EncContours(sh, sa, de);
@@ -1228,7 +1362,7 @@ void PersonalDepth_pi::ApplyPreset(const std::string& name) {
   } else {
     r.stops = p.stops;
     r.mode = p.mode;
-    if (p.safetyOn) { r.safetyOn = true; r.safetyDepth = p.safetyDepth; }
+    if (p.safetyOn) { r.safetyOn = true; r.safetyDepth = p.safetyDepth; r.safetyColor = p.safetyColor; }
   }
   ColorsChanged();
   if (m_dlg) { m_dlg->SelectPreset(name); m_dlg->RefreshPalette(); }
@@ -1241,7 +1375,8 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
   if (!h.valid) return false;
   const bool button = e.ButtonDown() || e.ButtonUp() || e.ButtonDClick() ||
                       e.GetEventType() == wxEVT_MOUSEWHEEL;
-  if (!button) return false;
+  const bool pressed = m_bannerDown != BannerHit::None || m_bannerDrag;
+  if (!button && !(pressed && (e.Dragging() || e.Moving()))) return false;
   if (DrawLayers().empty()) { m_renderer->HideBanner(); return false; }  // rien d'affiché
   // coordonnées souris (points) -> pixels du point de vue (écrans haute densité)
   wxWindow* win = wxDynamicCast(e.GetEventObject(), wxWindow);
@@ -1251,20 +1386,69 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
     if (std::fabs(k - 1.0) < 0.05) k = 1.0;
   }
   const wxPoint p((int)std::lround(e.GetX() * k), (int)std::lround(e.GetY() * k));
+
+  // Déplacement du bandeau : appui dessus puis glisser (sauf position verrouillée)
+  if (pressed && (e.Dragging() || e.Moving() || e.LeftUp())) {
+    if (!m_bannerDrag && !e.LeftIsDown() && !e.LeftUp()) {  // bouton relâché hors du canevas
+      m_bannerDown = BannerHit::None;
+      return false;
+    }
+    if (!m_bannerDrag && e.Dragging() && !m_set.bannerLock &&
+        (std::abs(p.x - m_bannerDownPt.x) > 4 || std::abs(p.y - m_bannerDownPt.y) > 4))
+      m_bannerDrag = true;
+    if (m_bannerDrag) {
+      const int W = h.pixW > 0 ? h.pixW : 1, H = std::max(1, h.pixH);
+      const double cx = p.x - m_bannerGrab.x + h.box.width / 2.0;
+      const double cy = p.y - m_bannerGrab.y + h.box.height / 2.0;
+      m_set.bannerFx = (float)std::min(1.0, std::max(0.0, cx / W));
+      m_set.bannerFy = (float)std::min(1.0, std::max(0.0, cy / H));
+      m_set.bannerPos = 3;
+      if (e.LeftUp() || !e.LeftIsDown()) {  // fin du déplacement
+        m_bannerDrag = false;
+        m_bannerDown = BannerHit::None;
+        SaveConfig();
+        if (m_dlg) m_dlg->RefreshPalette();
+      }
+      RequestRefresh(GetOCPNCanvasWindow());
+      return true;
+    }
+    if (!e.LeftUp()) return true;  // bouton tenu sur le bandeau : la carte ne bouge pas
+  }
   const int part = h.PartAt(p);
-  if (part == BannerHit::None) return false;
+  if (part == BannerHit::None) {
+    m_bannerDown = BannerHit::None;
+    return false;
+  }
   if (e.LeftDown()) {
-    const wxPoint pos = e.GetPosition();
-    wxTheApp->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });
+    m_bannerDownPt = p;
+    m_bannerGrab = wxPoint(p.x - h.box.x, p.y - h.box.y);
+  }
+  // Action au relâchement du bouton (comme un bouton classique) : sous Windows,
+  // OpenCPN capture la souris à l'appui ; ouvrir un menu ou une fenêtre à ce
+  // moment-là laissait la carte « bouton enfoncé » (elle suivait la souris).
+  if (e.LeftDown()) m_bannerDown = part;
+  if (e.LeftUp()) {
+    const bool same = (m_bannerDown == part);
+    m_bannerDown = BannerHit::None;
+    if (same) {
+      const wxPoint pos = e.GetPosition();
+      wxTheApp->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });
+    }
   }
   return true;  // le clic sur le bandeau ne déplace pas la carte
 }
 
 void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
   if (!win) win = GetOCPNCanvasWindow();
+  if (win && win->HasCapture()) win->ReleaseMouse();  // par sécurité
   switch (part) {
     case BannerHit::Mode:
       SetAutoPalette(!m_set.autoPalette);
+      break;
+    case BannerHit::Orient:  // rampe horizontale / verticale
+      m_set.bannerVertical = !m_set.bannerVertical;
+      SaveConfig();
+      RequestRefresh(GetOCPNCanvasWindow());
       break;
     case BannerHit::Source:
       m_set.autoSource = m_set.autoSource == 1 ? 0 : 1;
@@ -1278,10 +1462,14 @@ void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
       break;
     case BannerHit::Bar: {
       wxMenu menu;
-      const auto names = ColorRamp::PresetNames();
-      for (size_t k = 0; k < names.size(); ++k) menu.Append(10000 + (int)k, U8(names[k].c_str()));
+      const auto list = PaletteList();
+      const size_t nBuilt = ColorRamp::PresetNames().size();
+      for (size_t k = 0; k < list.size(); ++k) {
+        if (k == nBuilt) menu.AppendSeparator();  // palettes du dossier de l'utilisateur
+        menu.Append(10000 + (int)k, list[k].label);
+      }
       const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
-      if (id >= 10000 && id < 10000 + (int)names.size()) ApplyPreset(names[id - 10000]);
+      if (id >= 10000 && id < 10000 + (int)list.size()) ApplyPreset(list[id - 10000].key);
       break;
     }
     case BannerHit::Gear:
@@ -1479,7 +1667,15 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("offset", s.importOffset);
   num("zFeet", s.importZFeet);
   num("res", s.importRes);
+  num("instr", s.importInstrument);
+  num("nature", s.importNature);
+  num("interp", s.importInterp);
   kv("fmt", s.importFormat);
+  num("waterOn", s.importWaterOn);
+  kv("water", s.importWater);
+  num("waterSign", s.importWaterSign);
+  kv("waterFmt", s.importWaterFormat);
+  num("waterFeet", s.importWaterFeet);
   num("cache", s.importCache);
   num("nodataOn", s.importNodataOn);
   kv("nodata", s.importNodata);
@@ -1492,7 +1688,11 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
 bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
   if (text.empty()) return false;
   s.importRes = 0.f;  // réglages enregistrés avant la résolution imposée : automatique
+  s.importInstrument = 0;
+  s.importNature = 0;
+  s.importInterp = true;
   s.importFormat.clear();
+  s.importWaterOn = false;  // réglages antérieurs : pas de hauteurs d'eau
   std::istringstream in(text);
   std::string line;
   while (std::getline(in, line)) {
@@ -1521,7 +1721,15 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "offset") s.importOffset = (float)d;
     else if (k == "zFeet") s.importZFeet = d != 0;
     else if (k == "res") s.importRes = (float)d;
+    else if (k == "instr") s.importInstrument = std::max(0, std::min(5, (int)d));
+    else if (k == "nature") s.importNature = std::max(0, std::min(2, (int)d));
+    else if (k == "interp") s.importInterp = d != 0;
     else if (k == "fmt") s.importFormat = v;
+    else if (k == "waterOn") s.importWaterOn = d != 0;
+    else if (k == "water") s.importWater = v;
+    else if (k == "waterSign") s.importWaterSign = (int)d;
+    else if (k == "waterFmt") s.importWaterFormat = v;
+    else if (k == "waterFeet") s.importWaterFeet = d != 0;
     else if (k == "cache") s.importCache = d != 0;
     else if (k == "nodataOn") s.importNodataOn = d != 0;
     else if (k == "nodata") s.importNodata = v;

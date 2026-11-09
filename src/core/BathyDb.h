@@ -69,6 +69,11 @@ struct DbSource {
   std::string imported;          // date d'import
   std::string group;             // classe (Litto3D, PFE…)
   std::string params;            // réglages d'import (relecture avec d'autres paramètres)
+  // Import seulement (non enregistré) : distance maximale d'interpolation D (m)
+  // entre les sondes d'un nuage, 0 = pas de surface interpolée ; en retour,
+  // nombre de pixels interpolés au niveau natif
+  double interpD = 0;
+  long long interpCount = 0;
 };
 
 using DbProgress = std::function<void(float, const std::string&)>;
@@ -108,6 +113,14 @@ class BathyDb {
   bool importCloud(const PointCloud& pc, DbSource meta, bool gridded, DbPriority prio,
                    std::string& err, const DbProgress& progress = nullptr,
                    const std::atomic<bool>* cancel = nullptr, int64_t* newId = nullptr);
+  // Import par blocs (très gros fichiers) : `feed` appelle `sink(bloc, part lue
+  // 0..1)` pour chaque bloc de sondes converties ; `midLat` : latitude moyenne
+  // estimée (niveau de stockage). Tuiles écrites au fil de l'eau.
+  using CloudSink = std::function<bool(const PointCloud&, float)>;
+  using CloudFeed = std::function<bool(const CloudSink&, std::string&)>;
+  bool importCloudStream(const CloudFeed& feed, double midLat, DbSource meta, bool gridded,
+                         DbPriority prio, std::string& err, const DbProgress& progress = nullptr,
+                         const std::atomic<bool>* cancel = nullptr, int64_t* newId = nullptr);
   bool removeSource(int64_t id, DbPriority prio, std::string& err,
                     const DbProgress& progress = nullptr) {
     return removeSources({id}, prio, err, progress);
@@ -142,10 +155,13 @@ class BathyDb {
   int maxMergedLevel(double lonMin, double lonMax, double latMin, double latMax);
   // Cellules régulières lon/lat (centres) couvrant l'emprise, au niveau z
   // (ou moins si absent) : profondeurs fusionnées, pour l'affichage
+  // interp : cellule interpolée (1) ou mesurée (0) ; skipInterp : cellules
+  // interpolées omises (zones interpolées masquées)
   bool buildView(double lonMin, double lonMax, double latMin, double latMax, int z,
                  size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                  std::string& err, const std::atomic<bool>* cancel = nullptr,
-                 std::vector<int64_t>* srcIds = nullptr);
+                 std::vector<int64_t>* srcIds = nullptr, std::vector<uint8_t>* interp = nullptr,
+                 bool skipInterp = false);
   // Source retenue au point (fusion), 0 si aucune
   int64_t sourceAt(double lon, double lat, int z);
 
@@ -181,8 +197,8 @@ class BathyDb {
   std::string flushErr_;
   bool flushWrites(std::string& err);
   bool writeMerged(int z, int x, int y, DepthTile&& t, std::string& err);
-  bool importCloudImpl(const PointCloud& pc, DbSource meta, bool gridded, DbPriority prio,
-                       std::string& err, const DbProgress& progress,
+  bool importCloudImpl(const PointCloud* whole, const CloudFeed* feed, double midLat, DbSource meta,
+                       bool gridded, DbPriority prio, std::string& err, const DbProgress& progress,
                        const std::atomic<bool>* cancel, int64_t* newId);
   bool cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, float zMax, DbPriority prio,
                         std::string& err, const DbProgress& progress,

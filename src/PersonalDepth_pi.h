@@ -64,7 +64,12 @@ struct DisplaySettings {
   bool smooth = true;         // profondeur et ombrage interpolés entre cellules
   bool legend = true;         // lecture au curseur
   bool banner = true;         // bandeau de palette sur la carte
-  int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche
+  bool interpShow = true;     // zones interpolées de la base affichées
+  bool interpDistinct = true; // … et éclaircies (distinguées des zones mesurées)
+  int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche, 3 libre
+  float bannerFx = 0.5f, bannerFy = 0.85f;  // position libre : centre (fraction du canevas)
+  bool bannerLock = false;    // bandeau non déplaçable à la souris
+  bool bannerVertical = false;  // rampe verticale (sinon horizontale)
   unsigned version = 1;       // incrémenté à chaque changement de couleurs
   // Isobathes (calculées à la volée depuis la grille, mises en cache)
   bool contours = true;
@@ -90,12 +95,21 @@ struct DisplaySettings {
   bool importZFeet = false;         // unité verticale des fichiers importés : pieds (sinon m)
   std::string importFormat;         // format personnalisé des fichiers texte (TextFormat), "" = X Y Z
   float importRes = 0.f;            // résolution de stockage imposée (m), 0 = automatique
+  int importInstrument = 0;         // type de levé (pd::Instrument)
+  int importNature = 0;             // 0 automatique, 1 grille, 2 nuage de points
+  bool importInterp = true;         // surface interpolée entre les sondes (nuages)
+  bool importWaterOn = false;       // correction par hauteurs d'eau observées
+  std::string importWater;          // fichier ou dossier des hauteurs d'eau
+  int importWaterSign = 0;          // 0 sonde - hauteur, 1 sonde + hauteur
+  std::string importWaterFormat;    // format des fichiers de hauteurs (TextFormat), "" = automatique
+  bool importWaterFeet = false;     // hauteurs en pieds
   bool importCache = true;          // cache binaire .pdpc
   bool importNodataOn = false;      // NODATA supplémentaires (Z brut du fichier)
   std::string importNodata = "-9999 9999 -99999 99999";
   bool importBoundsOn = false;      // bornes d'import (profondeur ZH finale)
   float boundMin = -200.f, boundMax = 200.f;  // communes à l'import et à « Nettoyer »
   std::string vrefFranceDir;        // dossier des fichiers BathyElli v2.1 + RAF20
+  std::string paletteDir;           // palettes de l'utilisateur (fichiers .cpt)
   std::string vrefZh, vrefGeoid, vrefDirect;  // fichiers (mode 2 et 3) ; ';' entre fichiers ZH
   bool vrefInvert = false;
   // Marée (stations OpenCPN) : profondeur affichée = profondeur ZH + hauteur d'eau
@@ -130,7 +144,8 @@ struct DisplaySettings {
   float tideH = 0.f;                // hauteur d'eau appliquée à l'affichage (m)
   bool tideOk = false;
   wxString tideInfo;                // texte du panneau
-  wxString tideLegend;              // ligne ASCII de la légende
+  wxString tideLegend;              // bandeau (ASCII) : « Maree +5.30 m »
+  wxString tideWhen;                // bandeau (ASCII) : date et heure courtes
   std::shared_ptr<const pd::TideField> tide;  // hauteur d'eau au-dessus du ZH (affichage)
 };
 
@@ -218,7 +233,10 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void EncContours(float& shallow, float& safety, float& deep);
   void AutoPaletteChanged();                             // réglages de la palette automatique
   void SetAutoPalette(bool on);                          // bascule A / M (panneau ou bandeau)
-  void ApplyPreset(const std::string& name);             // préréglage de couleurs
+  void ApplyPreset(const std::string& name);             // préréglage ou "file:<chemin .cpt>"
+  struct PaletteEntry { wxString label; std::string key; };
+  std::vector<PaletteEntry> PaletteList() const;         // préréglages + dossier de palettes
+  static wxString DefaultPaletteDir();
   // Bandeau de palette : clics sur la carte
   bool MouseEventHook(wxMouseEvent& event) override;
   wxString AutoPaletteInfo() const { return m_autoInfo; }
@@ -227,7 +245,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void RemoveLayer(size_t i);
   void ZoomToLayer(size_t i);
   void ColorsChanged();            // palette, seuils, opacité, ombrage…
-  void ExaggerationChanged();      // recalcul de l'ombrage
+  void ExaggerationChanged();
+  void InterpDisplayChanged();  // zones interpolées : affichées / éclaircies      // recalcul de l'ombrage
   void ViewChanged();              // affichage des sondes, légende…
   void OnDialogClose();
   void OnTick();                   // suivi des chargements
@@ -246,6 +265,9 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void UpdateDbView();
   void UpdateAutoPalette(bool force);
   void BannerClick(int part, wxWindow* win, wxPoint pos);
+  int m_bannerDown = 0;  // partie du bandeau sous l'appui du bouton gauche
+  bool m_bannerDrag = false;  // bandeau en cours de déplacement
+  wxPoint m_bannerDownPt, m_bannerGrab;  // appui ; prise dans le bandeau
   void BannerRange(bool isMin, wxWindow* win);
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé

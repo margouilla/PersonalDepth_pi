@@ -40,6 +40,9 @@
 #include "../src/core/ColorRamp.h"
 #include "../src/core/PointCloud.h"
 #include "../src/core/Soundings.h"
+#include "../src/core/WaterLevel.h"
+#include "../src/core/SurveyShape.h"
+#include "../src/core/Projection.h"
 
 using namespace pd;
 using clk = std::chrono::steady_clock;
@@ -931,7 +934,8 @@ int main(int argc, char** argv) {
     bool g = false;
     const double rt = EstimateResolution(tr, g);
     CHECK(!g && rt > 3.0 && rt < 5.0);
-    // même nuage en ordre aléatoire : estimation par la surface (bien plus grossière)
+    // même nuage en ordre aléatoire : l'analyse spatiale (plus proche voisin,
+    // triangulation) ne dépend plus de l'ordre du fichier
     std::vector<size_t> ord(tr.size());
     for (size_t i = 0; i < ord.size(); ++i) ord[i] = i;
     std::mt19937 rng(7);
@@ -939,8 +943,37 @@ int main(int argc, char** argv) {
     for (size_t i : ord) sh.add(tr.lon(i), tr.lat(i), tr.z[i]);
     sh.computeBounds();
     const double rs = EstimateResolution(sh, g);
-    CHECK(rs > 10.0);
-    std::printf("Résolution des levés en lignes : %.2f m (ordre aléatoire : %.1f m) OK\n", rt, rs);
+    CHECK(!g && rs > 3.0 && rs < 5.0);
+    const SurveyShape ss = AnalyzeSurvey(sh);
+    CHECK(ss.lines && ss.maxEdge > 100 && ss.maxEdge < 160);  // lignes à 100 m
+    // grille en degrés avec coordonnées à 6 décimales : pas une « grille de 11 cm »
+    PointCloud r6;
+    std::mt19937 rr(5);
+    std::uniform_real_distribution<double> ux(0, 0.2), uy(0, 0.1);
+    for (int i = 0; i < 20000; ++i)
+      r6.add(std::round((-4.5 + ux(rr)) * 1e6) / 1e6, std::round((48.3 + uy(rr)) * 1e6) / 1e6, 5.f);
+    r6.computeBounds();
+    CHECK(!AnalyzeSurvey(r6).isGrid());
+    // grille de 5 m en UTM 30N diffusée en lon/lat arrondis à 1e-7°, avec 2 % de sondes hors réseau
+    {
+      Crs utm;
+      std::string e;
+      CHECK(Crs::Parse("EPSG:32630", utm, e));
+      PointCloud gu;
+      std::uniform_real_distribution<double> off(0, 5);
+      for (int j = 0; j < 300; ++j)
+        for (int i = 0; i < 300; ++i) {
+          if ((i * 7 + j * 3) % 5 == 0) continue;  // nœuds vides
+          double x = 400000 + i * 5.0, y = 5350000 + j * 5.0, lo, la;
+          if ((i + j) % 50 == 0) { x += off(rr); y += off(rr); }
+          utm.toWGS84(x, y, lo, la);
+          gu.add(lo, la, 10.f);
+        }
+      gu.computeBounds();
+      const SurveyShape sg = AnalyzeSurvey(gu);
+      CHECK(sg.isGrid() && std::fabs(sg.dx - 5) < 0.01 && std::fabs(sg.dy - 5) < 0.01 && sg.frame == "utm30N");
+    }
+    std::printf("Résolution des levés en lignes : %.2f m (ordre aléatoire : %.2f m), D %.0f m ; grilles OK\n", rt, rs, ss.maxEdge);
   }
   {  // format texte personnalisé : entête, date + heure, lat / lon, champs en trop
     const std::string path = Tmp("pd_fmt.pos");
@@ -1017,6 +1050,139 @@ int main(int argc, char** argv) {
     TextFormat sg;
     CHECK(sg.deserialize(sf.serialize()) && sg.xFmt == sf.xFmt && sg.yFmt == sf.yFmt && sg.dateFmt == "y/M/d");
     std::printf("Format texte personnalisé : OK\n");
+  }
+  {  // hauteurs d'eau observées : lecture, interpolation, correction des sondes
+    const std::string wl = Tmp("pd_wl.txt");
+    {
+      std::ofstream o(wl);
+      o << "[TIME],[DEPTH]\n2026-11-01 05:00:00,0.35\n2026-11-01 06:00:00,0.55\n"
+           "2026-11-01 07:00:00,0.45\n";
+    }
+    std::string e;
+    auto ser = std::make_shared<WaterLevelSeries>();
+    CHECK(ser->load(wl, TextFormat(), 1.0, e) && ser->size() == 3 && ser->skippedLines() == 1);
+    {  // même fichier par format personnalisé (deviné), en pieds, heure UTC+8
+      std::vector<std::string> head;
+      CHECK(ReadTextHead(wl, 50, head, e));
+      TextFormat wf = GuessWaterLevelFormat(head);
+      CHECK(wf.custom && wf.skipLines == 1 && wf.colDate == 1 && wf.colZ == 2 && wf.sep == ',');
+      wf.tzMinutes = 480;
+      TextFormat wg;
+      CHECK(wg.deserialize(wf.serialize()) && wg.tzMinutes == 480);
+      WaterLevelSeries s2;
+      CHECK(s2.load(wl, wf, 0.3048, e) && s2.size() == 3 && s2.skippedLines() == 0);
+      long long u;
+      CHECK(ParseDateTime("2026-10-31", "21:00", 0, u) && s2.tMin() == u);  // 05:00 UTC+8
+      CHECK(std::fabs(s2.heights()[0] - 0.35f * 0.3048f) < 1e-6f);
+    }
+    long long t0;
+    CHECK(ParseDateTime("2026-11-01", "05:30", 0, t0));
+    float h;
+    CHECK(ser->at(t0, h) && std::fabs(h - 0.45f) < 1e-5f);
+    CHECK(ser->at(t0 - 1800 - 3600, h) && std::fabs(h - 0.35f) < 1e-5f);  // tolérance 1 h
+    CHECK(!ser->at(t0 - 1800 - 3601, h));
+    long long tt; double hh;
+    CHECK(WaterLevelSeries::ParseLine("2026-11-01,0.35", 0, tt, hh) && std::fabs(hh - 0.35) < 1e-9);
+    CHECK(WaterLevelSeries::ParseLine("2026-11-01;05:00:00;0,35", 0, tt, hh) && std::fabs(hh - 0.35) < 1e-9);
+    CHECK(FormatTime(t0) == "2026-11-01 05:30");
+    // sondes horodatées, profondeurs positives puis altitudes négatives
+    const std::string pts = Tmp("pd_wl_pts.txt");
+    {
+      std::ofstream o(pts);
+      o << "lon,lat,z,date\n106.5,52.3,10.00,2026-11-01T05:30:00\n106.5001,52.3,12.00,2026-11-01T06:00:00\n"
+           "106.5002,52.3,11.00,2026-11-03T06:00:00\n";
+    }
+    LoadOptions lo;
+    lo.text.custom = true; lo.text.sep = ','; lo.text.skipLines = 1;
+    lo.text.colX = 1; lo.text.colY = 2; lo.text.colZ = 3; lo.text.colDate = 4;
+    lo.zsign = LoadOptions::ZSign::DepthPositive;
+    lo.water = ser;
+    PointCloud pc;
+    CHECK(LoadXYZ(pts, lo, pc, e) && pc.size() == 2 && pc.waterMiss == 1 && pc.waterApplied);
+    CHECK(std::fabs(pc.z[0] - 9.55f) < 1e-4f && std::fabs(pc.z[1] - 11.45f) < 1e-4f);
+    {
+      std::ofstream o(pts);
+      o << "lon,lat,z,date\n106.5,52.3,-10.00,2026-11-01T05:30:00\n106.5001,52.3,-12.00,2026-11-01T06:00:00\n";
+    }
+    lo.zsign = LoadOptions::ZSign::Auto;  // altitudes négatives détectées
+    CHECK(LoadXYZ(pts, lo, pc, e) && pc.size() == 2 && std::fabs(pc.z[0] - 9.55f) < 1e-4f);
+    lo.waterSubtract = false;
+    CHECK(LoadXYZ(pts, lo, pc, e) && std::fabs(pc.z[0] - 10.45f) < 1e-4f);
+    std::printf("Hauteurs d'eau observées : OK\n");
+  }
+  {  // interpolation entre les lignes d'un levé monofaisceau, à l'import
+    std::string err;
+    DepthTile a, b;
+    a.reset();
+    for (int k = 0; k < 1000; ++k) { a.v[k] = 1000 + k; a.setInterp(k, k % 3 == 0); }
+    std::vector<uint8_t> blob;
+    CHECK(EncodeTile(a, blob) && DecodeTile(blob.data(), blob.size(), b, err));
+    CHECK(b.v == a.v && b.isInterp(3) && !b.isInterp(4));
+    const std::string folder = Tmp("pd_testdb_interp");
+    std::filesystem::remove_all(folder);
+    BathyDb db;
+    CHECK(db.open(folder, err));
+    // lignes est-ouest espacées de 100 m, une sonde tous les 3 m ; fond en pente
+    // vers le nord : 10 m + 0,01 m par mètre
+    const double lat0 = 48.30, kx = 1.0 / (111320.0 * std::cos(lat0 * M_PI / 180)), ky = 1.0 / 110540.0;
+    PointCloud L;
+    std::mt19937 jit(11);
+    std::uniform_real_distribution<double> gps(-0.4, 0.4);  // bruit GPS (m)
+    for (int line = 0; line < 8; ++line)
+      for (int i = 0; i < 300; ++i)
+        L.add(-4.50 + (i * 3.0 + gps(jit)) * kx, lat0 + (line * 100.0 + gps(jit)) * ky, 10.f + 0.01f * line * 100.f);
+    L.computeBounds();
+    const SurveyShape sh = AnalyzeSurvey(L);
+    CHECK(sh.lines && !sh.isGrid());
+    DbSource m;
+    m.name = "SBES";
+    m.date = "2020-01-01";
+    m.res = sh.storeRes;
+    m.interpD = sh.maxEdge;
+    int64_t id = 0;
+    CHECK(db.importCloud(L, m, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id));
+    const DbSource* sp = db.source(id);
+    CHECK(sp && sp->zmin > 9.99f && sp->zmax < 17.01f);
+    // vue entre les lignes 2 et 3 (y = 250 m) : valeur interpolée ~12,5 m
+    PointCloud v;
+    double dl, dt;
+    int used;
+    std::vector<int64_t> src;
+    std::vector<uint8_t> ip;
+    const double lo = -4.50 + 450 * kx, la = lat0 + 250 * ky;
+    CHECK(db.buildView(lo - 5 * kx, lo + 5 * kx, la - 5 * ky, la + 5 * ky, 18, 100000, v, dl, dt, used, err,
+                       nullptr, &src, &ip));
+    CHECK(!v.empty() && ip.size() == v.size());
+    size_t ni = 0;
+    for (size_t k = 0; k < v.size(); ++k) {
+      if (!ip[k]) continue;
+      ++ni;
+      CHECK(std::fabs(v.z[k] - 12.5f) < 0.15f);
+    }
+    CHECK(ni > v.size() / 2);
+    // zones interpolées masquées
+    CHECK(!db.buildView(lo - 5 * kx, lo + 5 * kx, la - 5 * ky, la + 5 * ky, 18, 100000, v, dl, dt, used, err,
+                        nullptr, &src, &ip, true) || v.size() < ni);
+    // au-delà de D (pas de ligne au nord de la dernière) : rien
+    const double laN = lat0 + 900 * ky;
+    CHECK(!db.buildView(lo - 5 * kx, lo + 5 * kx, laN - 5 * ky, laN + 5 * ky, 18, 100000, v, dl, dt, used, err,
+                        nullptr, &src, &ip));
+    // une source mesurée de plus basse priorité l'emporte sur l'interpolé
+    PointCloud P;
+    for (int j = -10; j <= 10; ++j)
+      for (int i = -10; i <= 10; ++i) P.add(lo + i * 1.0 * kx, la + j * 1.0 * ky, 30.f);
+    P.computeBounds();
+    DbSource mp;
+    mp.name = "ancien";
+    mp.date = "1900-01-01";
+    mp.res = 50;  // plus grossier : priorité plus basse
+    CHECK(db.importCloud(P, mp, false, DbPriority::ResolutionDate, err));
+    CHECK(db.buildView(lo - 2 * kx, lo + 2 * kx, la - 2 * ky, la + 2 * ky, 18, 100000, v, dl, dt, used, err,
+                       nullptr, &src, &ip));
+    bool sawOld = false;
+    for (size_t k = 0; k < v.size(); ++k) sawOld = sawOld || (!ip[k] && std::fabs(v.z[k] - 30.f) < 0.01f);
+    CHECK(sawOld);
+    std::printf("Interpolation à l'import (lignes à 100 m, D %.0f m) : OK\n", m.interpD);
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;

@@ -47,7 +47,8 @@ bool IsComment(const std::string& l) {
 
 wxString TextFormatDialog::Describe(const TextFormat& f) {
   if (!f.custom) return wxString();
-  wxString s = wxString::Format(U8("X : col. %d, Y : col. %d, Z : col. %d"), f.colX, f.colY, f.colZ);
+  wxString s = f.colX < 1 ? wxString::Format(U8("hauteur : col. %d"), f.colZ)
+                          : wxString::Format(U8("X : col. %d, Y : col. %d, Z : col. %d"), f.colX, f.colY, f.colZ);
   if (f.colDate) s += wxString::Format(U8(", date : col. %d"), f.colDate);
   if (f.colTime) s += wxString::Format(U8(", heure : col. %d"), f.colTime);
   if (!f.xFmt.empty()) s += U8(" ; format X : ") + W8(f.xFmt.c_str());
@@ -55,19 +56,25 @@ wxString TextFormatDialog::Describe(const TextFormat& f) {
   if (!f.dateFmt.empty()) s += U8(" ; date : ") + W8(f.dateFmt.c_str());
   if (!f.timeFmt.empty()) s += U8(" ; heure : ") + W8(f.timeFmt.c_str());
   if (f.skipLines) s += wxString::Format(U8(" ; %d ligne(s) d'entête"), f.skipLines);
+  if (f.tzMinutes) s += W8(" ; ") + W8(TimeZoneLabel(f.tzMinutes).c_str());
   return s;
 }
 
 TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, const TextFormat& init,
-                                   int zSign, bool zFeet)
-    : wxDialog(parent, wxID_ANY, U8("Format du fichier texte"), wxDefaultPosition, wxDefaultSize,
-               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
+                                   int zSign, bool zFeet, bool water)
+    : wxDialog(parent, wxID_ANY,
+               water ? U8("Format du fichier de hauteurs d'eau") : U8("Format du fichier texte"),
+               wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       m_path(path),
       m_zSignV(zSign),
-      m_zFeetV(zFeet) {
+      m_zFeetV(zFeet),
+      m_water(water) {
   std::string err;
   if (!path.empty()) ReadTextHead(path, kPreviewLines, m_lines, err);
-  m_fmt = init.custom ? init : GuessTextFormat(m_lines);
+  m_fmt = init.custom && (water || init.colX > 0)
+              ? init
+              : (water ? GuessWaterLevelFormat(m_lines) : GuessTextFormat(m_lines));
+  if (!init.custom || (!water && init.colX < 1)) m_fmt.tzMinutes = init.tzMinutes;
   m_fmt.custom = true;
   for (const auto& l : m_lines) m_nCols = std::max(m_nCols, (int)SplitFields(l, m_fmt).size());
 
@@ -133,29 +140,53 @@ TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, co
   const char* coordTip =
       "Gabarit de la coordonnée en degrés, minutes, secondes : D M S X (ex. « D M S.S X », "
       "« DDMM.MX »). Vide : nombre décimal. Voir « Aide sur les formats ».";
-  pattern(role("X — longitude / Est", kColX, m_x), m_xFmt, "format : nombre", coordTip);
-  pattern(role("Y — latitude / Nord", kColY, m_y), m_yFmt, "format : nombre", coordTip);
+  wxBoxSizer* vx = role("X — longitude / Est", kColX, m_x);
+  pattern(vx, m_xFmt, "format : nombre", coordTip);
+  wxBoxSizer* vy = role("Y — latitude / Nord", kColY, m_y);
+  pattern(vy, m_yFmt, "format : nombre", coordTip);
+  if (m_water) {  // hauteurs d'eau : pas de coordonnées
+    rb->Show(vx, false);
+    rb->Show(vy, false);
+  }
   {
-    wxBoxSizer* v = role("Z — profondeur", kColZ, m_z);
-    wxString signs[] = {U8("Sens : automatique"), U8("Profondeurs (positives vers le bas)"),
-                        U8("Altitudes (positives vers le haut)")};
-    m_zSign = new wxChoice(sbw, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, signs);
-    m_zSign->SetSelection(std::max(0, std::min(2, m_zSignV)));
-    m_zSign->SetToolTip(U8("Sens des valeurs Z du fichier. Automatique : altitudes si la majorité des "
-                           "valeurs est négative."));
+    wxBoxSizer* v = role(m_water ? "Hauteur d'eau" : "Z — profondeur", kColZ, m_z);
+    if (m_water) {
+      wxString signs[] = {U8("profondeur = sonde − hauteur (hauteur au-dessus du zéro)"),
+                          U8("profondeur = sonde + hauteur")};
+      m_zSign = new wxChoice(sbw, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, signs);
+      m_zSign->SetSelection(std::max(0, std::min(1, m_zSignV)));
+      m_zSign->SetToolTip(U8("Correction appliquée à chaque sonde avec la hauteur d'eau à son heure."));
+    } else {
+      wxString signs[] = {U8("Sens : automatique"), U8("Profondeurs (positives vers le bas)"),
+                          U8("Altitudes (positives vers le haut)")};
+      m_zSign = new wxChoice(sbw, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, signs);
+      m_zSign->SetSelection(std::max(0, std::min(2, m_zSignV)));
+      m_zSign->SetToolTip(U8("Sens des valeurs Z du fichier. Automatique : altitudes si la majorité des "
+                             "valeurs est négative."));
+    }
     wxString units[] = {U8("Mètres"), U8("Pieds")};
     m_zUnit = new wxChoice(sbw, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, units);
     m_zUnit->SetSelection(m_zFeetV ? 1 : 0);
-    m_zUnit->SetToolTip(U8("Unité des valeurs Z du fichier (la base est toujours en mètres)."));
+    m_zUnit->SetToolTip(m_water ? U8("Unité des hauteurs d'eau du fichier.")
+                                : U8("Unité des valeurs Z du fichier (la base est toujours en mètres)."));
     v->Add(m_zSign, 0, wxEXPAND | wxTOP, 4);
     v->Add(m_zUnit, 0, wxEXPAND | wxTOP, 4);
   }
-  pattern(role("Date (ou date et heure)", kColDate, m_date), m_dateFmt, "format : automatique",
+  wxBoxSizer* vdate = role("Date (ou date et heure)", kColDate, m_date);
+  pattern(vdate, m_dateFmt, "format : automatique",
           "Gabarit de la date : y M d h m s z AP (ex. « yyyy/M/d », « d/M/y h:m:s », « MMM d, y »). "
           "Vide : reconnaissance automatique. Voir « Aide sur les formats ».");
   pattern(role("Heure", kColTime, m_time), m_timeFmt, "format : automatique",
           "Gabarit de l'heure (ex. « h:m:s.s », « hhmmss », « h:m:sAP »). Vide : reconnaissance "
           "automatique. Voir « Aide sur les formats ».");
+  {  // fuseau horaire des dates et heures du fichier : ramenées en UTC
+    m_tz = new wxChoice(sbw, wxID_ANY);
+    for (int m : TimeZoneOffsets()) m_tz->Append(U8("Fuseau ") + W8(TimeZoneLabel(m).c_str()));
+    m_tz->SetToolTip(U8("Fuseau horaire des dates et heures du fichier (décalage fixe sur UTC, sans "
+                        "passage à l'heure d'été). Les sondes et les hauteurs d'eau sont comparées "
+                        "en UTC : régler chaque fichier sur son propre fuseau."));
+    vdate->Add(m_tz, 0, wxEXPAND | wxTOP, 4);
+  }
   col->Add(rb, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
 
   // ---- aperçu
@@ -191,7 +222,7 @@ TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, co
     FromControls();
     RefreshPreview();
   };
-  for (wxChoice* c : {m_sep, m_dec, m_dateOrder, m_x, m_y, m_z, m_date, m_time})
+  for (wxChoice* c : {m_sep, m_dec, m_dateOrder, m_x, m_y, m_z, m_date, m_time, m_tz})
     c->Bind(wxEVT_CHOICE, changed);
   for (wxChoice* c : {m_zSign, m_zUnit})
     c->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
@@ -222,7 +253,9 @@ TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, co
       e.Skip(false);
     });
   guess->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-    m_fmt = GuessTextFormat(m_lines);
+    const int tz = m_fmt.tzMinutes;  // le fuseau ne se devine pas : gardé
+    m_fmt = m_water ? GuessWaterLevelFormat(m_lines) : GuessTextFormat(m_lines);
+    m_fmt.tzMinutes = tz;
     m_nCols = 0;
     for (const auto& l : m_lines) m_nCols = std::max(m_nCols, (int)SplitFields(l, m_fmt).size());
     FillColumnChoices();
@@ -245,7 +278,7 @@ TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, co
     std::string s;
     std::getline(in, s);
     TextFormat f;
-    if (!f.deserialize(s) || !f.custom) {
+    if (!f.deserialize(s) || !f.custom || (!m_water && f.colX < 1)) {
       wxMessageBox(U8("Fichier de format illisible"), U8("Format du fichier texte"), wxICON_ERROR, this);
       return;
     }
@@ -287,6 +320,12 @@ void TextFormatDialog::ToControls() {
   m_sep->SetSelection(si);
   m_dec->SetSelection(m_fmt.decimal == ',' ? 1 : 0);
   m_dateOrder->SetSelection(std::max(0, std::min(3, m_fmt.dateOrder)));
+  {
+    const auto& tzs = TimeZoneOffsets();
+    int k = (int)(std::find(tzs.begin(), tzs.end(), 0) - tzs.begin());
+    for (size_t i = 0; i < tzs.size(); ++i) if (tzs[i] == m_fmt.tzMinutes) k = (int)i;
+    m_tz->SetSelection(k);
+  }
   auto setc = [](wxChoice* c, int v, bool optional) {
     const int i = optional ? v : v - 1;
     if (i >= 0 && i < (int)c->GetCount()) c->SetSelection(i);
@@ -310,8 +349,9 @@ void TextFormatDialog::FromControls() {
   m_fmt.sep = kSeps[std::max(0, m_sep->GetSelection())];
   m_fmt.decimal = m_dec->GetSelection() == 1 ? ',' : '.';
   m_fmt.dateOrder = std::max(0, m_dateOrder->GetSelection());
-  m_fmt.colX = m_x->GetSelection() + 1;
-  m_fmt.colY = m_y->GetSelection() + 1;
+  m_fmt.colX = m_water ? 0 : m_x->GetSelection() + 1;
+  m_fmt.colY = m_water ? 0 : m_y->GetSelection() + 1;
+  if (m_tz->GetSelection() >= 0) m_fmt.tzMinutes = TimeZoneOffsets()[m_tz->GetSelection()];
   m_fmt.colZ = m_z->GetSelection() + 1;
   m_fmt.colDate = std::max(0, m_date->GetSelection());
   m_fmt.colTime = std::max(0, m_time->GetSelection());
@@ -331,7 +371,7 @@ void TextFormatDialog::RefreshPreview() {
     wxString lab = wxString::Format("%d", c + 1);
     if (c + 1 == f.colX) lab += W8(" · X");
     if (c + 1 == f.colY) lab += W8(" · Y");
-    if (c + 1 == f.colZ) lab += W8(" · Z");
+    if (c + 1 == f.colZ) lab += m_water ? U8(" · hauteur") : W8(" · Z");
     if (c + 1 == f.colDate) lab += U8(" · date");
     if (c + 1 == f.colTime) lab += U8(" · heure");
     m_grid->SetColLabelValue(c, lab);
@@ -344,7 +384,8 @@ void TextFormatDialog::RefreshPreview() {
     std::vector<std::string> v = SplitFields(line, f);
     double x = 0, y = 0, z = 0;
     long long t = 0;
-    bool ok = !skipped && (int)v.size() >= std::max({f.colX, f.colY, f.colZ});
+    bool ok = !skipped && (int)v.size() >= std::max({f.colX, f.colY, f.colZ}) &&
+              (!m_water || f.colDate > 0);
     if (!skipped) ++data;
     auto fieldOk = [&](int c) -> bool {  // c : 1-based
       if (c < 1 || c > (int)v.size()) return false;
@@ -383,7 +424,17 @@ void TextFormatDialog::RefreshPreview() {
       m_grid->SetCellBackgroundColour((int)r, c, bg);
       m_grid->SetCellTextColour((int)r, c, fg);
     }
-    if (ok) {
+    if (ok && m_water) {
+      ParseFieldNumber(v[f.colZ - 1], f.decimal, z);
+      ++good;
+      if (sample.empty()) {
+        sample = wxString::Format(U8("1re hauteur : %.4g → %.3f m"), z, z * (m_zFeetV ? 0.3048 : 1.0));
+        const time_t tt = (time_t)t;
+        char b[32];
+        std::strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", std::gmtime(&tt));
+        sample += W8("   — ") + W8(b) + " UTC";
+      }
+    } else if (ok) {
       ParseFieldCoord(v[f.colX - 1], f, false, x);
       ParseFieldCoord(v[f.colY - 1], f, true, y);
       ParseFieldNumber(v[f.colZ - 1], f.decimal, z);

@@ -43,6 +43,9 @@ struct TextFormat {
   // date et heure : y M d h m s z AP MMM (« yyyy/M/d h:m:s.s ») ;
   // coordonnées X et Y (chacune) : D M S X (« D M S.S X », « DDMM.MX »)
   std::string dateFmt, timeFmt, xFmt, yFmt;
+  // Fuseau horaire des dates du fichier : décalage sur UTC en minutes (heure
+  // fixe, sans changement d'heure) ; les instants lus sont ramenés en UTC
+  int tzMinutes = 0;
   std::string serialize() const;            // "" si non personnalisé
   bool deserialize(const std::string& s);   // "" -> non personnalisé
   bool operator==(const TextFormat& o) const { return serialize() == o.serialize(); }
@@ -72,6 +75,13 @@ bool ReadTextHead(const std::string& path, size_t maxLines, std::vector<std::str
                   std::string& err);
 // Format deviné d'après les premières lignes (entête, séparateur, colonnes)
 TextFormat GuessTextFormat(const std::vector<std::string>& lines);
+// Fichier de hauteurs d'eau : date (heure) et valeur (colonne Z) ; X et Y à 0
+TextFormat GuessWaterLevelFormat(const std::vector<std::string>& lines);
+// Décalages horaires proposés (minutes) et libellé « UTC+05:30 »
+const std::vector<int>& TimeZoneOffsets();
+std::string TimeZoneLabel(int minutes);
+
+class WaterLevelSeries;
 
 struct LoadOptions {
   enum class Order { LonLatZ, LatLonZ };
@@ -91,6 +101,11 @@ struct LoadOptions {
   std::shared_ptr<const Crs> crs;
   // Fichiers texte : format personnalisé (colonnes, entête, séparateurs)
   TextFormat text;
+  // Hauteurs d'eau observées (m, format personnalisé avec date) : chaque
+  // sonde est corrigée de la hauteur à son heure.
+  // waterSubtract : profondeur ZH = sonde - hauteur (hauteur au-dessus du zéro)
+  std::shared_ptr<const WaterLevelSeries> water;
+  bool waterSubtract = true;
 };
 
 // Pas régulier d'une suite de coordonnées entières (en unités), 0 sinon.
@@ -110,6 +125,11 @@ class PointCloud {
   double srcStepX = 0, srcStepY = 0;
   // Dates des sondes (colonne date/heure du fichier), secondes UTC ; 0 = inconnues
   long long tMin = 0, tMax = 0;
+  // Dernière lecture avec hauteurs d'eau (non gardé dans le cache) : sondes
+  // écartées (sans date, hors de la série) et plage des corrections (unité de Z)
+  long long waterNoTime = 0, waterMiss = 0;
+  float waterCorrMin = 0, waterCorrMax = 0;
+  bool waterApplied = false;
 
   size_t size() const { return z.size(); }
   bool empty() const { return z.empty(); }
@@ -166,9 +186,15 @@ size_t PointCloud::filter(F keep, std::vector<uint32_t>* tris) {
 }
 
 // Lecteurs. Les sondes conservent leur valeur numérique d'origine (float32).
+// Lecture par blocs (très gros fichiers) : si `sink` est donné, chaque bloc
+// d'environ `blockN` sondes converties (signe, unité, hauteurs d'eau) est remis
+// à `sink` puis vidé ; `sink` renvoie false pour arrêter la lecture (sans
+// erreur). pc.tMin / tMax et les compteurs d'eau sont cumulés au fil des blocs.
+using XYZBlockSink = std::function<bool(PointCloud&)>;
 bool LoadXYZ(const std::string& path, const LoadOptions& opt, PointCloud& pc,
              std::string& err, const ProgressFn& progress = nullptr,
-             const std::atomic<bool>* cancel = nullptr);
+             const std::atomic<bool>* cancel = nullptr, const XYZBlockSink* sink = nullptr,
+             size_t blockN = 0);
 
 // Grille ESRI ASCII (.asc) : chaque cellule valide devient une sonde au
 // centre de cellule. Renvoie le pas natif (degrés, ou unités du système).

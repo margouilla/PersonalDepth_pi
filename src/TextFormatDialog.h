@@ -31,8 +31,10 @@ class TextFormatDialog : public wxDialog {
  public:
   // `path` : fichier d'exemple (aperçu) ; `init` non personnalisé -> format deviné
   // zSign : 0 automatique, 1 profondeurs positives, 2 altitudes ; zFeet : Z en pieds
+  // water : fichier de hauteurs d'eau (date, heure, hauteur ; pas de X / Y) ;
+  // zSign vaut alors 0 (profondeur = sonde − hauteur) ou 1 (sonde + hauteur)
   TextFormatDialog(wxWindow* parent, const std::string& path, const pd::TextFormat& init,
-                   int zSign, bool zFeet);
+                   int zSign, bool zFeet, bool water = false);
   pd::TextFormat Format() const { return m_fmt; }
   int ZSign() const { return m_zSignV; }
   bool ZFeet() const { return m_zFeetV; }
@@ -57,8 +59,10 @@ class TextFormatDialog : public wxDialog {
   wxChoice *m_x = nullptr, *m_y = nullptr, *m_z = nullptr, *m_date = nullptr, *m_time = nullptr;
   wxTextCtrl *m_xFmt = nullptr, *m_yFmt = nullptr, *m_dateFmt = nullptr, *m_timeFmt = nullptr;  // gabarits
   wxChoice *m_zSign = nullptr, *m_zUnit = nullptr;  // convention et unité de Z
+  wxChoice* m_tz = nullptr;                         // fuseau horaire des dates
   int m_zSignV = 0;
   bool m_zFeetV = false;
+  bool m_water = false;  // fichier de hauteurs d'eau
   wxGrid* m_grid = nullptr;
   wxStaticText *m_status = nullptr, *m_sample = nullptr;
   wxButton* m_ok = nullptr;

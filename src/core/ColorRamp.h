@@ -90,8 +90,9 @@ struct ColorLUT {
 // shadeStrength 0 = pas d'ombrage. NaN -> transparent. `tide` : hauteur
 // d'eau ajoutée à chaque cellule (profondeur du moment), facultative.
 struct TideField;
+// interpLighten : cellules interpolées éclaircies (part de blanc, 0 = non)
 void Colorize(const GridLevel& g, int i0, int j0, int w, int h,
               const ColorLUT& lut, float shadeStrength, uint32_t* out,
-              int outStride, const TideField* tide = nullptr);
+              int outStride, const TideField* tide = nullptr, float interpLighten = 0.f);
 
 }  // namespace pd

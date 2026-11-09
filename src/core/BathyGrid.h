@@ -60,6 +60,9 @@ struct GridLevel {
   double dlon = 0, dlat = 0;
   std::vector<float> z;        // NaN = pas de donnée
   std::vector<uint8_t> shade;  // ombrage ; 160 = neutre (relief plat)
+  std::vector<uint8_t> interp; // 1 = cellule interpolée (base), vide = aucune
+
+  bool isInterp(size_t c) const { return !interp.empty() && interp[c]; }
 
   float at(int i, int j) const { return z[(size_t)j * nx + i]; }
   bool cellOf(double lon, double lat, int& i, int& j) const {
@@ -83,8 +86,11 @@ class BathyGrid {
   size_t filledGaps = 0;       // cellules isolées comblées
   int shadeSmooth = 0;         // adoucissement du relief ombré (cellules du niveau 0)
 
+  // pinterp : sondes interpolées (vue de la base) ; une sonde mesurée
+  // l'emporte sur une valeur interpolée dans une même cellule
   bool build(const PointCloud& pc, const GridParams& p,
-             const std::vector<uint32_t>* tinTriangles, std::string& err);
+             const std::vector<uint32_t>* tinTriangles, std::string& err,
+             const std::vector<uint8_t>* pinterp = nullptr);
   // Exagération verticale, azimut et hauteur du soleil (degrés)
   void computeHillshade(float exaggeration = 3.f, float azimuth = 315.f,
                         float altitude = 45.f);

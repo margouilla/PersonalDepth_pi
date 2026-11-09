@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "PointCloud.h"
+#include "WaterLevel.h"
 #include "Lang.h"
 #include "FileUtil.h"
 
@@ -250,6 +251,7 @@ std::string TextFormat::serialize() const {
   if (!timeFmt.empty()) s += ";tfmt=" + EscFmt(timeFmt);
   if (!xFmt.empty()) s += ";xfmt=" + EscFmt(xFmt);
   if (!yFmt.empty()) s += ";yfmt=" + EscFmt(yFmt);
+  if (tzMinutes) s += ";tz=" + std::to_string(tzMinutes);
   return s;
 }
 
@@ -281,10 +283,13 @@ bool TextFormat::deserialize(const std::string& s) {
       else if (k == "date") t.colDate = v;
       else if (k == "time") t.colTime = v;
       else if (k == "order") t.dateOrder = v;
+      else if (k == "tz") t.tzMinutes = std::max(-720, std::min(840, v));
     }
     a = b + 1;
   }
-  if (t.colX < 1 || t.colY < 1 || t.colZ < 1) return false;
+  // X et Y à 0 : format d'un fichier de hauteurs d'eau (date + valeur)
+  if (t.colZ < 1 || t.colX < 0 || t.colY < 0 || (t.colX < 1) != (t.colY < 1)) return false;
+  if (t.colX < 1 && t.colDate < 1) return false;
   *this = t;
   return true;
 }
@@ -647,8 +652,32 @@ bool ParseFieldCoord(const std::string& s, const TextFormat& f, bool isY, double
   return ParseCoordPattern(s, p, v);
 }
 
+static bool ParseFieldDateTimeLocal(const std::string& date, const std::string& time,
+                                    const TextFormat& f, long long& t);
+
 bool ParseFieldDateTime(const std::string& date, const std::string& time, const TextFormat& f,
                         long long& t) {
+  if (!ParseFieldDateTimeLocal(date, time, f, t)) return false;
+  t -= (long long)f.tzMinutes * 60;  // heure du fichier -> UTC
+  return true;
+}
+
+const std::vector<int>& TimeZoneOffsets() {
+  static const std::vector<int> v = {
+      -720, -660, -600, -570, -540, -480, -420, -360, -300, -240, -210, -180, -120, -60, 0,
+      60,   120,  180,  210,  240,  270,  300,  330,  345,  360,  390,  420,  480,  525, 540,
+      570,  600,  630,  660,  720,  765,  780,  840};
+  return v;
+}
+
+std::string TimeZoneLabel(int m) {
+  char b[24];
+  std::snprintf(b, sizeof b, "UTC%c%02d:%02d", m < 0 ? '-' : '+', std::abs(m) / 60, std::abs(m) % 60);
+  return b;
+}
+
+static bool ParseFieldDateTimeLocal(const std::string& date, const std::string& time,
+                                    const TextFormat& f, long long& t) {
   if (f.dateFmt.empty() && f.timeFmt.empty()) return ParseDateTime(date, time, f.dateOrder, t);
   DateParts p;
   if (!date.empty()) {
@@ -717,6 +746,51 @@ bool ReadTextHead(const std::string& path, size_t maxLines, std::vector<std::str
     lines.push_back(l);
   }
   return true;
+}
+
+TextFormat GuessWaterLevelFormat(const std::vector<std::string>& lines) {
+  TextFormat f;
+  f.custom = true;
+  f.colX = f.colY = 0;
+  int semi = 0, tab = 0, comma = 0, cnt = 0;
+  for (size_t i = lines.size() > 40 ? lines.size() - 40 : 0; i < lines.size(); ++i) {
+    const std::string& l = lines[i];
+    if (l.empty()) continue;
+    ++cnt;
+    semi += l.find(';') != std::string::npos;
+    tab += l.find('\t') != std::string::npos;
+    comma += l.find(',') != std::string::npos;
+  }
+  if (semi > cnt / 2) { f.sep = ';'; if (comma > cnt / 2) f.decimal = ','; }
+  else if (tab > cnt / 2) { f.sep = '\t'; if (comma > cnt / 2) f.decimal = ','; }
+  else if (comma > cnt / 2) f.sep = ',';
+  else f.sep = ' ';
+  // première ligne avec une date et un nombre (après la date)
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const auto v = SplitFields(lines[i], f);
+    if (v.empty() || lines[i][0] == '#' || lines[i][0] == '%') continue;
+    int cd = 0, ct = 0, cz = 0;
+    for (size_t c = 0; c < v.size(); ++c) {
+      long long t;
+      double d, sec;
+      if (!cd && ParseDateTime(v[c], "", 0, t)) { cd = (int)c + 1; continue; }
+      if (cd && !ct && !cz && v[c].find(':') != std::string::npos && ParseTimeOfDay(v[c].c_str(), sec)) {
+        ct = (int)c + 1;
+        continue;
+      }
+      if (cd && ParseFieldNumber(v[c], f.decimal, d)) cz = (int)c + 1;  // dernière valeur
+    }
+    if (cd && cz) {
+      f.skipLines = (int)i;
+      f.colDate = cd;
+      f.colTime = ct;
+      f.colZ = cz;
+      return f;
+    }
+  }
+  f.colDate = 1;
+  f.colZ = 2;
+  return f;
 }
 
 TextFormat GuessTextFormat(const std::vector<std::string>& lines) {
@@ -826,6 +900,8 @@ struct ParseState {
   double sampleX = 0, sampleY = 0;
   bool haveSample = false;
   std::vector<int64_t> sx, sy;  // échantillon (mm) pour détecter un pas de grille
+  std::vector<float> corr;      // hauteur d'eau de chaque sonde gardée (si o.water)
+  long long waterNoTime = 0, waterMiss = 0;
   ParseState(const LoadOptions& oo, PointCloud& p) : o(oo), pc(p) {}
 
   void add(double a, double b, double z) {
@@ -892,25 +968,34 @@ static void parseLineCustom(const char* p, const char* e, ParseState& st, long l
   std::string line(p, e);
   const std::vector<std::string> v = SplitFields(line, f);
   const int nf = (int)v.size();
-  if (f.colX > nf || f.colY > nf || f.colZ > nf) return;
+  if (f.colX < 1 || f.colY < 1 || f.colZ < 1 || f.colX > nf || f.colY > nf || f.colZ > nf) return;
   double x, y, z;
   if (!ParseFieldCoord(v[f.colX - 1], f, false, x) || !ParseFieldCoord(v[f.colY - 1], f, true, y) ||
       !ParseFieldNumber(v[f.colZ - 1], f.decimal, z))
     return;
+  bool hasT = false;
+  long long t = 0;
   if (f.colDate && f.colDate <= nf) {
-    long long t;
     const std::string& tm = (f.colTime && f.colTime <= nf) ? v[f.colTime - 1] : std::string();
     if (ParseFieldDateTime(v[f.colDate - 1], tm, f, t)) {
+      hasT = true;
       if (!tMin || t < tMin) tMin = t;
       if (t > tMax) tMax = t;
     }
   }
+  if (!st.o.water) { st.add(x, y, z); return; }
+  // hauteur d'eau observée à l'heure de la sonde
+  float h;
+  if (!hasT) { ++st.waterNoTime; return; }
+  if (!st.o.water->at(t, h)) { ++st.waterMiss; return; }
+  const size_t n0 = st.pc.size();
   st.add(x, y, z);
+  if (st.pc.size() > n0) st.corr.push_back(h);
 }
 
 bool LoadXYZ(const std::string& path, const LoadOptions& optIn, PointCloud& pc,
              std::string& err, const ProgressFn& progress,
-             const std::atomic<bool>* cancel) {
+             const std::atomic<bool>* cancel, const XYZBlockSink* sink, size_t blockN) {
   LoadOptions opt = optIn;
   const bool custom = opt.text.custom;
   if (custom) opt.order = LoadOptions::Order::LonLatZ;  // colonnes X / Y explicites
@@ -921,12 +1006,62 @@ bool LoadXYZ(const std::string& path, const LoadOptions& optIn, PointCloud& pc,
   long long total = std::ftell(f);
   std::fseek(f, 0, SEEK_SET);
   pc.clear();
-  pc.reserve((size_t)std::max<long long>(1024, total / 28));  // ~28 o/ligne
+  if (sink && blockN < 1024) blockN = 1024;
+  if (sink) pc.reserve(blockN + (blockN >> 3));
+  else pc.reserve((size_t)std::max<long long>(1024, total / 28));  // ~28 o/ligne
 
-  const size_t CH = 16u << 20;
+  const size_t CH = (sink ? 4u : 16u) << 20;
   std::vector<char> buf(CH + 4096);
   size_t carry = 0; long long done = 0;
   ParseState st(opt, pc);
+  auto valid = [&](float v) {
+    return std::isfinite(v) && std::fabs(v) < 1e20f && !IsUserNoData(v, opt.nodata);
+  };
+  // signe de Z (mode automatique) : décidé une fois (premier bloc) puis imposé
+  auto decideSign = [&]() {
+    if (opt.zsign != LoadOptions::ZSign::Auto) return;
+    size_t neg = 0, nv = 0;
+    for (float v : pc.z) if (valid(v)) { ++nv; neg += (v < 0.f); }
+    if (!nv) return;
+    opt.zsign = neg > (nv * 6) / 10 ? LoadOptions::ZSign::Elevation : LoadOptions::ZSign::DepthPositive;
+  };
+  float cmin = 1e30f, cmax = -1e30f;
+  bool corrected = false;
+  // hauteurs d'eau observées : profondeur = k·z + décalage ; on veut profondeur − s·h
+  auto applyWater = [&]() {
+    if (!opt.water || st.corr.size() != pc.size()) return;
+    decideSign();  // la correction ne doit pas faire basculer la détection automatique
+    const bool negate = opt.zsign == LoadOptions::ZSign::Elevation;
+    const float s = (opt.waterSubtract ? 1.f : -1.f) / (float)opt.zToMeters, sg = negate ? -1.f : 1.f;
+    for (size_t i = 0; i < pc.z.size(); ++i) {
+      if (!valid(pc.z[i])) continue;
+      pc.z[i] -= s * st.corr[i] * sg;
+      cmin = std::min(cmin, -s * st.corr[i]);
+      cmax = std::max(cmax, -s * st.corr[i]);
+    }
+    corrected = true;
+  };
+  // lecture par blocs : chaque bloc complet est converti puis remis à `sink`
+  bool finished = false, stopByUser = false;
+  size_t kept = 0;
+  auto flush = [&]() -> bool {
+    if (!finished) { st.finish(); finished = true; }  // pas de grille : échantillon du début
+    applyWater();
+    decideSign();
+    pc.applySign(opt);
+    pc.tMin = tMin;
+    pc.tMax = tMax;
+    pc.waterApplied = corrected;
+    pc.waterNoTime = st.waterNoTime;
+    pc.waterMiss = st.waterMiss;
+    pc.waterCorrMin = cmin;
+    pc.waterCorrMax = cmax;
+    kept += pc.size();
+    const bool more = pc.empty() ? true : (*sink)(pc);
+    pc.qlon.clear(); pc.qlat.clear(); pc.z.clear();  // capacité gardée
+    st.corr.clear();
+    return more;
+  };
   for (;;) {
     size_t n = std::fread(buf.data() + carry, 1, CH, f);
     size_t len = carry + n;
@@ -951,11 +1086,39 @@ bool LoadXYZ(const std::string& path, const LoadOptions& optIn, PointCloud& pc,
     done += n;
     if (progress && total > 0) progress((float)done / (float)total);
     if (cancel && *cancel) { std::fclose(f); err = "Annulé"; return false; }
+    if (sink && pc.size() >= blockN && !flush()) { stopByUser = true; break; }
     if (n == 0) break;
   }
   std::fclose(f);
-  if (pc.empty()) { err = st.emptyMessage(); return false; }
+  if (sink) {
+    if (!stopByUser && !pc.empty()) flush();
+    if (cancel && *cancel) { err = "Annulé"; return false; }
+  }
+  if (sink ? kept == 0 : pc.empty()) {
+    if (opt.water && (st.waterNoTime || st.waterMiss)) {
+      char b[300];
+      std::snprintf(b, sizeof b,
+                    pd::tr("Aucune sonde corrigée par les hauteurs d'eau : %lld sans date lisible, "
+                           "%lld hors de la période des hauteurs (%s … %s)"),
+                    st.waterNoTime, st.waterMiss, FormatTime(opt.water->tMin()).c_str(),
+                    FormatTime(opt.water->tMax()).c_str());
+      err = b;
+    } else {
+      err = st.emptyMessage();
+    }
+    return false;
+  }
+  if (sink) return true;
   st.finish();
+  pc.waterApplied = false;
+  pc.waterNoTime = st.waterNoTime;
+  pc.waterMiss = st.waterMiss;
+  applyWater();
+  if (corrected) {
+    pc.waterApplied = true;
+    pc.waterCorrMin = cmin;
+    pc.waterCorrMax = cmax;
+  }
   pc.applySign(opt);
   pc.tMin = tMin;
   pc.tMax = tMax;
