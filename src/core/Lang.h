@@ -13,14 +13,19 @@
 //
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Langue de l'interface : français (textes du code) ou anglais (table de
-// traduction indexée par le texte français exact). La langue suit celle
-// d'OpenCPN ; pd::tr() rend le texte d'origine s'il n'a pas de traduction.
+// Langue de l'interface : français (textes du code), anglais ou russe (tables
+// de traduction indexées par le texte français exact). La langue suit celle
+// d'OpenCPN ; pd::tr() rend, à défaut de traduction russe, l'anglais, puis le
+// texte d'origine.
 #pragma once
 
 namespace pd {
-void SetEnglish(bool english);
-bool IsEnglish();
+enum Lang { kFrench = 0, kEnglish = 1, kRussian = 2 };
+void SetLanguage(int lang);
+int Language();
+inline void SetEnglish(bool english) { SetLanguage(english ? kEnglish : kFrench); }
+inline bool IsEnglish() { return Language() == kEnglish; }
+inline bool IsRussian() { return Language() == kRussian; }
 // texte traduit (UTF-8) ; le pointeur reste valide (table statique ou argument)
 const char* tr(const char* fr);
 }  // namespace pd

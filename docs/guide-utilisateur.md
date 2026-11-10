@@ -146,7 +146,8 @@ comparer avec la carte officielle.
 
 *Base de bathymétrie* › **Gestion des données…** › **Importer…**
 
-![Fenêtre d'import](images/fr/04-import.png)
+![Fenêtre d'import (haut)](images/fr/04-import_1.png)
+![Fenêtre d'import (bas)](images/fr/04-import_2.png)
 
 **Fichiers** — *Ajouter des fichiers…* ou *Ajouter un dossier…* (tous les
 fichiers de bathymétrie du dossier et de ses sous-dossiers). Formats : XYZ
@@ -165,14 +166,15 @@ avec GDAL.
 | NODATA | Valeurs à ignorer (ex. `-9999 9999`), en plus du NODATA de l'entête des grilles |
 | Bornes de Z | Ne garder que les profondeurs entre Z1 et Z2 (ex. −200 à 200 m écarte les remplissages) |
 | Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) |
-| Type de levé | *Automatique*, sondeur classique (un faisceau), multifaisceaux, lidar bathymétrique, sondes de carte, sondes au plomb. Règle la distance maximale d'interpolation (voir plus bas) |
+| Type de levé | *Automatique*, sondeur classique (un faisceau), multifaisceaux, lidar bathymétrique, sondes de carte, sondes au plomb. Règle la distance maximale d'interpolation (voir plus bas). *Distance max* : la fixe à la main, en mètres |
 | Nature | *Automatique*, **grille** (pas régulier) ou **nuage de points** : impose le résultat de l'analyse du levé |
-| Interpoler entre les sondes | Nuages de points seulement : surface triangulée entre les sondes à l'import (voir plus bas) |
+| Interpoler entre les sondes | Nuages de points seulement : surface calculée entre les sondes à l'import, avec la méthode choisie à côté : *méthode automatique* (voisin naturel pour un levé en lignes, sinon TIN), *TIN (linéaire)*, *voisin naturel (Sibson)* ou *IDW (inverse de la distance)* (voir plus bas) |
 | Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : donné par l'analyse du levé (pas de la grille, espacement le long des routes d'un levé en lignes, espacement typique des sondes) |
 | Cache binaire | Fichier `.pdpc` à côté de la source pour un réimport rapide |
 
 **Grille ou nuage de points** — chaque fichier est analysé à l'import (le
-résultat s'affiche dans le texte de progression et le bilan d'import) :
+résultat s'affiche dans *Gestion des données*, ligne *Analyse*, avec la
+distance D utilisée et le nombre de cases interpolées) :
 - une **grille** (nœuds réguliers, donnée déjà traitée : Litto3D, NONNA,
   EMODnet, `.asc`…) est reconnue même en coordonnées projetées avec un bruit
   d'arrondi ou écrite en degrés ; elle est stockée à son pas, **sans
@@ -194,6 +196,22 @@ règle de priorité ; le panneau *Affichage* peut les masquer ou les
 éclaircir (§ 7) ; les sondes affichées n'en viennent jamais et le curseur
 indique *(interpolé)*. Choisir le *Type de levé* réel si le résultat
 automatique ne convient pas (ex. ancien levé au plomb).
+
+**Méthode d'interpolation** — la zone remplie est la même pour toutes les
+méthodes (les triangles dont aucun côté ne dépasse D) ; seules les valeurs
+changent :
+- **TIN (linéaire)** : un plan dans chaque triangle. Le plus rapide ; entre
+  des lignes parallèles, les longs triangles étroits peuvent laisser des
+  stries le long des lignes.
+- **Voisin naturel (Sibson)** : mélange pondéré des sondes voisines (méthode
+  de Sibson discrète), plus doux, sans arêtes de triangles.
+- **IDW (inverse de la distance)** : moyenne des 12 sondes les plus proches à
+  moins de D, pondérée par l'inverse du carré de la distance ; doux, mais
+  forme des « cuvettes » autour des sondes isolées ou aberrantes.
+
+La *méthode automatique* prend le voisin naturel pour un levé en lignes (pas
+de traînées de triangles entre les lignes) et le TIN sinon. La méthode utilisée s'affiche avec l'analyse dans *Gestion des données*.
+Pour en changer, réimporter le levé.
 
 > 🧪 **Testeurs — à vérifier :** un levé monofaisceau en lignes donne une
 > surface continue entre les lignes mais pas au travers des grands vides ;
@@ -218,8 +236,10 @@ avec l'aperçu du premier fichier ajouté, et montre les premières lignes du fi
   d'hydrographie : date / heure avec `y M d h m s z AP` (ex. `yyyy/M/d`,
   `d/M/y h:m:s.s`, `MMM d, y`, `yyyyMMddhhmmss`), coordonnées X et Y
   (chacune son gabarit) en degrés / minutes / secondes avec `D M S X` (ex.
-  `D M S.S X`, `DDMM.MX` pour le NMEA). Vide = reconnaissance automatique /
-  nombre décimal. *Aide sur les formats…* détaille les champs avec des
+  `D M S.S X`, `DDMM.MX` pour le NMEA). Vide = reconnaissance automatique :
+  nombre décimal, ou degrés-minutes-secondes avec symboles et lettre
+  d'hémisphère (`54° 00' 28.44" N`, la colonne N/S allant en Y et la colonne
+  E/W en X). *Aide sur les formats…* détaille les champs avec des
   exemples ;
 - sous **Z** : le sens des valeurs (profondeurs positives vers le bas,
   altitudes positives vers le haut, ou automatique) et leur unité (mètres ou
@@ -259,10 +279,13 @@ hauteur** (hauteur au-dessus du zéro) ; *profondeur = sonde + hauteur* est
 l'autre convention. **Courbe…** affiche la série des hauteurs en UTC
 (molette : zoom sur le temps, double-clic : toute la période).
 
-Les sondes doivent porter leur date et heure : utiliser le **format
+Les sondes portent de préférence leur date et heure : **format
 personnalisé** avec une colonne date (et heure). Sondes et hauteurs sont
 comparées en UTC : régler le **fuseau horaire** de chaque format sur celui
-de son fichier.
+de son fichier. **Sondes sans heure** (simple fichier `lon lat profondeur`) :
+la hauteur du **jour du levé** est appliquée à tout le fichier, prise à midi
+dans le fuseau des hauteurs d'eau ; le jour vient de *Date du levé* ou, à
+défaut, d'une date `AAAAMMJJ` dans le nom du fichier.
 
 > 🧪 **Testeurs — à vérifier :** un levé avec hauteurs d'eau donne les
 > profondeurs corrigées attendues ; la courbe correspond à votre échelle.
@@ -347,12 +370,17 @@ NM² ; pour plusieurs sources, la somme).
   profondeur directement, double-cliquer sur une couleur pour la changer ;
   *+ seuil* / *− seuil*.
 - **Importer .cpt… / Exporter .cpt…** : palettes GMT.
-- **Mes palettes** : *Enregistrer dans mes palettes…* range la palette
-  affichée (seuils, couleurs, paliers ou dégradé, zone dangereuse) dans un
-  fichier `.cpt` du dossier de palettes ; elle apparaît ensuite dans la liste
-  des préréglages (*Ma palette : …*) et dans le menu de la rampe du bandeau.
-  *Dossier de palettes…* choisit le dossier ; les palettes GMT `.cpt` qui y
-  sont copiées sont aussi proposées.
+- **Dossier de palettes** : toutes les palettes sont des fichiers `.cpt`
+  d'un même dossier (*Dossier de palettes…* pour le choisir), palettes
+  d'origine comprises : elles y sont écrites la première fois, puis se
+  modifient, se renomment ou se suppriment comme les autres. Seule *ENC
+  OpenCPN (S-52)* reste à part, car elle suit les isobathes réglées dans
+  OpenCPN. *Enregistrer la palette…* range la palette affichée (seuils,
+  couleurs, paliers ou dégradé, zone dangereuse) dans le dossier ; les
+  palettes GMT `.cpt` qui y sont copiées sont aussi proposées. *Restaurer les
+  palettes d'origine* réécrit les palettes livrées (les fichiers du même nom
+  sont remplacés). La liste est la même dans le panneau et dans le menu de la
+  rampe du bandeau.
 - **Automatique** : N seuils répartis entre la profondeur minimale et maximale
   de *toutes les données* ou de la *zone affichée* (recalculé quand la carte
   bouge), *valeurs rondes*, *min imposé* / *max imposé* facultatifs (ex. min
@@ -374,7 +402,8 @@ au-dessus du ZH (estran, terre).
 
 **Isobathes** — *Afficher les isobathes* ; niveaux à *Intervalle régulier* ou
 sur les *Seuils de la palette* ; *Maîtresse tous les* N unités (trait épais) ;
-*Valeurs sur les lignes* ; *Lissage des lignes* (purement graphique). Aucune
+*Valeurs sur les lignes*, avec ou sans *Contour blanc des valeurs* ;
+*Lissage des lignes* (purement graphique). Aucune
 ligne n'est tracée dans les trous du levé.
 
 **Affichage**
@@ -435,13 +464,14 @@ données).
   pieds ; les brasses sont affichées en pieds). Sondes, isobathes, légende,
   seuils, zone dangereuse et hauteurs de marée changent ensemble.
 - La **langue** suit OpenCPN : *Options › Utilisateur › Options générales ›
-  Langue*. Français → français ; toute autre langue → anglais. Les noms de
+  Langue*. Français → français ; russe → russe ; toute autre langue →
+  anglais. Les noms de
   classe et libellés enregistrés dans la base restent dans la langue où ils
   ont été créés.
 
 > 🧪 **Testeurs — à vérifier :** passer OpenCPN de mètres en pieds met à jour
-> tout l'affichage ; textes anglais erronés ou restés en français (merci de
-> les citer).
+> tout l'affichage ; textes anglais ou russes erronés ou restés en français
+> (merci de les citer).
 
 ## 10. Signaler un problème
 

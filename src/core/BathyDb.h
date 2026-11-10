@@ -69,10 +69,12 @@ struct DbSource {
   std::string imported;          // date d'import
   std::string group;             // classe (Litto3D, PFE…)
   std::string params;            // réglages d'import (relecture avec d'autres paramètres)
+  std::string info;              // analyse du levé à l'import (nature, espacement, D)
   // Import seulement (non enregistré) : distance maximale d'interpolation D (m)
   // entre les sondes d'un nuage, 0 = pas de surface interpolée ; en retour,
   // nombre de pixels interpolés au niveau natif
   double interpD = 0;
+  int interpMethod = 0;          // InterpMethod : 0 TIN, 1 voisin naturel, 2 IDW
   long long interpCount = 0;
 };
 
@@ -214,6 +216,8 @@ class BathyDb {
 double EstimateResolution(const PointCloud& pc, bool& gridded);
 // Date du levé : AAAAMMJJ dans le nom du fichier, sinon date du fichier
 std::string GuessSurveyDate(const std::string& path);
+// date AAAAMMJJ du nom du fichier (« AAAA-MM-JJ »), sinon vide
+std::string SurveyDateFromName(const std::string& path);
 // Classe proposée : premier mot du nom de fichier qui n'est pas un nombre
 // (LITTO3D_FRA_… -> LITTO3D, 20210325-31_PFE-G3_… -> PFE)
 std::string GuessSourceGroup(const std::string& path);

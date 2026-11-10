@@ -17,6 +17,7 @@
 #include "PersonalDepth_pi.h"
 
 #include <wx/dir.h>
+#include <wx/file.h>
 #include <wx/fileconf.h>
 #include <wx/filename.h>
 #include <wx/time.h>
@@ -37,6 +38,7 @@
 #include "BathyRenderer.h"
 #include "core/WebMerc.h"
 #include "core/SurveyShape.h"
+#include "core/Triangulate.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -103,6 +105,7 @@ int PersonalDepth_pi::Init() {
   UpdateUnits();  // unités d'affichage d'OpenCPN (m / ft)
   if (m_set.vrefFranceDir.empty()) m_set.vrefFranceDir = DefaultReferenceDir().ToUTF8().data();
   if (m_set.paletteDir.empty()) m_set.paletteDir = DefaultPaletteDir().ToUTF8().data();
+  WriteBuiltinPalettes(false);  // dossier de palettes unique : intégrées comprises
   DbOpen();
 
   wxString svg = GetPluginDataDir("PersonalDepth_pi") + wxFileName::GetPathSeparator() +
@@ -135,8 +138,12 @@ bool PersonalDepth_pi::DeInit() {
   if (m_dbViewNext) m_dbViewNext->cancel();
   m_dbViewNext.reset();
   m_dbView.reset();
-  if (m_chart) { m_chart->Destroy(); m_chart = nullptr; }
-  if (m_dlg) { m_dlg->Destroy(); m_dlg = nullptr; }
+  // Fenêtres supprimées tout de suite : Destroy() les laisse à wxWidgets, qui
+  // les supprime plus tard, quand OpenCPN a déjà déchargé le plugin (mise à
+  // jour, désinstallation) -> appel de code disparu et plantage.
+  m_events.reset();
+  if (m_chart) { m_chart->Hide(); delete m_chart; m_chart = nullptr; }
+  if (m_dlg) { m_dlg->Hide(); delete m_dlg; m_dlg = nullptr; }
   for (auto& l : m_layers) l->cancel();
   m_layers.clear();  // attend la fin des threads de chargement
   m_renderer.reset();
@@ -255,10 +262,12 @@ void PersonalDepth_pi::EncContours(float& shallow, float& safety, float& deep) {
 // d'OpenCPN : français si la locale commence par « fr », anglais sinon.
 bool PersonalDepth_pi::UpdateLanguage() {
   const wxString loc = GetLocaleCanonicalName().Lower();
-  const int lang = (loc.empty() || loc.StartsWith("fr")) ? 0 : 1;
+  const int lang = (loc.empty() || loc.StartsWith("fr")) ? pd::kFrench
+                   : loc.StartsWith("ru")                 ? pd::kRussian
+                                                          : pd::kEnglish;
   if (lang == m_lang) return false;
   m_lang = lang;
-  pd::SetEnglish(lang == 1);
+  pd::SetLanguage(lang);
   return true;
 }
 
@@ -361,9 +370,37 @@ wxString PersonalDepth_pi::DefaultPaletteDir() {
   return GetPluginDataDir("PersonalDepth_pi") + sep + "palettes";
 }
 
+// Dossier de palettes unique : les palettes intégrées y sont écrites en .cpt (on
+// peut les modifier ou les supprimer) ; seule la palette ENC (S-52), calculée
+// d'après les isobathes d'OpenCPN, reste à part.
+bool PersonalDepth_pi::WriteBuiltinPalettes(bool restore, wxString* err) {
+  const wxString dir = W8(m_set.paletteDir.c_str());
+  if (dir.empty()) return false;
+  const wxString sep = wxFileName::GetPathSeparator();
+  const wxString marker = dir + sep + ".personaldepth-builtin";
+  if (!restore && wxFileExists(marker)) return true;  // déjà fait : suppressions respectées
+  if (!wxDirExists(dir) && !wxFileName::Mkdir(dir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL)) {
+    if (err) *err = U8("Impossible de créer le dossier ") + dir;
+    return false;
+  }
+  bool ok = true;
+  for (const auto& n : ColorRamp::PresetNames()) {
+    if (n == ColorRamp::kEncName) continue;
+    wxString name = U8(n.c_str());
+    for (wxUniChar bad : wxString("\\/:*?\"<>|")) name.Replace(wxString(bad), "_");
+    const wxString path = dir + sep + name + ".cpt";
+    if (!restore && wxFileExists(path)) continue;
+    ok = ColorRamp::Preset(n).saveCPT(path.ToUTF8().data()) && ok;
+  }
+  wxFile m;
+  if (m.Create(marker, true)) m.Write(wxString("PersonalDepth_pi: built-in palettes written\n"));
+  if (!ok && err) *err = U8("Échec de l'écriture");
+  return ok;
+}
+
 std::vector<PersonalDepth_pi::PaletteEntry> PersonalDepth_pi::PaletteList() const {
   std::vector<PaletteEntry> v;
-  for (const auto& n : ColorRamp::PresetNames()) v.push_back({U8(n.c_str()), n});
+  v.push_back({U8(ColorRamp::kEncName), ColorRamp::kEncName});
   const wxString dir = W8(m_set.paletteDir.c_str());
   if (!dir.empty() && wxDirExists(dir)) {
     wxArrayString files;
@@ -391,18 +428,6 @@ wxString PersonalDepth_pi::DefaultReferenceDir() {
   return a;
 }
 
-static wxString AsciiOnly(const wxString& in) {  // atlas OpenGL : ASCII seulement
-  wxString o;
-  for (wxUniChar c : in) {
-    const int v = (int)c.GetValue();
-    if (v >= 32 && v < 127) o += c;
-    else if (v == 0xE9 || v == 0xE8 || v == 0xEA || v == 0xEB) o += 'e';
-    else if (v == 0xE0 || v == 0xE2) o += 'a';
-    else if (v == 0xC9 || v == 0xC8) o += 'E';
-    else o += '?';
-  }
-  return o;
-}
 
 void PersonalDepth_pi::TideChanged() {
   UpdateTide(true);
@@ -488,10 +513,11 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
       s.tideWhen = pd::IsEnglish()
                        ? wxString::Format("%02d %s %02d %s", dt.GetDay(), kMon[(int)dt.GetMonth()],
                                           dt.GetYear() % 100, dt.Format("%H:%M"))
-                       : dt.Format("%d/%m/%y %H:%M");
+                   : pd::IsRussian() ? dt.Format("%d.%m.%y %H:%M")  // usage russe : JJ.MM.AA
+                                     : dt.Format("%d/%m/%y %H:%M");
     }
     auto legend = [&](float h) {
-      return AsciiOnly(wxString::Format("%s %+.2f %s", U8("Marée"), h * s.heightK, s.heightUnit));
+      return wxString::Format("%s %+.2f %s", U8("Marée"), h * s.heightK, s.heightUnit);
     };
 
     if (s.tideSource == 1) {  // ------------------------------- FES2022 maillé
@@ -701,7 +727,6 @@ void PersonalDepth_pi::UpdateCursorText() {
     int64_t sid = 0;
     bool gi = false;
     if (!(*it)->probe(m_curLon, m_curLat, radiusDeg, gz, sz, dist, &sid, &gi)) continue;
-    // Texte ASCII (atlas de glyphes OpenGL)
     const float v = !std::isnan(sz) ? sz : gz;
     const float dk = m_set.depthK;
     const wxString du = m_set.depthUnit;
@@ -709,15 +734,15 @@ void PersonalDepth_pi::UpdateCursorText() {
     if (m_set.tideOk && m_set.tide) {  // profondeur au ZH puis profondeur du moment
       const float th = m_set.tide->at(m_curLon, m_curLat);
       base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") +
-             wxString::Format(U8("%.2f %s ZH -> %.2f %s (maree %+.2f %s)"), v * dk, du, (v + th) * dk, du,
+             wxString::Format(U8("%.2f %s ZH → %.2f %s (marée %+.2f %s)"), v * dk, du, (v + th) * dk, du,
                               th * m_set.heightK, m_set.heightUnit);
     }
     if (!std::isnan(sz)) base += wxString::Format(U8("  (a %.1f m)"), dist);
-    else if (gi) base += U8("  (interpole)");  // valeur interpolée entre les sondes
+    else if (gi) base += U8("  (interpolé)");  // valeur interpolée entre les sondes
     if (sid)  // vue de la base : source retenue pour ce pixel
       for (const auto& d : m_dbSources)
         if (d.id == sid) {
-          wxString n = AsciiOnly(wxString::FromUTF8(d.name.c_str()));
+          wxString n = wxString::FromUTF8(d.name.c_str());
           if (n.size() > 28) n = n.Left(26) + "..";
           base += "  [" + n + " " + wxString(d.date.substr(0, 4)) + "]";
         }
@@ -755,6 +780,7 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ContourStep", (double)m_set.contourStep);
   c->Write("ContourMajor", (double)m_set.contourMajor);
   c->Write("ContourLabels", m_set.contourLabels);
+  c->Write("ContourHalo", m_set.contourHalo);
   c->Write("ContourSmooth", m_set.contourSmooth);
   c->Write("ContourColor", (long)m_set.contourColor);
   c->Write("CrsCode", W8(m_set.crsCode.c_str()));
@@ -771,6 +797,8 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ImportInstrument", m_set.importInstrument);
   c->Write("ImportNature", m_set.importNature);
   c->Write("ImportInterp", m_set.importInterp);
+  c->Write("ImportInterpD", (double)m_set.importInterpD);
+  c->Write("ImportInterpMode", m_set.importInterpMethod);
   c->Write("InterpShow", m_set.interpShow);
   c->Write("InterpDistinct", m_set.interpDistinct);
   c->Write("ImportFormat", W8(m_set.importFormat.c_str()));
@@ -852,6 +880,7 @@ void PersonalDepth_pi::LoadConfig() {
   if (c->Read("ContourStep", &d) && d > 0) m_set.contourStep = (float)d;
   if (c->Read("ContourMajor", &d) && d >= 0) m_set.contourMajor = (float)d;
   c->Read("ContourLabels", &m_set.contourLabels, m_set.contourLabels);
+  c->Read("ContourHalo", &m_set.contourHalo, m_set.contourHalo);
   c->Read("ContourSmooth", &m_set.contourSmooth, m_set.contourSmooth);
   long col;
   if (c->Read("ContourColor", &col)) m_set.contourColor = (uint32_t)col;
@@ -876,6 +905,9 @@ void PersonalDepth_pi::LoadConfig() {
     c->Read("ImportInstrument", &m_set.importInstrument, m_set.importInstrument);
     c->Read("ImportNature", &m_set.importNature, m_set.importNature);
     c->Read("ImportInterp", &m_set.importInterp, m_set.importInterp);
+    if (c->Read("ImportInterpD", &v)) m_set.importInterpD = (float)std::max(0.0, v);
+    c->Read("ImportInterpMode", &m_set.importInterpMethod, m_set.importInterpMethod);
+    m_set.importInterpMethod = std::max(0, std::min(3, m_set.importInterpMethod));
     c->Read("InterpShow", &m_set.interpShow, m_set.interpShow);
     c->Read("InterpDistinct", &m_set.interpDistinct, m_set.interpDistinct);
   }
@@ -1071,8 +1103,16 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  DbSource m;
                  m.name = name;
                  m.path = p.path;
-                 m.interpD = (!gridded && p.interpolate) ? shape.maxEdge : 0;
-                 m.res = m.interpD > 0 ? shape.interpRes : shape.storeRes;
+                 m.info = shape.describe();
+                 if (p.interpD > 0 && !gridded && p.interpolate) m.info += pd::tr(" ; D imposée");
+                 m.interpD = (!gridded && p.interpolate) ? (p.interpD > 0 ? p.interpD : shape.maxEdge) : 0;
+                 // méthode : automatique = voisin naturel pour un levé en lignes (pas de
+                 // traînées de longs triangles entre les lignes), sinon TIN
+                 m.interpMethod = p.interpMethod > 0 ? p.interpMethod - 1
+                                  : (int)(shape.lines ? InterpMethod::NaturalNeighbour : InterpMethod::Tin);
+                 m.res = m.interpD <= 0 ? shape.storeRes
+                         : shape.lines ? shape.storeRes
+                                       : std::min(shape.storeRes, std::max(2.0, m.interpD / 8.0));
                  if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
                  // date du levé : imposée, sinon première date de la colonne
                  // date du fichier, sinon nom du fichier ou date du fichier
@@ -1432,7 +1472,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
     m_bannerDown = BannerHit::None;
     if (same) {
       const wxPoint pos = e.GetPosition();
-      wxTheApp->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });
+      if (m_events) m_events->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });
     }
   }
   return true;  // le clic sur le bandeau ne déplace pas la carte
@@ -1463,9 +1503,8 @@ void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
     case BannerHit::Bar: {
       wxMenu menu;
       const auto list = PaletteList();
-      const size_t nBuilt = ColorRamp::PresetNames().size();
       for (size_t k = 0; k < list.size(); ++k) {
-        if (k == nBuilt) menu.AppendSeparator();  // palettes du dossier de l'utilisateur
+        if (k == 1) menu.AppendSeparator();  // ENC (S-52), puis palettes du dossier
         menu.Append(10000 + (int)k, list[k].label);
       }
       const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
@@ -1670,6 +1709,8 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("instr", s.importInstrument);
   num("nature", s.importNature);
   num("interp", s.importInterp);
+  num("dmax", s.importInterpD);
+  num("imode", s.importInterpMethod);
   kv("fmt", s.importFormat);
   num("waterOn", s.importWaterOn);
   kv("water", s.importWater);
@@ -1691,6 +1732,8 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
   s.importInstrument = 0;
   s.importNature = 0;
   s.importInterp = true;
+  s.importInterpD = 0.f;
+  s.importInterpMethod = 0;
   s.importFormat.clear();
   s.importWaterOn = false;  // réglages antérieurs : pas de hauteurs d'eau
   std::istringstream in(text);
@@ -1724,6 +1767,8 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "instr") s.importInstrument = std::max(0, std::min(5, (int)d));
     else if (k == "nature") s.importNature = std::max(0, std::min(2, (int)d));
     else if (k == "interp") s.importInterp = d != 0;
+    else if (k == "dmax") s.importInterpD = (float)std::max(0.0, d);
+    else if (k == "imode") s.importInterpMethod = std::max(0, std::min(3, (int)d));
     else if (k == "fmt") s.importFormat = v;
     else if (k == "waterOn") s.importWaterOn = d != 0;
     else if (k == "water") s.importWater = v;

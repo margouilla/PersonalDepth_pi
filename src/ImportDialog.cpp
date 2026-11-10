@@ -15,6 +15,8 @@
 
 #include "core/Lang.h"
 #include "ImportDialog.h"
+
+#include "core/BathyDb.h"
 #include "TextFormatDialog.h"
 #include "WaterLevelDialog.h"
 #include "core/WaterLevel.h"
@@ -367,7 +369,23 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
                          "Automatique : levé en lignes reconnu à l'écart entre les routes, sinon "
                          "deux fois l'espacement des sondes. Multifaisceaux et lidar : trois fois. "
                          "Sondes de carte et plomb : au moins les grands écarts courants entre sondes, plafond de 1 000 m / 500 m."));
-  g->Add(L("Type de levé"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_instr, 0);
+  m_dmaxOn = new wxCheckBox(sb, wxID_ANY, U8("Distance max"));
+  m_dmaxOn->SetValue(st.importInterpD > 0);
+  m_dmax = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                wxSP_ARROW_KEYS, 0.1, 100000, st.importInterpD > 0 ? st.importInterpD : 200.0, 10);
+  m_dmax->SetDigits(1);
+  const wxString dt = U8("Distance maximale d'interpolation : la surface n'est jamais tendue entre "
+                         "deux sondes plus éloignées que cette distance (vides plus larges laissés "
+                         "vides). Décoché : déduite de l'analyse du levé et du type de levé. "
+                         "La valeur utilisée s'affiche dans Gestion des données.");
+  m_dmaxOn->SetToolTip(dt);
+  m_dmax->SetToolTip(dt);
+  auto* ir = new wxBoxSizer(wxHORIZONTAL);
+  ir->Add(m_instr, 0, wxRIGHT, 12);
+  ir->Add(m_dmaxOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  ir->Add(m_dmax, 0, wxRIGHT, 4);
+  ir->Add(L("m"), 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(L("Type de levé"), 0, wxALIGN_CENTER_VERTICAL); g->Add(ir, 0);
   m_nature = new wxChoice(sb, wxID_ANY);
   for (const char* t : {"automatique", "grille (pas régulier)", "nuage de points"}) m_nature->Append(U8(t));
   m_nature->SetSelection(std::max(0, std::min(2, st.importNature)));
@@ -381,9 +399,22 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
                           "que la distance maximale. Marquée « interpolée » dans la base : une sonde "
                           "mesurée l'emporte toujours, et l'affichage peut la masquer ou "
                           "l'éclaircir."));
+  m_imethod = new wxChoice(sb, wxID_ANY);
+  for (const char* t : {"méthode automatique", "TIN (linéaire)", "voisin naturel (Sibson)",
+                        "IDW (inverse de la distance)"})
+    m_imethod->Append(U8(t));
+  m_imethod->SetSelection(std::max(0, std::min(3, st.importInterpMethod)));
+  m_imethod->SetToolTip(U8("Méthode de calcul des valeurs interpolées. La zone remplie est la même "
+                           "pour toutes (triangles dont aucun côté ne dépasse la distance maximale). "
+                           "Automatique : voisin naturel pour un levé en lignes, sinon TIN. "
+                           "TIN : plan dans chaque triangle, le plus rapide. Voisin naturel : surface "
+                           "plus douce, sans arêtes de triangles. IDW : moyenne des 12 sondes les plus "
+                           "proches pondérée par l'inverse du carré de la distance, peut former des "
+                           "« cuvettes » autour des sondes isolées."));
   auto* nr = new wxBoxSizer(wxHORIZONTAL);
   nr->Add(m_nature, 0, wxRIGHT, 12);
-  nr->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL);
+  nr->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  nr->Add(m_imethod, 0, wxALIGN_CENTER_VERTICAL);
   g->Add(L("Nature"), 0, wxALIGN_CENTER_VERTICAL); g->Add(nr, 0);
 
   // hauteurs d'eau observées (échelle, marégraphe) : sondes horodatées corrigées
@@ -403,8 +434,8 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
                          "d'eau (ex. 2026-11-01 05:00:00,0.35). Un dossier : tous ses fichiers .txt, "
                          ".csv, .dat forment une seule série. Colonnes, unité, convention et fuseau "
                          "horaire se règlent avec « Format… ». Chaque sonde est corrigée de la "
-                         "hauteur interpolée à son heure : le format des sondes doit indiquer la "
-                         "colonne date (et heure).");
+                         "hauteur interpolée à son heure ; sans colonne date, la hauteur du jour "
+                         "du levé est prise.");
   for (wxWindow* w : std::initializer_list<wxWindow*>{m_waterOn, m_water}) w->SetToolTip(wt);
   auto* wr = new wxBoxSizer(wxHORIZONTAL);
   wr->Add(m_water, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
@@ -450,6 +481,9 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
     m_boundMin->Enable(m_boundsOn->GetValue());
     m_boundMax->Enable(m_boundsOn->GetValue());
     m_res->Enable(m_resOn->GetValue());
+    m_dmax->Enable(m_dmaxOn->GetValue() && m_interp->GetValue());
+    m_dmaxOn->Enable(m_interp->GetValue());
+    m_imethod->Enable(m_interp->GetValue());
     const bool w = m_waterOn->GetValue();
     for (wxWindow* c : std::initializer_list<wxWindow*>{m_water, m_waterFile, m_waterDir, m_waterCurve,
                                                         m_waterFmtBtn, m_waterInfo})
@@ -457,6 +491,8 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   };
   m_waterOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_resOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  m_dmaxOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  m_interp->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
   m_boundsOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
@@ -800,14 +836,32 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importInstrument = m_instr->GetSelection();
   s.importNature = m_nature->GetSelection();
   s.importInterp = m_interp->GetValue();
+  s.importInterpD = m_dmaxOn->GetValue() ? (float)m_dmax->GetValue() : 0.f;
+  s.importInterpMethod = m_imethod->GetSelection();
   // hauteurs d'eau observées : série lue une fois, partagée par tous les fichiers
   std::shared_ptr<const WaterLevelSeries> water;
   if (m_waterOn->GetValue()) {
+    // sondes sans date : niveau du jour du levé (date imposée, sinon date
+    // AAAAMMJJ du nom du fichier), pris à midi heure locale des hauteurs d'eau
     if (m_order->GetSelection() != 2 || m_fmt.colDate <= 0) {
-      wxMessageBox(U8("La correction par hauteurs d'eau demande des sondes horodatées : choisir "
-                      "« Format personnalisé » et indiquer la colonne date (et heure)."),
-                   "PersonalDepth", wxOK | wxICON_WARNING, this);
-      return;
+      const bool dateOn = m_dateOn->GetValue();
+      wxString missing;
+      int nm = 0;
+      for (unsigned k = 0; k < m_files->GetCount() && !dateOn; ++k) {
+        const std::string f = m_files->GetString(k).ToUTF8().data();
+        if (SurveyDateFromName(f).empty() && !(m_edit && k < m_srcs.size() && !m_srcs[k].date.empty()) &&
+            nm++ < 8)
+          missing += "\n  " + m_files->GetString(k);
+      }
+      if (nm) {
+        wxMessageBox(U8("Les sondes n'ont pas d'heure : la correction par hauteurs d'eau prend le "
+                        "niveau du jour du levé. Cocher « Date du levé » et la choisir, ou mettre "
+                        "la date (AAAAMMJJ) dans le nom des fichiers, ou bien choisir « Format "
+                        "personnalisé » avec la colonne date (et heure). Fichiers sans date :") +
+                         missing,
+                     "PersonalDepth", wxOK | wxICON_WARNING, this);
+        return;
+      }
     }
     auto ser = std::make_shared<WaterLevelSeries>();
     std::string err;
@@ -904,10 +958,18 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.instrument = s.importInstrument;
     p.nature = s.importNature;
     p.interpolate = s.importInterp;
+    p.interpD = s.importInterpD;
+    p.interpMethod = s.importInterpMethod;
     p.surveyDate = m_date;
     if (m_edit && k < m_srcs.size()) {  // relecture : date et classe de la source gardées
       if (p.surveyDate.empty()) p.surveyDate = m_srcs[k].date;
       p.group = m_group.empty() ? m_srcs[k].group : m_group;
+    }
+    if (water && (m_order->GetSelection() != 2 || m_fmt.colDate <= 0)) {  // sondes sans heure : niveau du jour du levé, à midi (heure des hauteurs d'eau)
+      const std::string day = !p.surveyDate.empty() ? p.surveyDate : SurveyDateFromName(p.path);
+      long long t0;
+      if (!day.empty() && ParseDateTime(day, "12:00", 0, t0))
+        p.load.waterTime = t0 - (long long)m_waterFmt.tzMinutes * 60;
     }
     m_out.push_back(p);
   }

@@ -61,6 +61,8 @@ struct LayerParams {
   // 1 grille, 2 nuage), surface interpolée entre les sondes d'un nuage
   int instrument = 0, nature = 0;
   bool interpolate = true;
+  double interpD = 0;      // distance maximale d'interpolation imposée (m), 0 = automatique
+  int interpMethod = 0;    // 0 auto (voisin naturel si levé en lignes, sinon TIN), 1 TIN, 2 voisin naturel, 3 IDW
 };
 
 class BathyLayer {

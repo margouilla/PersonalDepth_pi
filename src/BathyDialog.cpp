@@ -473,16 +473,30 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   box->Add(b, 0, wxALL, 4);
   // Palettes de l'utilisateur : un fichier .cpt par palette dans un dossier
   auto* pb = new wxBoxSizer(wxHORIZONTAL);
-  auto* psave = new wxButton(sb, wxID_ANY, U8("Enregistrer dans mes palettes…"), wxDefaultPosition,
+  auto* psave = new wxButton(sb, wxID_ANY, U8("Enregistrer la palette…"), wxDefaultPosition,
                              wxDefaultSize, wxBU_EXACTFIT);
   psave->SetToolTip(U8("Enregistre la palette affichée (seuils, couleurs, mode, zone dangereuse) "
                        "dans le dossier de palettes : elle apparaît ensuite dans la liste et dans "
                        "le menu du bandeau."));
   auto* pdir = new wxButton(sb, wxID_ANY, U8("Dossier de palettes…"), wxDefaultPosition,
                             wxDefaultSize, wxBU_EXACTFIT);
-  pdir->SetToolTip(U8("Choisir le dossier des palettes (.cpt). Les palettes GMT déposées dans ce "
-                      "dossier sont aussi proposées."));
-  pb->Add(psave, 0, wxRIGHT, 4); pb->Add(pdir);
+  pdir->SetToolTip(U8("Choisir le dossier des palettes (.cpt) : toutes les palettes proposées (sauf "
+                      "ENC S-52) sont les fichiers de ce dossier, palettes d'origine comprises. On "
+                      "peut les modifier, les renommer, les supprimer, y déposer des palettes GMT."));
+  auto* prest = new wxButton(sb, wxID_ANY, U8("Restaurer les palettes d'origine"), wxDefaultPosition,
+                             wxDefaultSize, wxBU_EXACTFIT);
+  prest->SetToolTip(U8("Réécrit dans le dossier les palettes livrées avec le plugin (remplace les "
+                       "fichiers du même nom)."));
+  pb->Add(psave, 0, wxRIGHT, 4); pb->Add(pdir, 0, wxRIGHT, 4); pb->Add(prest);
+  prest->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    if (wxMessageBox(U8("Réécrire les palettes d'origine dans le dossier de palettes ? Les fichiers "
+                        "du même nom sont remplacés."),
+                     "PersonalDepth", wxYES_NO | wxICON_QUESTION, this) != wxYES)
+      return;
+    wxString e;
+    if (!m_pi->WriteBuiltinPalettes(true, &e)) wxMessageBox(e, "PersonalDepth", wxICON_WARNING, this);
+    RefreshPresetList();
+  });
   box->Add(pb, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
   psave->Bind(wxEVT_BUTTON, &BathyDialog::OnSavePalette, this);
   pdir->Bind(wxEVT_BUTTON, &BathyDialog::OnPaletteDir, this);
@@ -614,6 +628,8 @@ void BathyDialog::RefreshPalette() {
   m_autoMin->SetValue(s.autoMin * K());
   m_autoMax->SetValue(s.autoMax * K());
   m_ctLabels->SetValue(s.contourLabels);
+  m_ctHalo->SetValue(s.contourHalo);
+  m_ctHalo->Enable(s.contours && s.contourLabels);
   m_ctSmooth->SetValue(s.contourSmooth);
   m_ctColour->SetColour(wxColour(R_(s.contourColor), G_(s.contourColor), B_(s.contourColor)));
   m_ctStep->Enable(s.contourMode == 0);
@@ -703,10 +719,8 @@ void BathyDialog::RefreshPresetList() {
   m_preset->Clear();
   m_presetKeys.clear();
   m_preset->Append(U8("(personnalisée)"));
-  const size_t nBuilt = ColorRamp::PresetNames().size();
-  size_t k = 0;
-  for (const auto& e : m_pi->PaletteList()) {
-    m_preset->Append(k++ < nBuilt ? e.label : wxString(U8("Ma palette : ")) + e.label);
+  for (const auto& e : m_pi->PaletteList()) {  // ENC (S-52), puis palettes du dossier
+    m_preset->Append(e.label);
     m_presetKeys.push_back(e.key);
   }
   m_preset->SetSelection(0);
@@ -715,7 +729,7 @@ void BathyDialog::RefreshPresetList() {
 
 void BathyDialog::OnSavePalette(wxCommandEvent&) {
   DisplaySettings& s = m_pi->Settings();
-  wxString name = wxGetTextFromUser(U8("Nom de la palette"), U8("Enregistrer dans mes palettes"),
+  wxString name = wxGetTextFromUser(U8("Nom de la palette"), U8("Enregistrer la palette"),
                                     "", this);
   name.Trim(true).Trim(false);
   if (name.empty()) return;
@@ -744,6 +758,7 @@ void BathyDialog::OnPaletteDir(wxCommandEvent&) {
   if (dd.ShowModal() != wxID_OK) return;
   s.paletteDir = dd.GetPath().ToUTF8().data();
   m_pi->SaveConfig();
+  m_pi->WriteBuiltinPalettes(false);  // nouveau dossier : palettes d'origine ajoutées une fois
   RefreshPresetList();
 }
 
@@ -867,6 +882,9 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctMajor->SetDigits(1);
   m_ctMajor->SetToolTip(U8("Ligne épaisse toutes les N unités de profondeur (0 = aucune)"));
   m_ctLabels = new wxCheckBox(sb, wxID_ANY, U8("Valeurs sur les lignes"));
+  m_ctHalo = new wxCheckBox(sb, wxID_ANY, U8("Contour blanc des valeurs"));
+  m_ctHalo->SetToolTip(U8("Liseré clair autour des valeurs des isobathes (lisibles sur les couleurs "
+                          "sombres). Décoché : chiffres pleins, plus nets."));
   m_ctSmooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage des lignes"));
   m_ctSmooth->SetToolTip(U8("Arrondit les angles du tracé (purement graphique)"));
   g->Add(m_ctOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctColour, 0);
@@ -875,13 +893,14 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctMajorL = L("Maîtresse tous les (m)");
   g->Add(m_ctStepL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctStep, 0, wxEXPAND);
   g->Add(m_ctMajorL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMajor, 0, wxEXPAND);
-  g->Add(m_ctLabels, 0); g->Add(m_ctSmooth, 0);
+  g->Add(m_ctLabels, 0); g->Add(m_ctHalo, 0);
+  g->Add(m_ctSmooth, 0); g->AddSpacer(0);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   box->Add(new wxStaticText(sb, wxID_ANY,
                             U8("L'isobathe de sécurité (rouge) suit la zone dangereuse.")),
            0, wxALL, 4);
 
-  for (wxCheckBox* c : {m_ctOn, m_ctLabels, m_ctSmooth})
+  for (wxCheckBox* c : {m_ctOn, m_ctLabels, m_ctSmooth, m_ctHalo})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnContours, this);
   m_ctMode->Bind(wxEVT_CHOICE, &BathyDialog::OnContours, this);
   for (wxSpinCtrlDouble* c : {m_ctStep, m_ctMajor})
@@ -900,6 +919,8 @@ void BathyDialog::OnContours(wxCommandEvent&) {
   s.contourStep = FromUi(m_ctStep->GetValue(), s.contourStep, 1);
   s.contourMajor = FromUi(m_ctMajor->GetValue(), s.contourMajor, 1);
   s.contourLabels = m_ctLabels->GetValue();
+  s.contourHalo = m_ctHalo->GetValue();
+  m_ctHalo->Enable(s.contours && s.contourLabels);
   s.contourSmooth = m_ctSmooth->GetValue();
   s.contourColor = FromWx(m_ctColour->GetColour());
   m_ctStep->Enable(s.contourMode == 0);

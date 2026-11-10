@@ -646,9 +646,70 @@ bool ParseCoordPattern(const std::string& text, const std::string& pattern, doub
   return true;
 }
 
+bool AutoParseCoord(const std::string& s, char decimal, double& deg, int* axis) {
+  // jetons : nombres (D, M, S ; seul le dernier peut avoir des décimales),
+  // une lettre d'hémisphère N S E W O avant ou après ; séparateurs : espaces,
+  // ' " : et tout symbole non ASCII (° º ′ ″ ’ ”)
+  double num[3] = {0, 0, 0};
+  bool dec[3] = {false, false, false};
+  int nn = 0, hemi = 0;  // 1 N, 2 S, 3 E, 4 W/O
+  bool neg = false, symbol = false;
+  const size_t n = s.size();
+  size_t i = 0;
+  while (i < n) {
+    const unsigned char c = (unsigned char)s[i];
+    if (std::isdigit(c) || (c == (unsigned char)decimal && i + 1 < n && std::isdigit((unsigned char)s[i + 1]))) {
+      if (nn >= 3) return false;
+      size_t j = i;
+      bool d = false;
+      std::string t;
+      while (j < n && (std::isdigit((unsigned char)s[j]) || (s[j] == decimal && !d))) {
+        if (s[j] == decimal) { d = true; t += '.'; }
+        else t += s[j];
+        ++j;
+      }
+      const char* b = t.c_str();
+      double v;
+      if (!parseNum(b, b + t.size(), v)) return false;
+      num[nn] = v;
+      dec[nn] = d;
+      ++nn;
+      i = j;
+      continue;
+    }
+    if ((c == '-' || c == '+') && nn == 0 && !neg) { neg = c == '-'; ++i; continue; }
+    if (c == ' ' || c == '\t') { ++i; continue; }
+    if (c == '\'' || c == '"' || c == ':' || c >= 0x80) { symbol = true; ++i; continue; }
+    if (std::isalpha(c)) {
+      if (i + 1 < n && std::isalpha((unsigned char)s[i + 1])) return false;  // mot : pas une coordonnée
+      const char h = (char)std::toupper(c);
+      if (hemi || (h != 'N' && h != 'S' && h != 'E' && h != 'W' && h != 'O')) return false;
+      hemi = h == 'N' ? 1 : h == 'S' ? 2 : h == 'E' ? 3 : 4;
+      ++i;
+      continue;
+    }
+    return false;
+  }
+  if (nn == 0 || (!hemi && !symbol && nn < 2)) return false;  // simple nombre : pas ici
+  for (int k = 0; k + 1 < nn; ++k) if (dec[k]) return false;
+  if ((nn >= 2 && num[1] >= 60) || (nn >= 3 && num[2] >= 60) || num[0] > 180) return false;
+  deg = num[0] + num[1] / 60.0 + num[2] / 3600.0;
+  const bool hemiNeg = hemi == 2 || hemi == 4;
+  if (neg != hemiNeg) deg = -deg;
+  if (hemi && hemi <= 2 && deg > 90.0 + 1e-9) return false;
+  if (hemi && hemi <= 2 && deg < -90.0 - 1e-9) return false;
+  if (axis) *axis = hemi == 0 ? 0 : hemi <= 2 ? 1 : 2;
+  return true;
+}
+
 bool ParseFieldCoord(const std::string& s, const TextFormat& f, bool isY, double& v) {
   const std::string& p = isY ? f.yFmt : f.xFmt;
-  if (p.empty()) return ParseFieldNumber(s, f.decimal, v);
+  if (p.empty()) {  // nombre, sinon degrés-minutes-secondes reconnus automatiquement
+    if (ParseFieldNumber(s, f.decimal, v)) return true;
+    int axis = 0;
+    if (!AutoParseCoord(s, f.decimal, v, &axis)) return false;
+    return axis == 0 || axis == (isY ? 1 : 2);  // N/S pour Y, E/W pour X
+  }
   return ParseCoordPattern(s, p, v);
 }
 
@@ -814,7 +875,10 @@ TextFormat GuessTextFormat(const std::vector<std::string>& lines) {
   // d'une autre ligne de même nombre de champs
   auto numeric = [&](const std::vector<std::string>& v) {
     int k = 0;
-    for (const auto& s : v) { double d; k += ParseFieldNumber(s, f.decimal, d); }
+    for (const auto& s : v) {
+      double d;
+      k += ParseFieldNumber(s, f.decimal, d) || AutoParseCoord(s, f.decimal, d, nullptr);
+    }
     return k;
   };
   size_t first = 0;
@@ -839,13 +903,31 @@ TextFormat GuessTextFormat(const std::vector<std::string>& lines) {
   auto lower = [](std::string s) { for (char& c : s) c = (char)std::tolower((unsigned char)c); return s; };
   std::vector<int> num;
   f.colX = f.colY = f.colZ = 0;
+  std::vector<int> dmsCols;  // degrés-minutes-secondes sans lettre d'hémisphère
   for (size_t c = 0; c < v.size(); ++c) {
     double d;
     long long t;
     if (ParseFieldNumber(v[c], f.decimal, d)) { num.push_back((int)c + 1); continue; }
     if (!f.colDate && ParseDateTime(v[c], "", 0, t)) { f.colDate = (int)c + 1; continue; }
     double sec;
-    if (!f.colTime && ParseTimeOfDay(v[c].c_str(), sec)) f.colTime = (int)c + 1;
+    if (!f.colTime && ParseTimeOfDay(v[c].c_str(), sec)) { f.colTime = (int)c + 1; continue; }
+    int axis = 0;  // coordonnée en degrés-minutes(-secondes) : N/S -> Y, E/W -> X
+    if (AutoParseCoord(v[c], f.decimal, d, &axis)) {
+      if (axis == 1 && !f.colY) f.colY = (int)c + 1;
+      else if (axis == 2 && !f.colX) f.colX = (int)c + 1;
+      else if (axis == 0) dmsCols.push_back((int)c + 1);
+    }
+  }
+  if (dmsCols.size() >= 2 && !f.colX && !f.colY) {  // sans lettre : latitude d'abord si |a| <= 90 < |b|
+    double a = 0, b = 0;
+    AutoParseCoord(v[dmsCols[0] - 1], f.decimal, a, nullptr);
+    AutoParseCoord(v[dmsCols[1] - 1], f.decimal, b, nullptr);
+    const bool latFirst = std::fabs(a) <= 90 && std::fabs(b) > 90;
+    f.colY = latFirst ? dmsCols[0] : dmsCols[1];
+    f.colX = latFirst ? dmsCols[1] : dmsCols[0];
+  } else if (dmsCols.size() == 1) {
+    if (f.colY && !f.colX) f.colX = dmsCols[0];
+    else if (f.colX && !f.colY) f.colY = dmsCols[0];
   }
   // noms de colonnes de l'entête (si alignés sur les données)
   int latName = -1, lonName = -1;  // ordre lat / lon annoncé par l'entête
@@ -954,10 +1036,25 @@ struct ParseState {
 };
 }  // namespace
 
+// sonde corrigée par la hauteur d'eau observée à son heure (ou, sans heure, à
+// la date du levé si elle est donnée)
+static void addWithWater(ParseState& st, double x, double y, double z, bool hasT, long long t) {
+  if (!st.o.water) { st.add(x, y, z); return; }
+  float h;
+  if (!hasT) {
+    if (!st.o.waterTime) { ++st.waterNoTime; return; }
+    t = st.o.waterTime;
+  }
+  if (!st.o.water->at(t, h)) { ++st.waterMiss; return; }
+  const size_t n0 = st.pc.size();
+  st.add(x, y, z);
+  if (st.pc.size() > n0) st.corr.push_back(h);
+}
+
 static void parseLine(const char* p, const char* e, ParseState& st) {
   double a, b, c;
   if (!parseNum(p, e, a) || !parseNum(p, e, b) || !parseNum(p, e, c)) return;
-  st.add(a, b, c);
+  addWithWater(st, a, b, c, false, 0);
 }
 
 // Ligne d'un format personnalisé : colonnes X, Y, Z (et date/heure) choisies
@@ -983,14 +1080,7 @@ static void parseLineCustom(const char* p, const char* e, ParseState& st, long l
       if (t > tMax) tMax = t;
     }
   }
-  if (!st.o.water) { st.add(x, y, z); return; }
-  // hauteur d'eau observée à l'heure de la sonde
-  float h;
-  if (!hasT) { ++st.waterNoTime; return; }
-  if (!st.o.water->at(t, h)) { ++st.waterMiss; return; }
-  const size_t n0 = st.pc.size();
-  st.add(x, y, z);
-  if (st.pc.size() > n0) st.corr.push_back(h);
+  addWithWater(st, x, y, z, hasT, t);
 }
 
 bool LoadXYZ(const std::string& path, const LoadOptions& optIn, PointCloud& pc,

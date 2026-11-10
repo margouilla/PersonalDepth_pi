@@ -157,14 +157,15 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | NODATA | Values to ignore (e.g. `-9999 9999`), in addition to the NODATA of the grid header |
 | Z bounds | Keep only depths between Z1 and Z2 (e.g. −200 to 200 m removes fill values) |
 | Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below) |
-| Survey type | *Automatic*, single-beam echosounder, multibeam, bathymetric lidar, chart soundings, lead-line soundings. Sets the maximum interpolation distance (see below) |
+| Survey type | *Automatic*, single-beam echosounder, multibeam, bathymetric lidar, chart soundings, lead-line soundings. Sets the maximum interpolation distance (see below). *Max distance*: sets it by hand, in metres |
 | Nature | *Automatic*, **grid** (regular step) or **point cloud**: forces the result of the survey analysis |
-| Interpolate between soundings | Point clouds only: surface triangulated between the soundings at import (see below) |
+| Interpolate between soundings | Point clouds only: surface computed between the soundings at import, with the method chosen next to it: *automatic method* (natural neighbour for a line survey, otherwise TIN), *TIN (linear)*, *natural neighbour (Sibson)* or *IDW (inverse distance)* (see below) |
 | Fixed resolution | Horizontal step of the database for this survey. Unticked: given by the survey analysis (grid step, spacing along the tracks of a line survey, typical spacing of the soundings) |
 | Binary cache | `.pdpc` file next to the source for a faster re-import |
 
 **Grid or point cloud** — each file is analysed at import (the result is
-shown in the progress text and the import summary):
+shown in *Data management*, line *Analysis*, with the distance D used and
+the number of interpolated cells):
 - a **grid** (regular nodes, already processed: Litto3D, NONNA, EMODnet,
   `.asc`…) is recognised even in projected coordinates with rounding noise or
   written in degrees; it is stored at its own step, **without
@@ -186,6 +187,21 @@ lighten them (§ 7); soundings are never taken from them and the cursor shows
 *(interpolated)*. Set *Survey type* to the real kind of survey if the
 automatic result is not right (e.g. old lead-line survey).
 
+**Interpolation method** — the filled area is the same for all methods (the
+triangles with no side longer than D); only the values change:
+- **TIN (linear)**: a plane in each triangle. The fastest; between parallel
+  lines, the long thin triangles can leave streaks along the lines.
+- **Natural neighbour (Sibson)**: a weighted mix of the surrounding soundings
+  (discrete Sibson method), smoother, without triangle edges.
+- **IDW (inverse distance)**: mean of the 12 nearest soundings within D,
+  weighted by the inverse square distance; smooth, but forms "dimples" around
+  isolated or outlying soundings.
+
+The *automatic method* takes the natural neighbour for a line survey (no
+triangle streaks between the lines) and TIN otherwise. The method used is
+shown with the analysis in *Data management*. To change
+it, re-import the survey.
+
 > 🧪 **Testers — check:** a single-beam survey in lines gives a continuous
 > surface between the lines but not across wide gaps; a grid file is not
 > interpolated (the analysis says "grid"); import time and database size.
@@ -206,7 +222,9 @@ added (files or folder), with a preview of the first added file, and shows the f
   date / time with `y M d h m s z AP` (e.g. `yyyy/M/d`, `d/M/y h:m:s.s`,
   `MMM d, y`, `yyyyMMddhhmmss`), X and Y coordinates (each its own pattern)
   in degrees / minutes / seconds with `D M S X` (e.g. `D M S.S X`, `DDMM.MX`
-  for NMEA). Empty = automatic recognition / decimal number. *Format help…*
+  for NMEA). Empty = automatic recognition: decimal number, or degrees-
+  minutes-seconds with symbols and hemisphere letter (`54° 00' 28.44" N`,
+  the N/S column going to Y and the E/W column to X). *Format help…*
   lists the fields and examples;
 - under **Z**: the direction of the values (depths positive down, heights
   positive up, or automatic) and their unit (metres or feet) — the same
@@ -246,14 +264,18 @@ summary. By default **depth = sounding − level** (level above the datum);
 water level series in UTC (mouse wheel to zoom on time, double-click for the
 whole period).
 
-The soundings must carry their date and time: use the **custom format** with
-a date column (and time). Soundings and levels are compared in UTC: set the
-**time zone** of each format to the one of its file.
+The soundings should carry their date and time: use the **custom format**
+with a date column (and time). Soundings and levels are compared in UTC: set
+the **time zone** of each format to the one of its file. **Soundings without
+a time** (simple `lon lat depth` file): the level of the **survey day** is
+applied to the whole file, taken at noon in the time zone of the water levels;
+the day comes from *Survey date* or, failing that, from a date `YYYYMMDD` in
+the file name.
 
 > 🧪 **Testers — check:** a survey with water levels gives the expected
 > corrected depths; the curve matches your gauge.
 
-![Custom text format](images/en/10-text-format.png)
+<!-- capture à venir : ![Custom text format](images/en/10-text-format.png) -->
 
 **Coordinate system (X, Y)** — choose from the list: *Automatic* (the `.prj`
 file next to the data, otherwise longitude / latitude in degrees), WGS84, UTM,
@@ -327,11 +349,16 @@ in km² and NM²; for several sources, the sum).
 - **Table**: one line per threshold (depth, colour). Edit a depth directly,
   double-click a colour to change it; *+ threshold* / *− threshold*.
 - **Import .cpt… / Export .cpt…**: GMT palettes.
-- **My palettes**: *Save to my palettes…* stores the displayed palette
-  (thresholds, colours, steps or gradient, danger zone) as a `.cpt` file in
-  the palette folder; it then appears in the preset list (*My palette: …*)
-  and in the menu of the banner's colour bar. *Palette folder…* chooses the
-  folder; GMT `.cpt` palettes copied there are offered too.
+- **Palette folder**: all palettes are `.cpt` files of a single folder
+  (*Palette folder…* to choose it), the original palettes included: they are
+  written there the first time, and can then be edited, renamed or deleted
+  like any other. Only *OpenCPN ENC (S-52)* stays apart, since it follows
+  OpenCPN's depth contour settings. *Save palette…* stores the displayed
+  palette (thresholds, colours, steps or gradient, danger zone) in the folder;
+  GMT `.cpt` palettes copied there are offered too. *Restore original
+  palettes* writes the shipped palettes back (files of the same name are
+  replaced). The list is the same in the panel and in the menu of the
+  banner's colour bar.
 - **Automatic**: N thresholds spread between the minimum and maximum depth of
   *all data* or of the *displayed area* (recomputed when the chart moves),
   with *round values*, and optional *fixed min* / *fixed max* (e.g. fixed min
@@ -352,7 +379,8 @@ Depths are positive downwards; negative values are above chart datum
 
 **Depth contours** — *Show depth contours*; levels at a *Regular interval*
 or on the *Palette thresholds*; *Major every* N units (thick line); *Values on
-lines*; *Line smoothing* (display only). No line is drawn in the gaps of the
+lines*, with or without a *White outline on values*; *Line smoothing* (display
+only). No line is drawn in the gaps of the
 survey.
 
 **Display**
@@ -411,13 +439,14 @@ W, Centre, E, SW, S, SE — spread over your data).
   fathoms are shown in feet). Soundings, contours, legend, thresholds, danger
   zone and tide heights switch together.
 - **Language** follows OpenCPN: *Options › User › General options ›
-  Language*. French gives French; any other language gives English. Class
+  Language*. French gives French, Russian gives Russian, any other language
+  gives English. Class
   names and labels stored in the database keep the language they were
   created in.
 
 > 🧪 **Testers — check:** switching OpenCPN between metres and feet updates
-> the whole display; English texts that are wrong or still in French
-> (please quote them).
+> the whole display; English or Russian texts that are wrong or still in
+> French (please quote them).
 
 ## 10. Reporting a problem
 

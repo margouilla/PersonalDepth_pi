@@ -88,6 +88,9 @@ class ImportDialog : public wxDialog {
   wxCheckBox *m_nodataOn = nullptr, *m_boundsOn = nullptr;
   wxCheckBox* m_resOn = nullptr;          // résolution de stockage imposée
   wxSpinCtrlDouble* m_res = nullptr;
+  wxCheckBox* m_dmaxOn = nullptr;         // distance maximale d'interpolation imposée
+  wxSpinCtrlDouble* m_dmax = nullptr;
+  wxChoice* m_imethod = nullptr;          // méthode d'interpolation
   wxChoice* m_instr = nullptr;            // type de levé
   wxChoice* m_nature = nullptr;           // grille / nuage
   wxCheckBox* m_interp = nullptr;         // surface interpolée entre les sondes

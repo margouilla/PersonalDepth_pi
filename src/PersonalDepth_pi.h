@@ -77,6 +77,7 @@ struct DisplaySettings {
   float contourStep = 1.f;    // m
   float contourMajor = 5.f;   // isobathe maîtresse tous les ... m (0 = aucune)
   bool contourLabels = true;
+  bool contourHalo = true;          // contour blanc autour des valeurs des isobathes
   bool contourSmooth = true;
   uint32_t contourColor = pd::RGBA(25, 45, 95);
   unsigned contourVersion = 1;  // incrémenté à chaque changement de réglage
@@ -98,6 +99,8 @@ struct DisplaySettings {
   int importInstrument = 0;         // type de levé (pd::Instrument)
   int importNature = 0;             // 0 automatique, 1 grille, 2 nuage de points
   bool importInterp = true;         // surface interpolée entre les sondes (nuages)
+  float importInterpD = 0.f;        // distance maximale d'interpolation imposée (m), 0 = auto
+  int importInterpMethod = 0;       // 0 auto (voisin naturel si levé en lignes, sinon TIN), 1 TIN, 2 voisin naturel, 3 IDW
   bool importWaterOn = false;       // correction par hauteurs d'eau observées
   std::string importWater;          // fichier ou dossier des hauteurs d'eau
   int importWaterSign = 0;          // 0 sonde - hauteur, 1 sonde + hauteur
@@ -144,8 +147,8 @@ struct DisplaySettings {
   float tideH = 0.f;                // hauteur d'eau appliquée à l'affichage (m)
   bool tideOk = false;
   wxString tideInfo;                // texte du panneau
-  wxString tideLegend;              // bandeau (ASCII) : « Maree +5.30 m »
-  wxString tideWhen;                // bandeau (ASCII) : date et heure courtes
+  wxString tideLegend;              // bandeau : « Marée +5.30 m »
+  wxString tideWhen;                // bandeau : date et heure courtes
   std::shared_ptr<const pd::TideField> tide;  // hauteur d'eau au-dessus du ZH (affichage)
 };
 
@@ -235,7 +238,10 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void SetAutoPalette(bool on);                          // bascule A / M (panneau ou bandeau)
   void ApplyPreset(const std::string& name);             // préréglage ou "file:<chemin .cpt>"
   struct PaletteEntry { wxString label; std::string key; };
-  std::vector<PaletteEntry> PaletteList() const;         // préréglages + dossier de palettes
+  std::vector<PaletteEntry> PaletteList() const;         // ENC (S-52) + palettes du dossier
+  // Palettes intégrées écrites en .cpt dans le dossier de palettes : une fois
+  // par dossier (fichier témoin), ou toutes réécrites si `restore`
+  bool WriteBuiltinPalettes(bool restore, wxString* err = nullptr);
   static wxString DefaultPaletteDir();
   // Bandeau de palette : clics sur la carte
   bool MouseEventHook(wxMouseEvent& event) override;
@@ -272,7 +278,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
   bool UpdateLanguage();  // langue d'OpenCPN (français / anglais) ; true si elle a changé
-  int m_lang = -1;        // 0 français, 1 anglais
+  int m_lang = -1;        // pd::kFrench, kEnglish, kRussian
 
   wxBitmap m_icon;
   int m_toolId = -1;
@@ -291,6 +297,9 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   std::unique_ptr<Ticker> m_timer;
   class CursorRefresh;
   std::unique_ptr<CursorRefresh> m_cursorRefresh;
+  // appels différés (CallAfter) du plugin : supprimés avec lui à l'arrêt, au
+  // lieu de rester dans la file d'OpenCPN après le déchargement du plugin
+  std::unique_ptr<wxEvtHandler> m_events{new wxEvtHandler};
   wxLongLong m_lastCursorRefresh = 0;
   // Marée
   int m_tideStation = -1;

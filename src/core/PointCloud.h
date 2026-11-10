@@ -70,6 +70,10 @@ struct DateParts {
 };
 bool ParseDatePattern(const std::string& text, const std::string& pattern, DateParts& p);
 bool ParseCoordPattern(const std::string& text, const std::string& pattern, double& deg);
+// Degrés-minutes(-secondes) sans motif : « 54° 00' 28.44" N », « N 54 00.474 »,
+// « -54:00:28.44 »… `axis` : 0 sans lettre, 1 latitude (N/S), 2 longitude (E/W/O).
+// Un simple nombre n'est pas accepté ici (voir ParseFieldNumber).
+bool AutoParseCoord(const std::string& s, char decimal, double& deg, int* axis);
 // Premières lignes d'un fichier texte (UTF-8, fins de ligne retirées)
 bool ReadTextHead(const std::string& path, size_t maxLines, std::vector<std::string>& lines,
                   std::string& err);
@@ -106,6 +110,9 @@ struct LoadOptions {
   // waterSubtract : profondeur ZH = sonde - hauteur (hauteur au-dessus du zéro)
   std::shared_ptr<const WaterLevelSeries> water;
   bool waterSubtract = true;
+  // sondes sans heure (pas de colonne date) : niveau pris à cet instant (UTC,
+  // date du levé à midi) ; 0 = sondes sans heure ignorées
+  long long waterTime = 0;
 };
 
 // Pas régulier d'une suite de coordonnées entières (en unités), 0 sinon.

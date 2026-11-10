@@ -73,7 +73,7 @@ class DbCell {
         "CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, name TEXT, path TEXT, date TEXT,"
         " level INTEGER, res REAL, rank INTEGER, visible INTEGER, crs TEXT, vref TEXT, zmin REAL,"
         " zmax REAL, count INTEGER, lonmin REAL, lonmax REAL, latmin REAL, latmax REAL, imported TEXT,"
-        " grp TEXT, params TEXT);"
+        " grp TEXT, params TEXT, info TEXT);"
         "CREATE TABLE IF NOT EXISTS src_tiles(src INTEGER, z INTEGER, x INTEGER, y INTEGER,"
         " data BLOB, PRIMARY KEY(src, z, x, y));"
         "CREATE TABLE IF NOT EXISTS merged(z INTEGER, x INTEGER, y INTEGER, zmin REAL, zmax REAL,"
@@ -86,18 +86,20 @@ class DbCell {
       if (!exec(m, err)) return false;
     }
     // bases plus anciennes : colonne « classe » ajoutée
-    bool hasGrp = false, hasParams = false;
+    bool hasGrp = false, hasParams = false, hasInfo = false;
     sqlite3_stmt* q = nullptr;
     sqlite3_prepare_v2(db, "PRAGMA table_info(sources)", -1, &q, nullptr);
     while (q && sqlite3_step(q) == SQLITE_ROW) {
       const unsigned char* n = sqlite3_column_text(q, 1);
       if (n && std::strcmp((const char*)n, "grp") == 0) hasGrp = true;
       if (n && std::strcmp((const char*)n, "params") == 0) hasParams = true;
+      if (n && std::strcmp((const char*)n, "info") == 0) hasInfo = true;
     }
     sqlite3_finalize(q);
     // bases plus anciennes : paramètres d'import de chaque source (relecture)
     return (hasGrp || exec("ALTER TABLE sources ADD COLUMN grp TEXT", err)) &&
-           (hasParams || exec("ALTER TABLE sources ADD COLUMN params TEXT", err));
+           (hasParams || exec("ALTER TABLE sources ADD COLUMN params TEXT", err)) &&
+           (hasInfo || exec("ALTER TABLE sources ADD COLUMN info TEXT", err));
   }
   bool exec(const char* sql, std::string& err) {
     char* msg = nullptr;
@@ -196,6 +198,18 @@ static std::string Today() {
 }
 
 std::string GuessSurveyDate(const std::string& path) {
+  const std::string d = SurveyDateFromName(path);
+  if (!d.empty()) return d;
+  if (const long long mt = FileMTime(path)) {
+    std::time_t t = (std::time_t)mt;
+    char b[32];
+    std::strftime(b, sizeof b, "%Y-%m-%d", std::localtime(&t));
+    return b;
+  }
+  return Today();
+}
+
+std::string SurveyDateFromName(const std::string& path) {
   const std::string name = fs::u8path(path).filename().u8string();
   for (size_t k = 0; k + 8 <= name.size(); ++k) {
     bool digits = true;
@@ -211,13 +225,7 @@ std::string GuessSurveyDate(const std::string& path) {
       return b;
     }
   }
-  if (const long long mt = FileMTime(path)) {
-    std::time_t t = (std::time_t)mt;
-    char b[32];
-    std::strftime(b, sizeof b, "%Y-%m-%d", std::localtime(&t));
-    return b;
-  }
-  return Today();
+  return std::string();
 }
 
 std::string GuessSourceGroup(const std::string& path) {
@@ -394,7 +402,7 @@ bool BathyDb::reloadSources(std::string& err) {
     sqlite3_stmt* s = nullptr;
     if (sqlite3_prepare_v2(c->db,
                            "SELECT id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,count,"
-                           "lonmin,lonmax,latmin,latmax,imported,grp,params FROM sources",
+                           "lonmin,lonmax,latmin,latmax,imported,grp,params,info FROM sources",
                            -1, &s, nullptr) != SQLITE_OK)
       continue;
     while (sqlite3_step(s) == SQLITE_ROW) {
@@ -418,6 +426,7 @@ bool BathyDb::reloadSources(std::string& err) {
       d.imported = txt(17);
       d.group = txt(18);
       d.params = txt(19);
+      d.info = txt(20);
       if (d.group.empty()) d.group = GuessSourceGroup(d.name);  // bases antérieures aux classes
       m[d.id] = d;  // même ligne dans chaque fichier touché
     }
@@ -583,7 +592,7 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(c->db,
                        "INSERT OR REPLACE INTO sources (id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,"
-                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
+                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params,info) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
                        &s, nullptr);
     int k = 1;
     sqlite3_bind_int64(s, k++, d.id);
@@ -606,6 +615,7 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_bind_text(s, k++, d.imported.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(s, k++, d.group.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(s, k++, d.params.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(s, k++, d.info.c_str(), -1, SQLITE_TRANSIENT);
     const int rc = sqlite3_step(s);
     sqlite3_finalize(s);
     if (rc != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); return false; }
@@ -808,17 +818,27 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
   std::map<TK, uint64_t> used;
   std::set<TK> keysZs;                     // tuiles déjà écrites (mode flux)
   uint64_t clock = 0;
-  auto flushOne = [&](const TK& key) -> bool {
-    DepthTile& t = mem[key];
-    DepthTile old;
-    if (keysZs.count(key) && readSrc(meta.id, zs, key.first, key.second, old))
-      for (int k = 0; k < DepthTile::kN; ++k)
-        if (old.v[k] != DepthTile::kEmpty && (t.v[k] == DepthTile::kEmpty || old.v[k] < t.v[k]))
-          t.v[k] = old.v[k];
-    keysZs.insert(key);
-    const bool ok = writeSrc(meta.id, zs, key.first, key.second, t, err);
-    mem.erase(key);
-    used.erase(key);
+  // Écrit des tuiles sorties de la mémoire, fusionnées avec leur version déjà
+  // écrite : toutes les relectures d'abord, puis toutes les écritures (une
+  // relecture force l'écriture de ce qui attend : une par une, l'écriture
+  // groupée et la compression sur plusieurs cœurs étaient perdues).
+  auto flushSet = [&](const std::vector<TK>& keys) -> bool {
+    for (const TK& key : keys) {
+      if (!keysZs.count(key)) continue;
+      DepthTile& t = mem[key];
+      DepthTile old;
+      if (readSrc(meta.id, zs, key.first, key.second, old))
+        for (int k = 0; k < DepthTile::kN; ++k)
+          if (old.v[k] != DepthTile::kEmpty && (t.v[k] == DepthTile::kEmpty || old.v[k] < t.v[k]))
+            t.v[k] = old.v[k];
+    }
+    bool ok = true;
+    for (const TK& key : keys) {
+      keysZs.insert(key);
+      ok = ok && writeSrc(meta.id, zs, key.first, key.second, mem[key], err);
+      mem.erase(key);
+      used.erase(key);
+    }
     return ok;
   };
 
@@ -833,13 +853,8 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     meta.latMin = std::min(meta.latMin, pc.latMin); meta.latMax = std::max(meta.latMax, pc.latMax);
   }
   const size_t n = pc.size();
-  for (size_t k = 0; k < n; ++k) {
-    const double mm = std::round((double)pc.z[k] * 1000.0);
-    if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
-    const int32_t v = (int32_t)mm;
-    double gx, gy;
-    LonLatToPixel(zs, pc.lon(k), pc.lat(k), gx, gy);
-    const long long ix = (long long)std::floor(gx), iy = (long long)std::floor(gy);
+  // dépôt d'une sonde (pixel ix, iy du niveau zs, valeur en mm) : la plus faible
+  auto put = [&](long long ix, long long iy, int32_t v) -> bool {
     const TK key((int)(ix >> 8), (int)(iy >> 8));
     if (!curTile || key != curKey) {  // points voisins : le plus souvent la même tuile
       DepthTile& t = mem[key];
@@ -854,14 +869,57 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
       std::vector<std::pair<uint64_t, TK>> age;
       for (auto& kv : used) age.push_back({kv.second, kv.first});
       std::nth_element(age.begin(), age.begin() + 64, age.end());
-      for (int q = 0; q < 64; ++q)
-        if (!flushOne(age[q].second)) return false;
+      std::vector<TK> out;
+      for (int q = 0; q < 64; ++q) out.push_back(age[q].second);
+      if (!flushSet(out)) return false;
       curTile = nullptr;
     }
-    if ((k & 0xFFFFF) == 0) {
-      if (cancel && *cancel) { err = "Annulé"; return false; }
-      if (progress) progress(0.4f * (fed0 + (fed - fed0) * k / n), pd::tr("Répartition des sondes"));
+    return true;
+  };
+  auto step = [&](size_t k) -> bool {
+    if (cancel && *cancel) { err = "Annulé"; return false; }
+    if (progress) progress(0.4f * (fed0 + (fed - fed0) * k / n), pd::tr("Répartition des sondes"));
+    return true;
+  };
+  if (inMemory) {  // toutes les tuiles en mémoire : ordre du fichier
+    for (size_t k = 0; k < n; ++k) {
+      const double mm = std::round((double)pc.z[k] * 1000.0);
+      if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
+      double gx, gy;
+      LonLatToPixel(zs, pc.lon(k), pc.lat(k), gx, gy);
+      if (!put((long long)std::floor(gx), (long long)std::floor(gy), (int32_t)mm)) return false;
+      if ((k & 0xFFFFF) == 0 && !step(k)) return false;
     }
+  } else {
+    // Mode flux : sondes triées par tuile, par paquets de 4 M (64 Mo), pour que
+    // chaque tuile ne soit visitée qu'une fois par paquet. Sinon une route de
+    // sondes repasse sans cesse par des tuiles déjà écrites sur disque (relues,
+    // fusionnées, réécrites) : 16 s au lieu de 7 pour 10 M sondes en lignes.
+    struct SP { uint64_t key; uint32_t pix; int32_t v; };
+    std::vector<SP> sp;
+    const size_t kChunk = (size_t)4 << 20;
+    for (size_t c0 = 0; c0 < n; c0 += kChunk) {
+      if (!step(c0)) return false;
+      const size_t c1 = std::min(n, c0 + kChunk);
+      sp.clear();
+      sp.reserve(c1 - c0);
+      for (size_t k = c0; k < c1; ++k) {
+        const double mm = std::round((double)pc.z[k] * 1000.0);
+        if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
+        double gx, gy;
+        LonLatToPixel(zs, pc.lon(k), pc.lat(k), gx, gy);
+        const long long px = (long long)std::floor(gx), py = (long long)std::floor(gy);
+        // clé : rangée puis colonne de tuile (indices de tuile >= 0 en Web Mercator)
+        sp.push_back({((uint64_t)(uint32_t)(py >> 8) << 32) | (uint32_t)(px >> 8),
+                      (uint32_t)((py & 255) * 256 + (px & 255)), (int32_t)mm});
+      }
+      std::sort(sp.begin(), sp.end(), [](const SP& a, const SP& b) { return a.key < b.key; });
+      for (const SP& p : sp) {
+        const long long tx = (long long)(uint32_t)p.key, ty = (long long)(uint32_t)(p.key >> 32);
+        if (!put(tx * 256 + (p.pix & 255), ty * 256 + (p.pix >> 8), p.v)) return false;
+      }
+    }
+    std::vector<SP>().swap(sp);
   }
   fed0 = fed;
   return true;
@@ -877,8 +935,11 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     if (meta.lonMin > meta.lonMax) { err = pd::tr("Aucune sonde importée"); return false; }
   }
   if (!inMemory) {
-    while (!mem.empty())
-      if (!flushOne(mem.begin()->first)) return false;
+    while (!mem.empty()) {
+      std::vector<TK> out;
+      for (auto it = mem.begin(); it != mem.end() && out.size() < 64; ++it) out.push_back(it->first);
+      if (!flushSet(out)) return false;
+    }
   } else {
     for (auto& kv : mem) keysZs.insert(kv.first);
   }
@@ -993,6 +1054,8 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     size_t q = 0;
     std::vector<double> xy;
     std::vector<int32_t> val;
+    std::vector<int> filled;  // pixels remplis (i, j) pour une autre méthode que le TIN
+    const InterpMethod method = (InterpMethod)meta.interpMethod;
     const double D2 = Dpx * Dpx;
     for (const TK& T : targets) {
       if (cancel && *cancel) { err = "Annulé"; return false; }
@@ -1022,6 +1085,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
       if (base) out = *base;
       else out.reset();
       bool changed = false;
+      filled.clear();
       const auto tri = Triangulate(xy);
       for (size_t t = 0; t + 2 < tri.size(); t += 3) {
         const size_t ia = tri[t], ib = tri[t + 1], ic = tri[t + 2];
@@ -1059,9 +1123,19 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
             out.setInterp(k, true);
             changed = true;
             ++nInterp;
+            if (method != InterpMethod::Tin) { filled.push_back(i); filled.push_back(j); }
           }
       }
       if (!changed) continue;
+      // autre méthode : mêmes pixels (zone du TIN limité par D), autres valeurs
+      if (method != InterpMethod::Tin && !filled.empty()) {
+        std::vector<double> dval(val.begin(), val.end()), res;
+        InterpolatePixels(method, xy, dval, filled, Dpx, res);
+        for (size_t q = 0; q < res.size(); ++q)
+          if (std::isfinite(res[q]))
+            out.v[filled[2 * q + 1] * 256 + filled[2 * q]] = (int32_t)std::lround(res[q]);
+        filled.clear();
+      }
       if (!keys.count(T)) added.insert(T);
       if (!put(T, out)) return false;
     }
@@ -1134,6 +1208,12 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
       return false;
   }
   meta.interpCount = nInterp;
+  if (meta.interpD > 0) {
+    char b[200];
+    std::snprintf(b, sizeof b, pd::tr(" ; %s, D utilisée %.0f m, %lld pixels interpolés"),
+                  pd::tr(InterpMethodName((InterpMethod)meta.interpMethod)), meta.interpD, nInterp);
+    meta.info += b;
+  }
 
   // 4) inscription de la source, puis fusion des tuiles concernées
   if (!upsertSource(meta, err)) return false;

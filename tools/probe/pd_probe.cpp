@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
   bool onlyImport = false;
   std::string viewOut;
   double forceRes = 0;  // résolution imposée (m)
+  int method = -1;      // -1 auto (voisin naturel si lignes), 0 TIN, 1 voisin naturel, 2 IDW
   size_t streamN = 0;  // import par blocs (sondes par bloc)
   double zb[4] = {0, 0, 0, 0};
   for (int i = 2; i < argc; ++i) {
@@ -64,6 +65,7 @@ int main(int argc, char** argv) {
     else if (a.rfind("db=", 0) == 0) { dbDir = a.substr(3); onlyImport = true; }
     else if (a.rfind("view=", 0) == 0) viewOut = a.substr(5);
     else if (a.rfind("res=", 0) == 0) forceRes = std::atof(a.c_str() + 4);
+    else if (a.rfind("method=", 0) == 0) method = std::atoi(a.c_str() + 7);
     else if (a.rfind("stream=", 0) == 0) streamN = (size_t)std::atoll(a.c_str() + 7);
     else if (a.rfind("zoom=", 0) == 0) std::sscanf(a.c_str() + 5, "%lf,%lf,%lf,%lf", &zb[0], &zb[1], &zb[2], &zb[3]);
   }
@@ -94,6 +96,7 @@ int main(int argc, char** argv) {
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
     if (forceRes > 0) m.res = forceRes;
+    m.interpMethod = method >= 0 ? method : (sh.lines ? 1 : 0);
     size_t blocks = 0, pts = 0;
     BathyDb::CloudFeed feed = [&](const BathyDb::CloudSink& sink, std::string& fe) {
       XYZBlockSink each = [&](PointCloud& b) { ++blocks; pts += b.size(); return sink(b, 0.5f); };
@@ -136,8 +139,8 @@ int main(int argc, char** argv) {
   {
     auto t1 = std::chrono::steady_clock::now();
     SurveyShape sh = AnalyzeSurvey(pc, (Instrument)hint, force);
-    std::printf("ANALYSE       : %s  [stockage %.3f m, D %.2f m, nn50 %.2f, arêtes %.2f/%.2f/%.2f, %zu sondes, %.1f s]\n",
-                sh.describe().c_str(), sh.storeRes, sh.maxEdge, sh.nn50, sh.edge50, sh.edge90, sh.edge95, sh.analysed,
+    std::printf("ANALYSE       : %s  [stockage %.3f m, D %.2f m, nn50 %.2f, arêtes %.2f/%.2f/%.2f (éclairci %.1f m), %zu sondes, %.1f s]\n",
+                sh.describe().c_str(), sh.storeRes, sh.maxEdge, sh.nn50, sh.edge50, sh.edge90, sh.edge95, sh.thinCell, sh.analysed,
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count());
   }
 
@@ -153,9 +156,21 @@ int main(int argc, char** argv) {
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
     if (forceRes > 0) m.res = forceRes;
+    m.interpMethod = method >= 0 ? method : (sh.lines ? 1 : 0);
     int64_t id = 0;
     auto t2 = std::chrono::steady_clock::now();
-    bool okI = db.importCloud(pc, m, sh.isGrid(), DbPriority::ResolutionDate, e, nullptr, nullptr, &id);
+    // durée de chaque étape (changement de message de progression)
+    std::string lastStep;
+    auto tStep = std::chrono::steady_clock::now();
+    DbProgress steps = [&](float, const std::string& msg) {
+      if (msg == lastStep) return;
+      const auto now = std::chrono::steady_clock::now();
+      if (!lastStep.empty())
+        std::printf("  étape %-34s %6.2f s\n", lastStep.c_str(), std::chrono::duration<double>(now - tStep).count());
+      lastStep = msg;
+      tStep = now;
+    };
+    bool okI = db.importCloud(pc, m, sh.isGrid(), DbPriority::ResolutionDate, e, steps, nullptr, &id);
     double ti = std::chrono::duration<double>(std::chrono::steady_clock::now() - t2).count();
     long long bytes = 0;
     for (auto& f : std::filesystem::directory_iterator(dbDir)) bytes += (long long)f.file_size();

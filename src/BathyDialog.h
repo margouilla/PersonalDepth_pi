@@ -130,7 +130,7 @@ class BathyDialog : public wxDialog {
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
   wxStaticText* m_cursor;
   // Isobathes
-  wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth;
+  wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth, *m_ctHalo;
   wxChoice* m_ctMode;
   wxSpinCtrlDouble *m_ctStep, *m_ctMajor;
   wxColourPickerCtrl* m_ctColour;

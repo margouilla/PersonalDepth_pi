@@ -20,6 +20,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <tuple>
 #include <vector>
 
@@ -84,7 +85,8 @@ class BathyRenderer {
                                        const DisplaySettings& s);
   static void FormatDepth(float z, int decimals, wxString& ip, wxString& dp);
   void DrawGLText(float x, float y, const wxString& t, float scale, bool center);
-  float GLTextWidth(const wxString& t, float scale) const;
+  float GLTextWidth(const wxString& t, float scale);
+  void EnsureGlyphs(const wxString& t);
   // Bandeau : une seule mise en page, dessinée en OpenGL ou en wxDC
   void DrawBanner(struct BannerPainter& p, PlugIn_ViewPort* vp, const DisplaySettings& s);
   void DrawBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s);
@@ -114,6 +116,7 @@ class BathyRenderer {
   bool m_curOn = false;
   BannerHit m_banner;
   bool m_glLight = false;  // texte GL clair (sur fond sombre)
+  bool m_glPlain = false;  // texte GL sans halo, teinté par glColor
   // Sondes déjà sélectionnées et désencombrées pour la vue courante
   std::vector<pd::Label> m_labels;
   struct ContourCache {
@@ -128,6 +131,7 @@ class BathyRenderer {
   std::map<std::tuple<const void*, int, int, int>, std::unique_ptr<Tile>> m_tiles;
   unsigned long m_frame = 0;
   std::unique_ptr<Glyphs> m_glyphs;
+  std::set<uint32_t> m_glyphExtra;  // caractères ajoutés à l'atlas à la demande
   std::unique_ptr<SmoothGL> m_sgl;
 
   // DC

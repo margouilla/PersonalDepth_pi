@@ -14,6 +14,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "BathyRenderer.h"
+
+#include <unordered_map>
 #include "core/Lang.h"
 
 #include <wx/dcmemory.h>
@@ -228,10 +230,23 @@ struct BathyRenderer::SmoothGL {
   PFN_Uniform1f uniform1f = nullptr;
 };
 
+// Atlas de glyphes OpenGL (Unicode) : rangées de hauteur texH dans une texture
+// texW × atlasH ; un glyphe = position x, rangée, largeur. Jeu de départ :
+// latin, latin étendu, cyrillique, symboles courants ; tout autre caractère
+// rencontré est ajouté (atlas reconstruit).
 struct BathyRenderer::Glyphs {
   GLuint tex = 0, texLight = 0;  // encre sombre / halo blanc ; encre blanche / halo sombre
-  int texW = 0, texH = 0, lineH = 0, fontSize = 0;
-  int x[128] = {0}, w[128] = {0};
+  GLuint texPlain = 0;           // encre blanche sans halo (teintée par glColor)
+  int texW = 0, texH = 0, atlasH = 0, lineH = 0, fontSize = 0;
+  struct G1 { int x, row, w; };
+  std::unordered_map<uint32_t, G1> map;
+  const G1* get(uint32_t c) const {
+    auto it = map.find(c);
+    if (it != map.end()) return &it->second;
+    it = map.find((uint32_t)'?');
+    return it != map.end() ? &it->second : nullptr;
+  }
+  bool has(uint32_t c) const { return map.count(c) != 0; }
 };
 
 BathyRenderer::BathyRenderer() = default;
@@ -248,6 +263,7 @@ void BathyRenderer::ReleaseGL() {
   m_tiles.clear();
   if (m_glyphs && m_glyphs->tex) glDeleteTextures(1, &m_glyphs->tex);
   if (m_glyphs && m_glyphs->texLight) glDeleteTextures(1, &m_glyphs->texLight);
+  if (m_glyphs && m_glyphs->texPlain) glDeleteTextures(1, &m_glyphs->texPlain);
   m_glyphs.reset();
 }
 
@@ -458,50 +474,70 @@ void BathyRenderer::BuildGlyphs(int fontSize) {
   if (m_glyphs && m_glyphs->fontSize == fontSize) return;
   if (m_glyphs && m_glyphs->tex) glDeleteTextures(1, &m_glyphs->tex);
   if (m_glyphs && m_glyphs->texLight) glDeleteTextures(1, &m_glyphs->texLight);
+  if (m_glyphs && m_glyphs->texPlain) glDeleteTextures(1, &m_glyphs->texPlain);
   m_glyphs = std::make_unique<Glyphs>();
   Glyphs& G = *m_glyphs;
   G.fontSize = fontSize;
+  std::vector<uint32_t> chars;
+  for (uint32_t c = 32; c < 127; ++c) chars.push_back(c);
+  for (uint32_t c = 0xA0; c <= 0x17F; ++c) chars.push_back(c);   // latin-1, latin étendu A
+  for (uint32_t c = 0x400; c <= 0x45F; ++c) chars.push_back(c);  // cyrillique
+  for (uint32_t c : {0x2013u, 0x2014u, 0x2018u, 0x2019u, 0x201Cu, 0x201Du, 0x2026u, 0x2116u,
+                     0x2190u, 0x2191u, 0x2192u, 0x2193u, 0x2194u, 0x2195u, 0x21D4u, 0x21D5u,
+                     0x2212u, 0x2248u, 0x2264u, 0x2265u, 0x2030u, 0x2032u, 0x2033u})
+    chars.push_back(c);
+  for (uint32_t c : m_glyphExtra) chars.push_back(c);  // rencontrés depuis
   wxFont font(fontSize, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
   wxBitmap probe(8, 8);
   wxMemoryDC md(probe);
   md.SetFont(font);
-  int x = 2, h = 0;
-  for (int c = 32; c < 127; ++c) {
-    wxSize sz = md.GetTextExtent(wxString((wxChar)c));
-    G.x[c] = x; G.w[c] = sz.x + 2;
+  G.texW = 1024;
+  int x = 2, row = 0, h = 0;
+  std::vector<std::pair<uint32_t, Glyphs::G1>> placed;
+  for (uint32_t c : chars) {
+    if (G.map.count(c)) continue;
+    const wxString str(wxUniChar((unsigned)c));
+    const wxSize sz = md.GetTextExtent(str);
+    if (sz.x <= 0 && c != 32) continue;
+    if (x + sz.x + 4 > G.texW) { x = 2; ++row; }
+    const Glyphs::G1 g{x, row, sz.x + 2};
+    G.map[c] = g;
+    placed.emplace_back(c, g);
     x += sz.x + 4;
     h = std::max(h, sz.y);
   }
   md.SelectObject(wxNullBitmap);
   G.lineH = h + 2;
-  G.texW = x + 2; G.texH = h + 4;
-  wxBitmap bmp(G.texW, G.texH, 24);
+  G.texH = h + 4;
+  G.atlasH = (row + 1) * G.texH;
+  wxBitmap bmp(G.texW, G.atlasH, 24);
   md.SelectObject(bmp);
   md.SetBackground(*wxBLACK_BRUSH);
   md.Clear();
   md.SetFont(font);
   md.SetTextForeground(*wxWHITE);
-  for (int c = 32; c < 127; ++c) md.DrawText(wxString((wxChar)c), G.x[c] + 1, 2);
+  for (const auto& pg : placed)
+    md.DrawText(wxString(wxUniChar((unsigned)pg.first)), pg.second.x + 1, pg.second.row * G.texH + 2);
   md.SelectObject(wxNullBitmap);
   wxImage img = bmp.ConvertToImage();
   const unsigned char* d = img.GetData();
-  std::vector<float> A((size_t)G.texW * G.texH);
+  std::vector<float> A((size_t)G.texW * G.atlasH);
   for (size_t k = 0; k < A.size(); ++k) A[k] = d[3 * k] / 255.f;
-  auto build = [&](uint32_t ink, uint32_t halo) {
+  auto build = [&](uint32_t ink, uint32_t halo, bool withHalo) {
     std::vector<uint32_t> px(A.size());
-    for (int j = 0; j < G.texH; ++j)
+    for (int j = 0; j < G.atlasH; ++j)
       for (int i = 0; i < G.texW; ++i) {
         float a = A[(size_t)j * G.texW + i], hmax = 0;
         for (int dj = -1; dj <= 1; ++dj)
           for (int di = -1; di <= 1; ++di) {
             int ii = i + di, jj = j + dj;
-            if (ii >= 0 && jj >= 0 && ii < G.texW && jj < G.texH)
+            if (ii >= 0 && jj >= 0 && ii < G.texW && jj < G.atlasH)
               hmax = std::max(hmax, A[(size_t)jj * G.texW + ii]);
           }
         auto mix = [a](int in, int ha) { return (int)(in * a + ha * (1 - a)); };
         px[(size_t)j * G.texW + i] =
             RGBA(mix(R_(ink), R_(halo)), mix(G_(ink), G_(halo)), mix(B_(ink), B_(halo)),
-                 (int)(255 * std::max(a, hmax * 0.9f)));
+                 (int)(255 * (withHalo ? std::max(a, hmax * 0.9f) : a)));
       }
     GLuint t = 0;
     glGenTextures(1, &t);
@@ -509,40 +545,62 @@ void BathyRenderer::BuildGlyphs(int fontSize) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, G.texW, G.texH, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, G.texW, G.atlasH, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                  px.data());
     return t;
   };
-  G.tex = build(kInk, kHalo);
-  G.texLight = build(RGBA(255, 255, 255), kBannerBg);
+  G.tex = build(kInk, kHalo, true);
+  G.texLight = build(RGBA(255, 255, 255), kBannerBg, true);
+  G.texPlain = build(RGBA(255, 255, 255), RGBA(255, 255, 255), false);
 }
 
-float BathyRenderer::GLTextWidth(const wxString& t, float scale) const {
+// caractères absents de l'atlas : ajoutés (atlas reconstruit, contexte GL courant)
+void BathyRenderer::EnsureGlyphs(const wxString& t) {
+  if (!m_glyphs) return;
+  bool add = false;
+  for (wxUniChar ch : t) {
+    const uint32_t c = (uint32_t)ch.GetValue();
+    if (c >= 32 && !m_glyphs->has(c) && m_glyphExtra.size() < 2000 && m_glyphExtra.insert(c).second)
+      add = true;
+  }
+  if (!add) return;
+  const int fs = m_glyphs->fontSize;
+  m_glyphs->fontSize = -1;  // force la reconstruction
+  BuildGlyphs(fs);
+}
+
+float BathyRenderer::GLTextWidth(const wxString& t, float scale) {
+  EnsureGlyphs(t);
   float w = 0;
   for (wxUniChar ch : t) {
-    int c = (int)ch.GetValue();
-    if (c >= 32 && c < 127) w += (m_glyphs->w[c] - 2) * scale;
+    const uint32_t c = (uint32_t)ch.GetValue();
+    if (c < 32) continue;
+    if (const Glyphs::G1* g = m_glyphs->get(c)) w += (g->w - 2) * scale;
   }
   return w;
 }
 
 void BathyRenderer::DrawGLText(float x, float y, const wxString& t, float scale, bool center) {
+  EnsureGlyphs(t);
   Glyphs& G = *m_glyphs;
   if (center) x -= GLTextWidth(t, scale) / 2;
   const float h = G.texH * scale;
   y -= h / 2;
-  glBindTexture(GL_TEXTURE_2D, m_glLight ? G.texLight : G.tex);
+  glBindTexture(GL_TEXTURE_2D, m_glPlain ? G.texPlain : m_glLight ? G.texLight : G.tex);
   glBegin(GL_QUADS);
   for (wxUniChar ch : t) {
-    int c = (int)ch.GetValue();
-    if (c < 32 || c >= 127) continue;
-    float u0 = (float)(G.x[c] - 1) / G.texW, u1 = (float)(G.x[c] + G.w[c]) / G.texW;
-    float w = (G.w[c] + 1) * scale;
-    glTexCoord2f(u0, 0); glVertex2f(x, y);
-    glTexCoord2f(u1, 0); glVertex2f(x + w, y);
-    glTexCoord2f(u1, 1); glVertex2f(x + w, y + h);
-    glTexCoord2f(u0, 1); glVertex2f(x, y + h);
-    x += (G.w[c] - 2) * scale;
+    const uint32_t c = (uint32_t)ch.GetValue();
+    if (c < 32) continue;
+    const Glyphs::G1* g = G.get(c);
+    if (!g) continue;
+    const float u0 = (float)(g->x - 1) / G.texW, u1 = (float)(g->x + g->w) / G.texW;
+    const float v0 = (float)(g->row * G.texH) / G.atlasH, v1 = (float)((g->row + 1) * G.texH) / G.atlasH;
+    const float w = (g->w + 1) * scale;
+    glTexCoord2f(u0, v0); glVertex2f(x, y);
+    glTexCoord2f(u1, v0); glVertex2f(x + w, y);
+    glTexCoord2f(u1, v1); glVertex2f(x + w, y + h);
+    glTexCoord2f(u0, v1); glVertex2f(x, y + h);
+    x += (g->w - 2) * scale;
   }
   glEnd();
 }
@@ -743,9 +801,15 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
   for (const Label& L : m_labels) {
     if (L.contour) {  // valeur d'isobathe : teinte des lignes, centrée sur la ligne
       uint32_t c = IsSafety(s, L.depth) ? s.ramp.safetyColor : s.contourColor;
-      glColor4f(0.35f + 0.65f * R_(c) / 255.f, 0.35f + 0.65f * G_(c) / 255.f,
-                0.35f + 0.65f * B_(c) / 255.f, 1.f);
+      if (s.contourHalo) {
+        glColor4f(0.35f + 0.65f * R_(c) / 255.f, 0.35f + 0.65f * G_(c) / 255.f,
+                  0.35f + 0.65f * B_(c) / 255.f, 1.f);
+      } else {  // chiffres pleins à la couleur des lignes, sans liseré
+        glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, 1.f);
+        m_glPlain = true;
+      }
       DrawGLText(L.x, L.y, DepthText(s, L.depth), 1.f, true);
+      m_glPlain = false;
       continue;
     }
     FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);
@@ -1059,7 +1123,7 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
   const int lineH = P.lineH();
   const wxString minT = DepthText(s, lo), maxT = DepthText(s, hi) + " " + s.depthUnit;
   const wxString modeT = s.autoPalette ? "A" : "M";
-  // source du mode automatique : zone affichée / toutes les données (texte ASCII)
+  // source du mode automatique : zone affichée / toutes les données
   const wxString srcT =
       s.autoPalette ? wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout")) : wxString();
   // marée : hauteur et date courte (horizontal : une ligne ; vertical : deux)
@@ -1442,7 +1506,12 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
       wxString t = DepthText(s, L.depth);
       dc.SetFont(fontBig);
       wxSize e = dc.GetTextExtent(t);
-      halo(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2, wxColour(R_(c), G_(c), B_(c)));
+      if (s.contourHalo) {
+        halo(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2, wxColour(R_(c), G_(c), B_(c)));
+      } else {
+        dc.SetTextForeground(wxColour(R_(c), G_(c), B_(c)));
+        dc.DrawText(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2);
+      }
       continue;
     }
     FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);

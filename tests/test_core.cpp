@@ -35,6 +35,8 @@
 #include "../src/core/TideField.h"
 #include "../src/core/BathyDb.h"
 #include "../src/core/TileCodec.h"
+#include "../src/core/Lang.h"
+#include "../src/core/Triangulate.h"
 #include "../src/core/WebMerc.h"
 #include <thread>
 #include "../src/core/ColorRamp.h"
@@ -1012,6 +1014,31 @@ int main(int argc, char** argv) {
           f.colZ == 3 && f.colDate == 4);
     lo.text = f;
     CHECK(LoadXYZ(path, lo, pc, e) && pc.size() == 2 && std::fabs(pc.z[1] - 12.7f) < 1e-4f);
+    // degrés-minutes-secondes avec lettre d'hémisphère, sans motif (Baikal)
+    {
+      std::ofstream o(path);
+      o << "54\xC2\xB0 00' 28.4400\" N,81\xC2\xB0 18' 01.0800\" E,4.5\n"
+           "54\xC2\xB0 00' 32.4000\" N,81\xC2\xB0 17' 56.4000\" E,6\n"
+           "54\xC2\xB0 00' 28.4400\" N,81\xC2\xB0 18' 20.8800\" E,2.6\n";
+    }
+    CHECK(ReadTextHead(path, 100, head, e));
+    f = GuessTextFormat(head);
+    CHECK(f.sep == ',' && f.skipLines == 0 && f.colY == 1 && f.colX == 2 && f.colZ == 3);
+    lo.text = f;
+    CHECK(LoadXYZ(path, lo, pc, e) && pc.size() == 3);
+    CHECK(std::fabs(pc.lat(0) - (54 + 28.44 / 3600)) < 2e-7 && std::fabs(pc.lon(0) - (81 + 18 / 60.0 + 1.08 / 3600)) < 2e-7);
+    {
+      double d;
+      int ax = -1;
+      CHECK(AutoParseCoord("54\xC2\xB0 00' 28.44\" S", '.', d, &ax) && ax == 1 && std::fabs(d + (54 + 28.44 / 3600)) < 1e-9);
+      CHECK(AutoParseCoord("W 004 29.5", '.', d, &ax) && ax == 2 && std::fabs(d + 4.491666667) < 1e-8);
+      CHECK(AutoParseCoord("-48:22:40,5", ',', d, &ax) && ax == 0 && std::fabs(d + (48 + 22 / 60.0 + 40.5 / 3600)) < 1e-9);
+      CHECK(!AutoParseCoord("12.5", '.', d, &ax));         // simple nombre
+      CHECK(!AutoParseCoord("54 61 00 N", '.', d, &ax));   // minutes >= 60
+      CHECK(!AutoParseCoord("Brest", '.', d, &ax));
+      CHECK(!AutoParseCoord("2013-08-10", '.', d, &ax));
+      CHECK(!AutoParseCoord("95 00 00 N", '.', d, &ax));   // latitude > 90
+    }
     long long t;
     CHECK(ParseDateTime("2021-06-26T19:41:24Z", "", 0, t) && t == 1624736484LL);
     CHECK(ParseDateTime("03/25/2021", "08:00", 0, t) && t == 1616659200LL);
@@ -1108,7 +1135,35 @@ int main(int argc, char** argv) {
     CHECK(LoadXYZ(pts, lo, pc, e) && pc.size() == 2 && std::fabs(pc.z[0] - 9.55f) < 1e-4f);
     lo.waterSubtract = false;
     CHECK(LoadXYZ(pts, lo, pc, e) && std::fabs(pc.z[0] - 10.45f) < 1e-4f);
+    // sondes sans heure (lon lat z) : niveau du jour du levé (Baikal)
+    {
+      std::ofstream o(pts);
+      o << "106.5 52.3 10.00\n106.5001 52.3 12.00\n";
+    }
+    LoadOptions la;
+    la.zsign = LoadOptions::ZSign::DepthPositive;
+    la.water = ser;
+    CHECK(!LoadXYZ(pts, la, pc, e));  // sans date du levé : aucune sonde corrigée
+    CHECK(ParseDateTime("2026-11-01", "06:00", 0, la.waterTime));
+    CHECK(LoadXYZ(pts, la, pc, e) && pc.size() == 2 && pc.waterApplied);
+    CHECK(std::fabs(pc.z[0] - 9.45f) < 1e-4f && std::fabs(pc.z[1] - 11.45f) < 1e-4f);
+    CHECK(SurveyDateFromName("/a/b/leve_20130810_selenga.xyz") == "2013-08-10");
+    CHECK(SurveyDateFromName("/a/b/leve.xyz").empty());
     std::printf("Hauteurs d'eau observées : OK\n");
+  }
+  {  // langues : russe, repli sur l'anglais, retour au français
+    pd::SetLanguage(pd::kRussian);
+    CHECK(std::string(pd::tr("Marée")) == "Прилив");
+    CHECK(std::string(pd::tr("Distance max")) == "Макс. расстояние");
+    CHECK(std::string(pd::tr("texte sans traduction")) == "texte sans traduction");
+    char b[64];
+    std::snprintf(b, sizeof b, pd::tr("%u fichier%s"), 3u, "s");
+    CHECK(std::string(b) == "файлов: 3");
+    pd::SetLanguage(pd::kEnglish);
+    CHECK(std::string(pd::tr("Marée")) == "Tide" && pd::IsEnglish() && !pd::IsRussian());
+    pd::SetLanguage(pd::kFrench);
+    CHECK(std::string(pd::tr("Marée")) == "Marée");
+    std::printf("Langues (fr / en / ru) : OK\n");
   }
   {  // interpolation entre les lignes d'un levé monofaisceau, à l'import
     std::string err;
@@ -1183,6 +1238,48 @@ int main(int argc, char** argv) {
     for (size_t k = 0; k < v.size(); ++k) sawOld = sawOld || (!ip[k] && std::fabs(v.z[k] - 30.f) < 0.01f);
     CHECK(sawOld);
     std::printf("Interpolation à l'import (lignes à 100 m, D %.0f m) : OK\n", m.interpD);
+    // autres méthodes : même zone, valeurs voisines entre deux lignes (12,5 m)
+    for (int meth : {1, 2}) {
+      const std::string f2 = Tmp(meth == 1 ? "pd_testdb_nn" : "pd_testdb_idw");
+      std::filesystem::remove_all(f2);
+      BathyDb d2;
+      CHECK(d2.open(f2, err));
+      DbSource m2 = m;
+      m2.interpMethod = meth;
+      int64_t id2 = 0;
+      CHECK(d2.importCloud(L, m2, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id2));
+      PointCloud v2;
+      std::vector<uint8_t> ip2;
+      CHECK(d2.buildView(lo - 5 * kx, lo + 5 * kx, la - 5 * ky, la + 5 * ky, 18, 100000, v2, dl, dt, used, err,
+                         nullptr, &src, &ip2));
+      size_t n2 = 0;
+      for (size_t k = 0; k < v2.size(); ++k) {
+        if (!ip2[k]) continue;
+        ++n2;
+        CHECK(std::fabs(v2.z[k] - 12.5f) < 0.3f);
+      }
+      CHECK(n2 > v2.size() / 2);
+      CHECK(d2.source(id2) &&  // méthode notée dans l'analyse de la source
+            d2.source(id2)->info.find(meth == 1 ? "voisin naturel" : "IDW") != std::string::npos);
+    }
+    {  // InterpolatePixels : plan z = x + 2y sur une grille de sommets
+      std::vector<double> vx, vv;
+      for (int j = 0; j <= 40; j += 8)
+        for (int i = 0; i <= 40; i += 8) { vx.push_back(i); vx.push_back(j); vv.push_back(i + 2.0 * j); }
+      std::vector<int> pix = {12, 12, 20, 27, 31, 5, 7, 33};
+      std::vector<double> r;
+      InterpolatePixels(InterpMethod::NaturalNeighbour, vx, vv, pix, 12.0, r);
+      for (size_t q = 0; q < r.size(); ++q) {
+        const double ex = (pix[2 * q] + 0.5) + 2 * (pix[2 * q + 1] + 0.5);
+        CHECK(std::isfinite(r[q]) && std::fabs(r[q] - ex) < 2.0);  // Sibson discret : ~plan
+      }
+      std::vector<int> onSite = {8, 16};  // centre du pixel à 0,5 du sommet (8, 16)
+      InterpolatePixels(InterpMethod::Idw, vx, vv, onSite, 12.0, r);
+      CHECK(std::isfinite(r[0]) && std::fabs(r[0] - 40.0) < 6.0);
+      InterpolatePixels(InterpMethod::Tin, vx, vv, onSite, 12.0, r);
+      CHECK(std::isnan(r[0]));  // TIN : valeurs calculées ailleurs
+    }
+    std::printf("Méthodes d'interpolation (TIN, voisin naturel, IDW) : OK\n");
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;

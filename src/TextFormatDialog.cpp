@@ -139,11 +139,12 @@ TextFormatDialog::TextFormatDialog(wxWindow* parent, const std::string& path, co
   };
   const char* coordTip =
       "Gabarit de la coordonnée en degrés, minutes, secondes : D M S X (ex. « D M S.S X », "
-      "« DDMM.MX »). Vide : nombre décimal. Voir « Aide sur les formats ».";
+      "« DDMM.MX »). Vide : nombre décimal, ou degrés-minutes-secondes reconnus "
+      "automatiquement (« 54° 00' 28.44\" N »). Voir « Aide sur les formats ».";
   wxBoxSizer* vx = role("X — longitude / Est", kColX, m_x);
-  pattern(vx, m_xFmt, "format : nombre", coordTip);
+  pattern(vx, m_xFmt, "format : automatique", coordTip);
   wxBoxSizer* vy = role("Y — latitude / Nord", kColY, m_y);
-  pattern(vy, m_yFmt, "format : nombre", coordTip);
+  pattern(vy, m_yFmt, "format : automatique", coordTip);
   if (m_water) {  // hauteurs d'eau : pas de coordonnées
     rb->Show(vx, false);
     rb->Show(vy, false);

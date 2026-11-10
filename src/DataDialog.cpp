@@ -521,6 +521,7 @@ void DataDialog::UpdateDetails() {
         << "\n";
       t << wxString::Format(U8("Résolution  : %.2f m (niveau de tuiles %d)   %lld sondes   Z %.2f … %.2f %s (ZH)\n"),
                             d.res, d.level, d.count, d.zmin * dk, d.zmax * dk, du);
+      if (!d.info.empty()) t << U8("Analyse     : ") << W8(d.info.c_str()) << "\n";
       t << U8("Coordonnées : ") << U8(d.crs.c_str()) << U8("   Réf. verticale : ") << U8(d.vref.c_str()) << "\n";
       t << wxString::Format(U8("Emprise     : lon %.5f … %.5f   lat %.5f … %.5f\n"), d.lonMin, d.lonMax,
                             d.latMin, d.latMax);

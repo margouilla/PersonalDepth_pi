@@ -21,7 +21,7 @@
 
 namespace pd {
 namespace {
-std::atomic<bool> g_english{false};
+std::atomic<int> g_lang{kFrench};
 
 const std::unordered_map<std::string, const char*>& Table() {
   static const std::unordered_map<std::string, const char*> t = {
@@ -29,14 +29,27 @@ const std::unordered_map<std::string, const char*>& Table() {
   };
   return t;
 }
+
+const std::unordered_map<std::string, const char*>& TableRu() {
+  static const std::unordered_map<std::string, const char*> t = {
+#include "LangTableRu.inc"
+  };
+  return t;
+}
 }  // namespace
 
-void SetEnglish(bool english) { g_english = english; }
-bool IsEnglish() { return g_english; }
+void SetLanguage(int lang) { g_lang = (lang == kEnglish || lang == kRussian) ? lang : kFrench; }
+int Language() { return g_lang; }
 
 const char* tr(const char* fr) {
-  if (!fr || !g_english) return fr;
-  const auto& t = Table();
+  const int lang = g_lang;
+  if (!fr || lang == kFrench) return fr;
+  if (lang == kRussian) {
+    const auto& r = TableRu();
+    auto it = r.find(fr);
+    if (it != r.end()) return it->second;
+  }
+  const auto& t = Table();  // anglais (et repli du russe)
   auto it = t.find(fr);
   return it == t.end() ? fr : it->second;
 }

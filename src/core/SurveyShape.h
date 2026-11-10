@@ -42,6 +42,7 @@ struct SurveyShape {
   bool lines = false;       // levé en lignes (arêtes bimodales)
   double nn50 = 0;          // plus proche voisin, médiane (m)
   double edge50 = 0, edge90 = 0, edge95 = 0;  // arêtes de Delaunay (m)
+  double thinCell = 0;      // > 0 : arêtes mesurées sur un échantillon éclairci (m)
   size_t analysed = 0;      // sondes de la fenêtre d'analyse
   // Décisions
   double storeRes = 0;      // résolution de stockage proposée (m)

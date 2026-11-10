@@ -4,12 +4,48 @@
 
 ## English
 
-### 0.1.0-beta.8 (in preparation)
+### 0.1.0-beta.8 (2026-11-10)
 
 - Fixed: soundings and colours of the database were shifted north or south of
   their true position, by up to half a cell (visible along a sounding track,
   especially with large cells). The view rows are now aligned on the database
   cells. Reported by Rasbats (issue #3).
+- Fixed: OpenCPN crashed when the plugin was updated or uninstalled (its
+  windows were deleted after the plugin was unloaded). The fix is in the code
+  that unloads the plugin, so it applies from the next update: updating from
+  beta.7 may still crash once (restart OpenCPN, the new version is installed).
+- Dense single-beam line surveys (soundings a few decimetres apart along the
+  track) are recognised as line surveys again: the gap between lines is now
+  measured on a thinned sample. Before, D was only a few metres, so nothing
+  was interpolated between lines, and the import was slow with a huge
+  database (simulated 10-million-sounding survey: 23 s and 50 MB instead of
+  4 min and 490 MB). Line surveys are stored at no finer than 1/100 of the
+  line spacing.
+- **Max distance** for the interpolation can be set by hand in the import
+  window. The analysis of each survey (nature, spacing, D used, interpolated
+  cells) is shown in *Data management*.
+- Coordinates in **degrees-minutes-seconds with symbols and hemisphere
+  letter** (`54° 00' 28.44" N`) are read without a pattern, and recognised by
+  the automatic detection (N/S column → Y, E/W column → X).
+- **Water levels for soundings without time**: the level of the survey day
+  (survey date, or a date YYYYMMDD in the file name) is applied to the whole
+  file.
+- Option to draw the depth contour values **without the white outline**.
+  Suggestions and reports by Baikal.
+- **Russian** interface, chosen like French and English from OpenCPN's
+  language.
+- On-chart texts (banner, cursor readout, soundings) are drawn in full
+  Unicode with OpenGL: accents, Cyrillic file names (before: "?????").
+- **Single palette folder**: the original palettes are written there as
+  `.cpt` files and can be edited or deleted like the user's own; *Restore
+  original palettes* writes them back. Only *OpenCPN ENC (S-52)* stays apart.
+- **Interpolation methods**: TIN (linear), natural neighbour (discrete
+  Sibson) or IDW (inverse distance), chosen at import. The filled area is the
+  same for all (limited by D); only the values change. By default: natural
+  neighbour for a line survey, TIN otherwise.
+- Faster import of large files: soundings are sorted by tile before being
+  stored, and tiles leaving memory are written in groups (simulated survey
+  of 10 million soundings: 21 s → 16 s, identical result).
 
 ### 0.1.0-beta.7 (2026-11-09)
 
@@ -125,13 +161,52 @@ crash of OpenCPN when opening the plugin panel.
 
 ## Français
 
-### 0.1.0-beta.8 (en préparation)
+### 0.1.0-beta.8 (2026-11-10)
 
 - Corrigé : les sondes et les couleurs de la base étaient décalées vers le
   nord ou le sud de leur vraie position, jusqu'à une demi-cellule (visible le
   long d'une route de sonde, surtout avec de grandes cellules). Les lignes de
   la vue sont maintenant calées sur les cellules de la base. Signalé par
   Rasbats (issue #3).
+- Corrigé : OpenCPN plantait à la mise à jour ou à la désinstallation du
+  plugin (fenêtres supprimées après le déchargement du plugin). La correction
+  est dans le code d'arrêt du plugin : elle vaut à partir de la mise à jour
+  suivante ; passer de la beta.7 à la beta.8 peut encore planter une fois
+  (relancer OpenCPN : la nouvelle version est installée).
+- Les levés monofaisceaux en lignes très denses (sondes à quelques décimètres
+  le long de la route) sont de nouveau reconnus comme levés en lignes :
+  l'écart entre lignes est mesuré sur un échantillon éclairci. Avant, D ne
+  faisait que quelques mètres : rien n'était interpolé entre les lignes, et
+  l'import était lent avec une base énorme (levé simulé de 10 millions de
+  sondes : 23 s et 50 Mo au lieu de 4 min et 490 Mo). Les levés en lignes
+  sont stockés au plus fin à 1/100 de l'écart entre lignes.
+- **Distance max** d'interpolation réglable à la main dans la fenêtre
+  d'import. L'analyse de chaque levé (nature, espacement, D utilisée, cases
+  interpolées) s'affiche dans *Gestion des données*.
+- Coordonnées en **degrés-minutes-secondes avec symboles et lettre
+  d'hémisphère** (`54° 00' 28.44" N`) lues sans gabarit, et reconnues par la
+  détection automatique (colonne N/S → Y, colonne E/W → X).
+- **Hauteurs d'eau pour des sondes sans heure** : la hauteur du jour du levé
+  (date du levé, ou date AAAAMMJJ dans le nom du fichier) est appliquée à
+  tout le fichier.
+- Option pour dessiner les valeurs des isobathes **sans contour blanc**.
+  Suggestions et signalements de Baikal.
+- Interface en **russe**, choisie comme le français et l'anglais d'après la
+  langue d'OpenCPN.
+- Textes sur la carte (bandeau, lecture au curseur, sondes) dessinés en
+  Unicode complet en OpenGL : accents, noms de fichiers en cyrillique (avant :
+  « ????? »).
+- **Dossier de palettes unique** : les palettes d'origine y sont écrites en
+  `.cpt` et se modifient ou se suppriment comme celles de l'utilisateur ;
+  *Restaurer les palettes d'origine* les réécrit. Seule *ENC OpenCPN (S-52)*
+  reste à part.
+- **Méthodes d'interpolation** : TIN (linéaire), voisin naturel (Sibson
+  discret) ou IDW (inverse de la distance), choisies à l'import. La zone
+  remplie est la même pour toutes (limitée par D) ; seules les valeurs
+  changent. Par défaut : voisin naturel pour un levé en lignes, TIN sinon.
+- Import des gros fichiers plus rapide : sondes triées par tuile avant d'être
+  rangées, et tuiles sorties de la mémoire écrites par groupes (levé simulé de
+  10 millions de sondes : 21 s → 16 s, résultat identique).
 
 ### 0.1.0-beta.7 (2026-11-09)
 

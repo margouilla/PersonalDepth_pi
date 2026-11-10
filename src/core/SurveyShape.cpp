@@ -269,6 +269,45 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
     r.edge50 = Pct(e, 0.5);
     r.edge90 = Pct(e, 0.9);
     r.edge95 = Pct(e, 0.95);
+    // Levé en lignes très dense (sondeur à cadence rapide, sondes à quelques
+    // décimètres le long de la route, un peu dispersées en travers) : les
+    // milliers de petites arêtes à l'intérieur de chaque route masquent l'écart
+    // entre les lignes. On refait les arêtes sur un échantillon éclairci (une
+    // sonde par cellule de h = 4, 16, 64 × nn50) : chaque route devient une
+    // chaîne de sondes espacées de ~h et l'écart entre lignes ressort (P90).
+    if (r.nn50 > 0 && !(r.edge90 > 5 * r.edge50)) {
+      const double ext = std::max(x1 - x0, y1 - y0);
+      for (double f : {4.0, 16.0, 64.0}) {
+        const double h = f * r.nn50;
+        if (h > ext / 20) break;  // trop peu de cellules pour conclure
+        std::unordered_set<uint64_t> cell;
+        cell.reserve(n);
+        std::vector<double> txy;
+        for (size_t i = 0; i < n; ++i)
+          if (cell.insert(key((long)((X[i] - x0) / h), (long)((Y[i] - y0) / h))).second) {
+            txy.push_back(X[i]);
+            txy.push_back(Y[i]);
+          }
+        if (txy.size() < 2 * 200) break;
+        const auto tt = Triangulate(txy);
+        std::vector<double> te;
+        te.reserve(tt.size());
+        for (size_t t = 0; t + 2 < tt.size(); t += 3)
+          for (int k = 0; k < 3; ++k) {
+            const size_t a = tt[t + k], b = tt[t + (k + 1) % 3];
+            if (a < b) te.push_back(std::hypot(txy[2 * a] - txy[2 * b], txy[2 * a + 1] - txy[2 * b + 1]));
+          }
+        const double t50 = Pct(te, 0.5), t90 = Pct(te, 0.9);
+        // routes (arêtes courantes ~ cellule) bien séparées (grandes arêtes)
+        if (t50 > 0 && t50 < 2.5 * h && t90 > 5 * t50) {
+          r.thinCell = h;
+          r.edge50 = t50;
+          r.edge90 = t90;
+          r.edge95 = Pct(te, 0.95);
+          break;
+        }
+      }
+    }
   }
 
   // ---- 3. décisions
@@ -286,8 +325,10 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
   r.lines = (hint == Instrument::SingleBeam) ||
             (hint == Instrument::Auto && n >= 50 && r.edge50 > 0 && r.edge90 > 5 * r.edge50);
   if (r.lines) {
-    r.storeRes = std::max(0.05, r.nn50);            // espacement le long de la route
     r.maxEdge = 1.25 * std::max(r.edge90, r.edge50);  // un peu plus que l'écart entre lignes
+    // espacement le long de la route, mais pas plus fin que 1/100 de l'écart
+    // entre lignes (sondeur à cadence rapide : la tache au fond fait bien plus)
+    r.storeRes = std::max({0.05, r.nn50, r.maxEdge / 125.0});
   } else {
     r.storeRes = std::max(0.05, r.edge50 > 0 ? r.edge50 : r.nn50);
     double f = 2.0, cap = 0;
