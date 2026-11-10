@@ -4,6 +4,13 @@
 
 ## English
 
+### 0.1.0-beta.8 (in preparation)
+
+- Fixed: soundings and colours of the database were shifted north or south of
+  their true position, by up to half a cell (visible along a sounding track,
+  especially with large cells). The view rows are now aligned on the database
+  cells. Reported by Rasbats (issue #3).
+
 ### 0.1.0-beta.7 (2026-11-09)
 
 - **Observed water levels** at import: each time-stamped sounding is
@@ -117,6 +124,14 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.8 (en préparation)
+
+- Corrigé : les sondes et les couleurs de la base étaient décalées vers le
+  nord ou le sud de leur vraie position, jusqu'à une demi-cellule (visible le
+  long d'une route de sonde, surtout avec de grandes cellules). Les lignes de
+  la vue sont maintenant calées sur les cellules de la base. Signalé par
+  Rasbats (issue #3).
 
 ### 0.1.0-beta.7 (2026-11-09)
 

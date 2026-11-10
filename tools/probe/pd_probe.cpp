@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
   std::string dbDir;
   bool onlyImport = false;
   std::string viewOut;
+  double forceRes = 0;  // résolution imposée (m)
   size_t streamN = 0;  // import par blocs (sondes par bloc)
   double zb[4] = {0, 0, 0, 0};
   for (int i = 2; i < argc; ++i) {
@@ -62,6 +63,7 @@ int main(int argc, char** argv) {
     else if (a.rfind("force=", 0) == 0) force = std::atoi(a.c_str() + 6);
     else if (a.rfind("db=", 0) == 0) { dbDir = a.substr(3); onlyImport = true; }
     else if (a.rfind("view=", 0) == 0) viewOut = a.substr(5);
+    else if (a.rfind("res=", 0) == 0) forceRes = std::atof(a.c_str() + 4);
     else if (a.rfind("stream=", 0) == 0) streamN = (size_t)std::atoll(a.c_str() + 7);
     else if (a.rfind("zoom=", 0) == 0) std::sscanf(a.c_str() + 5, "%lf,%lf,%lf,%lf", &zb[0], &zb[1], &zb[2], &zb[3]);
   }
@@ -91,6 +93,7 @@ int main(int argc, char** argv) {
     m.date = "2020-01-01";
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
+    if (forceRes > 0) m.res = forceRes;
     size_t blocks = 0, pts = 0;
     BathyDb::CloudFeed feed = [&](const BathyDb::CloudSink& sink, std::string& fe) {
       XYZBlockSink each = [&](PointCloud& b) { ++blocks; pts += b.size(); return sink(b, 0.5f); };
@@ -149,6 +152,7 @@ int main(int argc, char** argv) {
     m.date = "2020-01-01";
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
+    if (forceRes > 0) m.res = forceRes;
     int64_t id = 0;
     auto t2 = std::chrono::steady_clock::now();
     bool okI = db.importCloud(pc, m, sh.isGrid(), DbPriority::ResolutionDate, e, nullptr, nullptr, &id);

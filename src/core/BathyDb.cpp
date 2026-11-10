@@ -1624,6 +1624,7 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
     --zz;
   }
   usedLevel = zz;
+  double latAnchor = 0;
   {  // vue très large : cellules plus grandes que les pixels du niveau le plus grossier
     const double cells = (lonMax - lonMin) / dlon * (latMax - latMin) / dlat;
     if (cells > (double)maxCells) {
@@ -1632,8 +1633,24 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
       dlat *= f;
     }
   }
-  // cellules alignées sur un maillage global (pas de saut d'une vue à l'autre)
-  const double lon0 = std::floor(lonMin / dlon) * dlon, lat1 = std::ceil(latMax / dlat) * dlat;
+  // Cellules alignées sur les pixels de la base (pas de saut d'une vue à
+  // l'autre) : colonnes = colonnes de pixels du niveau zz ; lignes calées sur
+  // la rangée de pixels Mercator du centre de la vue, avec la hauteur exacte de
+  // cette rangée. Sinon toute la vue était décalée en latitude d'une même
+  // fraction de cellule (jusqu'à une demi-cellule : sondes et couleurs à côté
+  // de la route quand la vue est au pas des données).
+  {
+    const double pix = 360.0 / std::ldexp((double)kTileSize, zz);
+    const double f = dlon / pix;  // 1, ou plus pour une vue très large
+    double gxm, gym, lonT, latT, latB;
+    LonLatToPixel(zz, 0.0, midLat, gxm, gym);
+    PixelToLonLat(zz, 0.0, std::floor(gym), lonT, latT);
+    PixelToLonLat(zz, 0.0, std::floor(gym) + 1.0, lonT, latB);
+    dlat = (latT - latB) * f;
+    latAnchor = latT;
+  }
+  const double lon0 = std::floor(lonMin / dlon) * dlon;
+  const double lat1 = latAnchor + std::ceil((latMax - latAnchor) / dlat) * dlat;
   const int nx = (int)std::ceil((lonMax - lon0) / dlon), ny = (int)std::ceil((lat1 - latMin) / dlat);
   std::vector<long long> gxs(nx), gys(ny);
   for (int i = 0; i < nx; ++i) {
