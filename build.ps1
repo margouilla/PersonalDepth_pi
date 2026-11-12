@@ -57,6 +57,7 @@ if ($Package) {
   New-Item -ItemType Directory -Force (Join-Path $stage "plugins\PersonalDepth_pi\data") | Out-Null
   Copy-Item build\Release\PersonalDepth_pi.dll (Join-Path $stage "plugins")
   Copy-Item data\personaldepth.svg (Join-Path $stage "plugins\PersonalDepth_pi\data")
+  Copy-Item data\lang (Join-Path $stage "plugins\PersonalDepth_pi\data") -Recurse
   Copy-Item LICENSE (Join-Path $stage "plugins\PersonalDepth_pi\data\license.txt")
   $authorXml = if ($Author) { "  <author>$Author</author>`n" } else { "" }
   $sourceXml = if ($Repo) { "  <source>$Repo</source>`n  <info-url>$Repo</info-url>`n" } else { "" }
@@ -106,6 +107,10 @@ if (Get-Process opencpn -ErrorAction SilentlyContinue) {
 $dest = Join-Path $env:LOCALAPPDATA "opencpn\plugins"
 New-Item -ItemType Directory -Force $dest | Out-Null
 Copy-Item build\Release\PersonalDepth_pi.dll $dest -Force
+# Fichiers de traduction (.po) livres avec le plugin
+$langDst = Join-Path $dest "PersonalDepth_pi\data\lang"
+New-Item -ItemType Directory -Force $langDst | Out-Null
+Copy-Item data\lang\*.po $langDst -Force
 # References verticales (BathyElli v2.1 ZH + RAF20 + RAC23) livrees avec le plugin
 $refSrc = Join-Path (Split-Path $root -Parent) "ReferenceElevation"
 $refDst = Join-Path $dest "PersonalDepth_pi\references"

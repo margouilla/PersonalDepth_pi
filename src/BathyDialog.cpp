@@ -53,19 +53,46 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
                wxDefaultPosition, wxDefaultSize,
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       m_pi(pi) {
-  auto* scroll = new wxScrolledWindow(this, wxID_ANY);
-  scroll->SetScrollRate(0, 12);
-  auto* col = new wxBoxSizer(wxVERTICAL);
-  col->Add(BuildDbBox(scroll), 0, wxEXPAND | wxALL, 6);
-  col->Add(BuildTideBox(scroll), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildPaletteBox(scroll), 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildContourBox(scroll), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildDisplayBox(scroll), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  scroll->SetSizer(col);
+  // onglets : Base / Marée / Palette / Isobathes / Affichage ; chaque page
+  // défile si la fenêtre est petite ; lecture au curseur sous les onglets
+  m_tabs = new wxNotebook(this, wxID_ANY);
+  using Builder = wxSizer* (BathyDialog::*)(wxWindow*);
+  const std::pair<const char*, Builder> pages[] = {
+      {"Base", &BathyDialog::BuildDbBox},          {"Marée", &BathyDialog::BuildTideBox},
+      {"Palette", &BathyDialog::BuildPaletteBox},  {"Isobathes et sondes", &BathyDialog::BuildChartTextBox},
+      {"Affichage", &BathyDialog::BuildDisplayBox}};
+  for (const auto& pg : pages) {
+    auto* page = new wxScrolledWindow(m_tabs, wxID_ANY);
+    page->SetScrollRate(0, 12);
+    auto* col = new wxBoxSizer(wxVERTICAL);
+    wxSizer* box = (this->*pg.second)(page);
+    if (auto* sbs = dynamic_cast<wxStaticBoxSizer*>(box))  // titre déjà porté par l'onglet
+      sbs->GetStaticBox()->SetLabel(wxEmptyString);
+    col->Add(box, 1, wxEXPAND | wxALL, 6);
+    page->SetSizer(col);
+    m_tabs->AddPage(page, U8(pg.first));
+  }
+  m_cursor = new wxStaticText(this, wxID_ANY, U8("Curseur : —"));
+  m_cursor->SetFont(m_cursor->GetFont().Bold());
   auto* top = new wxBoxSizer(wxVERTICAL);
-  top->Add(scroll, 1, wxEXPAND);
+  top->Add(m_tabs, 1, wxEXPAND | wxALL, 4);
+  top->Add(m_cursor, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
   SetSizer(top);
-  SetSize(FromDIP(wxSize(470, 760)));
+  SetSize(FromDIP(wxSize(480, 640)));
+  const int tab = m_pi->Settings().panelTab;
+  if (tab >= 0 && tab < (int)m_tabs->GetPageCount()) m_tabs->SetSelection(tab);
+  // largeur changée : textes longs recoupés à la nouvelle largeur
+  Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
+    e.Skip();
+    CallAfter([this] {
+      if (m_tideInfo && !m_tideRaw.empty()) SetWrapped(m_tideInfo, m_tideRaw);
+      if (m_dbStatus && !m_dbRaw.empty()) SetWrapped(m_dbStatus, m_dbRaw);
+    });
+  });
+  m_tabs->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& e) {
+    m_pi->Settings().panelTab = e.GetSelection();
+    e.Skip();
+  });
   Bind(wxEVT_CLOSE_WINDOW, &BathyDialog::OnClose, this);
   RefreshUnits();  // libellés d'unité, puis valeurs
   RefreshDb();
@@ -210,12 +237,30 @@ void BathyDialog::OnTide(wxCommandEvent&) {
   m_pi->TideChanged();
 }
 
-void BathyDialog::SetTideInfo(const wxString& t) {
-  if (m_tideInfo && m_tideInfo->GetLabel() != t) {
-    m_tideInfo->SetLabel(t);
-    m_tideInfo->Wrap(FromDIP(420));
-    Layout();
+// Texte de longueur variable dans un onglet : coupé à la largeur de la page,
+// puis la page (fenêtre défilante) est réorganisée, sinon les contrôles placés
+// dessous restent à leur ancienne place, cachés sous le texte.
+void BathyDialog::SetWrapped(wxStaticText* w, const wxString& t) {
+  wxWindow* page = w->GetParent();
+  while (page && !wxDynamicCast(page, wxScrolledWindow)) page = page->GetParent();
+  const int width = page ? page->GetClientSize().x - FromDIP(40) : FromDIP(400);
+  w->SetLabel(t);
+  w->Wrap(std::max(FromDIP(200), width));
+  RelayoutPage(w);
+}
+
+void BathyDialog::RelayoutPage(wxWindow* w) {
+  wxWindow* page = w ? w->GetParent() : nullptr;
+  while (page && !wxDynamicCast(page, wxScrolledWindow)) page = page->GetParent();
+  if (auto* sw = wxDynamicCast(page, wxScrolledWindow)) {
+    sw->Layout();
+    sw->FitInside();
   }
+  Layout();
+}
+
+void BathyDialog::SetTideInfo(const wxString& t) {
+  if (m_tideInfo && m_tideRaw != t) { m_tideRaw = t; SetWrapped(m_tideInfo, t); }
 }
 
 // ------------------------------------------------------ base de bathymétrie
@@ -371,11 +416,7 @@ void BathyDialog::RefreshDb() {
 }
 
 void BathyDialog::SetDbStatus(const wxString& t) {
-  if (m_dbStatus && m_dbStatus->GetLabel() != t) {
-    m_dbStatus->SetLabel(t);
-    m_dbStatus->Wrap(FromDIP(330));
-    Layout();
-  }
+  if (m_dbStatus && m_dbRaw != t) { m_dbRaw = t; SetWrapped(m_dbStatus, t); }
   if (m_dbStop) UpdateDbButtons();
   if (m_data && m_data->IsShown()) m_data->SetDbStatus(t);
 }
@@ -595,7 +636,7 @@ void BathyDialog::RefreshPalette() {
     m_autoMin->Enable(ds.autoPalette && ds.autoMinOn);
     m_autoMax->Enable(ds.autoPalette && ds.autoMaxOn);
     const wxString info = ds.autoPalette ? m_pi->AutoPaletteInfo() : wxString();
-    if (m_autoInfo->GetLabel() != info) { m_autoInfo->SetLabel(info); Layout(); }
+    if (m_autoInfo->GetLabel() != info) { m_autoInfo->SetLabel(info); RelayoutPage(m_autoInfo); }
   }
   m_safeOn->SetValue(r.safetyOn);
   m_safeDepth->SetValue(r.safetyDepth * K());
@@ -628,8 +669,6 @@ void BathyDialog::RefreshPalette() {
   m_autoMin->SetValue(s.autoMin * K());
   m_autoMax->SetValue(s.autoMax * K());
   m_ctLabels->SetValue(s.contourLabels);
-  m_ctHalo->SetValue(s.contourHalo);
-  m_ctHalo->Enable(s.contours && s.contourLabels);
   m_ctSmooth->SetValue(s.contourSmooth);
   m_ctColour->SetColour(wxColour(R_(s.contourColor), G_(s.contourColor), B_(s.contourColor)));
   m_ctStep->Enable(s.contourMode == 0);
@@ -882,9 +921,6 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctMajor->SetDigits(1);
   m_ctMajor->SetToolTip(U8("Ligne épaisse toutes les N unités de profondeur (0 = aucune)"));
   m_ctLabels = new wxCheckBox(sb, wxID_ANY, U8("Valeurs sur les lignes"));
-  m_ctHalo = new wxCheckBox(sb, wxID_ANY, U8("Contour blanc des valeurs"));
-  m_ctHalo->SetToolTip(U8("Liseré clair autour des valeurs des isobathes (lisibles sur les couleurs "
-                          "sombres). Décoché : chiffres pleins, plus nets."));
   m_ctSmooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage des lignes"));
   m_ctSmooth->SetToolTip(U8("Arrondit les angles du tracé (purement graphique)"));
   g->Add(m_ctOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctColour, 0);
@@ -893,14 +929,13 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctMajorL = L("Maîtresse tous les (m)");
   g->Add(m_ctStepL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctStep, 0, wxEXPAND);
   g->Add(m_ctMajorL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMajor, 0, wxEXPAND);
-  g->Add(m_ctLabels, 0); g->Add(m_ctHalo, 0);
-  g->Add(m_ctSmooth, 0); g->AddSpacer(0);
+  g->Add(m_ctLabels, 0); g->Add(m_ctSmooth, 0);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
   box->Add(new wxStaticText(sb, wxID_ANY,
                             U8("L'isobathe de sécurité (rouge) suit la zone dangereuse.")),
            0, wxALL, 4);
 
-  for (wxCheckBox* c : {m_ctOn, m_ctLabels, m_ctSmooth, m_ctHalo})
+  for (wxCheckBox* c : {m_ctOn, m_ctLabels, m_ctSmooth})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnContours, this);
   m_ctMode->Bind(wxEVT_CHOICE, &BathyDialog::OnContours, this);
   for (wxSpinCtrlDouble* c : {m_ctStep, m_ctMajor})
@@ -919,8 +954,6 @@ void BathyDialog::OnContours(wxCommandEvent&) {
   s.contourStep = FromUi(m_ctStep->GetValue(), s.contourStep, 1);
   s.contourMajor = FromUi(m_ctMajor->GetValue(), s.contourMajor, 1);
   s.contourLabels = m_ctLabels->GetValue();
-  s.contourHalo = m_ctHalo->GetValue();
-  m_ctHalo->Enable(s.contours && s.contourLabels);
   s.contourSmooth = m_ctSmooth->GetValue();
   s.contourColor = FromWx(m_ctColour->GetColour());
   m_ctStep->Enable(s.contourMode == 0);
@@ -929,6 +962,40 @@ void BathyDialog::OnContours(wxCommandEvent&) {
 }
 
 // ---------------------------------------------------------------- Affichage
+// onglet « Isobathes et sondes » : cadre des isobathes, puis cadre des sondes
+wxSizer* BathyDialog::BuildChartTextBox(wxWindow* p) {
+  auto* col = new wxBoxSizer(wxVERTICAL);
+  col->Add(BuildContourBox(p), 0, wxEXPAND | wxBOTTOM, 6);
+  col->Add(BuildSoundingsBox(p), 0, wxEXPAND);
+  return col;
+}
+
+wxSizer* BathyDialog::BuildSoundingsBox(wxWindow* p) {
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Sondes chiffrées"));
+  wxWindow* sb = box->GetStaticBox();
+  auto* g = new wxFlexGridSizer(2, 4, 8);
+  g->AddGrowableCol(1);
+  auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
+  m_sound = new wxCheckBox(sb, wxID_ANY, U8("Afficher les sondes"));
+  m_spacing = new wxSlider(sb, wxID_ANY, 34, 16, 120);
+  m_spacing->SetToolTip(U8("Écart minimal entre deux sondes affichées (pixels d'écran)."));
+  m_decimals = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+                              wxSP_ARROW_KEYS, 0, 2, 1);
+  m_font = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+                          wxSP_ARROW_KEYS, 6, 20, 9);
+  m_font->SetToolTip(U8("Taille des sondes et des valeurs des isobathes."));
+  g->Add(m_sound, 0, wxALIGN_CENTER_VERTICAL); g->AddSpacer(0);
+  g->Add(L("Espacement"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_spacing, 0, wxEXPAND);
+  g->Add(L("Décimales"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_decimals, 0);
+  g->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_font, 0);
+  box->Add(g, 0, wxEXPAND | wxALL, 4);
+  m_spacing->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
+  m_sound->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
+  for (wxSpinCtrl* c : {m_decimals, m_font})
+    c->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnDisplay(e); });
+  return box;
+}
+
 wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Affichage"));
   wxWindow* sb = box->GetStaticBox();
@@ -940,12 +1007,6 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   m_shadeStrength = new wxSlider(sb, wxID_ANY, 60, 0, 100);
   m_exag = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
                                 wxSP_ARROW_KEYS, 0.5, 50, 3, 0.5);
-  m_sound = new wxCheckBox(sb, wxID_ANY, U8("Sondes chiffrées"));
-  m_decimals = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-                              wxSP_ARROW_KEYS, 0, 2, 1);
-  m_spacing = new wxSlider(sb, wxID_ANY, 34, 16, 120);
-  m_font = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-                          wxSP_ARROW_KEYS, 6, 20, 9);
   m_smooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage (interpolation)"));
   m_legend = new wxCheckBox(sb, wxID_ANY, U8("Lecture au curseur"));
   m_banner = new wxCheckBox(sb, wxID_ANY, U8("Bandeau de palette sur la carte"));
@@ -961,9 +1022,6 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   m_shadeSmooth->SetToolTip(U8("Adoucit le relief ombré (rayon en cellules, 0 = aucun). "
                                "Les couleurs, isobathes et sondes gardent les vraies profondeurs."));
   g->Add(L("Adoucir le relief"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeSmooth, 0);
-  g->Add(m_sound, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_spacing, 0, wxEXPAND);
-  g->Add(L("Décimales"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_decimals, 0);
-  g->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_font, 0);
   g->Add(m_smooth, 0); g->Add(m_legend, 0);
   m_bannerPos = new wxChoice(sb, wxID_ANY);
   for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche", "libre (déplacé à la souris)"})
@@ -981,17 +1039,12 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
                                   "zones mesurées. Les sondes affichées ne sont jamais interpolées."));
   g->Add(m_interpShow, 0); g->Add(m_interpDistinct, 0);
   box->Add(g, 0, wxEXPAND | wxALL, 4);
-  m_cursor = new wxStaticText(sb, wxID_ANY, U8("Curseur : —"));
-  m_cursor->SetFont(m_cursor->GetFont().Bold());
-  box->Add(m_cursor, 0, wxEXPAND | wxALL, 4);
 
-  for (wxSlider* s : {m_opacity, m_shadeStrength, m_spacing})
+  for (wxSlider* s : {m_opacity, m_shadeStrength})
     s->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
-  for (wxCheckBox* c : {m_shade, m_sound, m_smooth, m_legend, m_banner, m_bannerLock, m_interpShow, m_interpDistinct})
+  for (wxCheckBox* c : {m_shade, m_smooth, m_legend, m_banner, m_bannerLock, m_interpShow, m_interpDistinct})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
   m_bannerPos->Bind(wxEVT_CHOICE, &BathyDialog::OnDisplay, this);
-  for (wxSpinCtrl* c : {m_decimals, m_font})
-    c->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnDisplay(e); });
   m_shadeSmooth->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) {
     if (m_updating) return;
     m_pi->Settings().shadeSmooth = m_shadeSmooth->GetValue();

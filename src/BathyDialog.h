@@ -19,6 +19,7 @@
 #include <wx/wx.h>
 #include <wx/clrpicker.h>
 #include <wx/grid.h>
+#include <wx/notebook.h>
 #include <wx/combobox.h>
 #include <wx/treelist.h>
 
@@ -52,6 +53,11 @@ class BathyDialog : public wxDialog {
  private:
   wxSizer* BuildPaletteBox(wxWindow* p);
   wxSizer* BuildDisplayBox(wxWindow* p);
+  void SetWrapped(wxStaticText* w, const wxString& t);  // texte coupé + page réorganisée
+  void RelayoutPage(wxWindow* w);                       // page d'onglet contenant w
+  wxString m_tideRaw, m_dbRaw;                          // textes avant coupure
+  wxSizer* BuildChartTextBox(wxWindow* p);  // isobathes + sondes chiffrées
+  wxSizer* BuildSoundingsBox(wxWindow* p);
   wxSizer* BuildContourBox(wxWindow* p);
   wxSizer* BuildTideBox(wxWindow* p);
   wxSizer* BuildDbBox(wxWindow* p);
@@ -128,9 +134,10 @@ class BathyDialog : public wxDialog {
   wxCheckBox *m_interpShow, *m_interpDistinct;  // zones interpolées de la base
   wxSpinCtrlDouble* m_exag;
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
+  wxNotebook* m_tabs = nullptr;
   wxStaticText* m_cursor;
   // Isobathes
-  wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth, *m_ctHalo;
+  wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth;
   wxChoice* m_ctMode;
   wxSpinCtrlDouble *m_ctStep, *m_ctMajor;
   wxColourPickerCtrl* m_ctColour;

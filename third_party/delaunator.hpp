@@ -513,14 +513,20 @@ std::size_t Delaunator::legalize(std::size_t a) {
 
             // edge swapped on the other side of the hull (rare); fix the halfedge reference
             if (hbl == INVALID_INDEX) {
+                // PersonalDepth : parcours par hull_prev, comme la version
+                // JavaScript d'origine. Pendant l'insertion d'un point, les
+                // sommets retirés de l'enveloppe ont hull_next[x] = x : le
+                // parcours par hull_next pouvait tourner sur place sans fin
+                // (import figé). Nombre de pas borné par sécurité.
                 std::size_t e = hull_start;
+                std::size_t steps = 0;
                 do {
                     if (hull_tri[e] == bl) {
                         hull_tri[e] = a;
                         break;
                     }
-                    e = hull_next[e];
-                } while (e != hull_start);
+                    e = hull_prev[e];
+                } while (e != hull_start && ++steps <= hull_prev.size());
             }
             link(a, hbl);
             link(b, halfedges[ar]);

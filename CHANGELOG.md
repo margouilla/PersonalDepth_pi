@@ -4,6 +4,37 @@
 
 ## English
 
+### 0.1.0-beta.9 (2026-11-12)
+
+- **Interpolation simplified**: the surface between soundings is computed
+  once, at the sounding step, and drawn the same at every scale. Before, line
+  surveys were interpolated on a coarser grid and recombined at each zoom:
+  surface changing with the zoom, streaks along the lines, large blocks at
+  the edges, and new holes when the max distance was raised (130 → 150 m).
+  Line surveys imported with an earlier version should be re-imported.
+- Fixed: the triangulation could loop forever (bug in the C++ port of the
+  delaunator library, hull walk), freezing the import; the *Stop* button then
+  had no effect and OpenCPN had to be killed. Seen with Garmin Quickdraw
+  data and line surveys.
+- Natural neighbour: no more straight cut at tile edges (wider margin of
+  soundings around each tile, working grid aligned on the tiles).
+- Automatic max distance for line surveys: covers the large gaps between
+  lines (95 % of them), not only the usual gap.
+- IDW takes the nearest soundings in each quarter around the point: no more
+  steps between two lines.
+  Reports and test data by Baikal.
+- Main window in **tabs** (Database, Tide, Palette, Contours and soundings,
+  Display); the *Tide curve* button no longer hides under the tide text.
+- User guides illustrated with screenshots and animations.
+- **Translation files**: the Russian interface now comes from
+  `data/lang/PersonalDepth_ru.po` (gettext, English → Russian, French source
+  as a comment), editable without rebuilding; a corrected copy in the plugin's
+  user folder (`lang` subfolder) takes priority and survives updates. Any
+  other language works the same way with a `PersonalDepth_<code>.po` file.
+  Entries whose `%d`, `%s`… differ from the English text are ignored.
+- Removed the *White outline on values* option: contour values are always
+  drawn as solid figures in the line colour.
+
 ### 0.1.0-beta.8 (2026-11-10)
 
 - Fixed: soundings and colours of the database were shifted north or south of
@@ -160,6 +191,40 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.9 (2026-11-12)
+
+- **Interpolation simplifiée** : la surface entre les sondes est calculée
+  une seule fois, au pas des sondes, et s'affiche à l'identique à toutes les
+  échelles. Avant, les levés en lignes étaient interpolés sur une grille plus
+  grossière puis recombinés à chaque zoom : surface qui changeait avec le
+  zoom, stries le long des lignes, grands pavés en bordure, et nouveaux trous
+  en augmentant la distance max (130 → 150 m). Les levés en lignes importés
+  avec une version précédente sont à réimporter.
+- Corrigé : la triangulation pouvait tourner sans fin (défaut du portage C++
+  de la bibliothèque delaunator, parcours de l'enveloppe), figeant l'import ;
+  le bouton *Arrêter* restait alors sans effet et il fallait tuer OpenCPN.
+  Vu sur des données Garmin Quickdraw et des levés en lignes.
+- Voisin naturel : plus de coupure droite au bord des tuiles (marge de sondes
+  plus large autour de chaque tuile, grille de travail calée sur les tuiles).
+- Distance max automatique des levés en lignes : couvre les grands écarts
+  entre lignes (95 % d'entre eux), pas seulement l'écart habituel.
+- IDW prend les sondes les plus proches dans chaque quart autour du point :
+  plus de marches entre deux lignes.
+  Signalements et données de test de Baikal.
+- Fenêtre principale en **onglets** (Base, Marée, Palette, Isobathes et
+  sondes, Affichage) ; le bouton *Courbe de marée* ne passe plus sous le
+  texte de la marée.
+- Guides illustrés de captures d'écran et d'animations.
+- **Fichiers de traduction** : l'interface russe vient maintenant de
+  `data/lang/PersonalDepth_ru.po` (gettext, anglais → russe, texte français en
+  commentaire), modifiable sans recompiler ; une copie corrigée dans le
+  dossier utilisateur du plugin (sous-dossier `lang`) l'emporte et survit aux
+  mises à jour. Toute autre langue fonctionne de même avec un fichier
+  `PersonalDepth_<code>.po`. Les entrées dont les `%d`, `%s`… diffèrent de
+  l'anglais sont ignorées.
+- Option *Contour blanc des valeurs* retirée : les valeurs des isobathes sont
+  toujours en chiffres pleins, à la couleur des lignes.
 
 ### 0.1.0-beta.8 (2026-11-10)
 

@@ -47,7 +47,7 @@ grids are never recomputed.
 | **Units** | Survey files can be imported in metres or feet; the database always stores metres. Soundings, isobaths, legend, palette thresholds, safety depth and tide heights follow OpenCPN's units (*Options › Display › Units*: metres or feet — fathoms are shown in feet) |
 | **Survey metadata** | Survey date set at import (or read from the file name) and editable afterwards; vertical reference, coordinate system and Z unit of an imported source can be changed (*Edit…*: the original files are re-read with the new settings, which are stored per source) |
 | **Tide curve** | Separate window plotting height versus time for every tide point used (OpenCPN station, or up to 9 FES2022 points spread over the data), legend with checkboxes, automatic bounds (one tide cycle around the chosen time) or user-defined, marker at the current or chosen time |
-| **Language** | French, English or Russian, following OpenCPN's language (*Options › User › General options › Language*: French → French, Russian → Russian, any other language → English) |
+| **Language** | French, English or Russian, following OpenCPN's language (*Options › User › General options › Language*: French → French, Russian → Russian, any other language → English, unless a `PersonalDepth_<code>.po` translation file exists; see the user guide) |
 | **Display** | Hillshading (adjustable, vertical exaggeration), GLSL smoothing, isobaths (marching squares, cached per zoom level, labels, safety contour), decluttered exact soundings, cursor read-out with source survey |
 
 ### Installation (testers)
@@ -206,7 +206,7 @@ grilles de profondeur ne sont jamais recalculées.
 | Sondes chiffrées | Plus faible sonde par case d'écran, décimale en indice, valeurs découvrantes soulignées, troncature hydrographique, désencombrement ; lecture curseur avec la source du levé |
 | Métadonnées des levés | Date du levé imposée à l'import (sinon lue dans le nom du fichier) et modifiable ensuite ; référence verticale, système de coordonnées et unité de Z d'une source importée modifiables (*Modifier…* : les fichiers d'origine sont relus avec les nouveaux réglages, enregistrés par source) |
 | Courbe de marée | Fenêtre indépendante : hauteur d'eau en fonction du temps pour chaque point de marée utilisé (station OpenCPN, ou jusqu'à 9 points FES2022 répartis sur les données), légende à cocher, bornes automatiques (un cycle de marée autour de l'instant choisi) ou saisies, marqueur de l'instant (direct ou date choisie) |
-| Langue | Français, anglais ou russe, selon la langue d'OpenCPN (*Options › Utilisateur › Options générales › Langue* : français → français, russe → russe, toute autre langue → anglais) |
+| Langue | Français, anglais ou russe, selon la langue d'OpenCPN (*Options › Utilisateur › Options générales › Langue* : français → français, russe → russe, toute autre langue → anglais, sauf fichier de traduction `PersonalDepth_<code>.po` ; voir le guide) |
 | Rendu | OpenGL (tuiles texturées, shader GLSL) et mode non-GL (wxDC) |
 
 ### Installation (testeurs)

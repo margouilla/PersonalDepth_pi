@@ -121,6 +121,15 @@ std::string SurveyShape::describe() const {
   return s;
 }
 
+// P95 des grandes arêtes (plus de 5 fois l'arête médiane) : celles qui relient
+// deux lignes d'un levé en lignes (0 s'il n'y en a pas)
+static double BigEdgeP95(const std::vector<double>& e, double p50) {
+  std::vector<double> big;
+  for (double v : e)
+    if (v > 5 * p50) big.push_back(v);
+  return big.size() < 20 ? 0 : Pct(big, 0.95);
+}
+
 SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
   SurveyShape r;
   const size_t N = pc.size();
@@ -269,6 +278,7 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
     r.edge50 = Pct(e, 0.5);
     r.edge90 = Pct(e, 0.9);
     r.edge95 = Pct(e, 0.95);
+    r.gap95 = BigEdgeP95(e, r.edge50);
     // Levé en lignes très dense (sondeur à cadence rapide, sondes à quelques
     // décimètres le long de la route, un peu dispersées en travers) : les
     // milliers de petites arêtes à l'intérieur de chaque route masquent l'écart
@@ -304,6 +314,7 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
           r.edge50 = t50;
           r.edge90 = t90;
           r.edge95 = Pct(te, 0.95);
+          r.gap95 = BigEdgeP95(te, t50);
           break;
         }
       }
@@ -325,7 +336,9 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
   r.lines = (hint == Instrument::SingleBeam) ||
             (hint == Instrument::Auto && n >= 50 && r.edge50 > 0 && r.edge90 > 5 * r.edge50);
   if (r.lines) {
-    r.maxEdge = 1.25 * std::max(r.edge90, r.edge50);  // un peu plus que l'écart entre lignes
+    // un peu plus que les grands écarts entre lignes (95 % des arêtes qui
+    // relient deux lignes), pour combler aussi les passages plus espacés
+    r.maxEdge = 1.25 * std::max({r.gap95, r.edge90, r.edge50});
     // espacement le long de la route, mais pas plus fin que 1/100 de l'écart
     // entre lignes (sondeur à cadence rapide : la tache au fond fait bien plus)
     r.storeRes = std::max({0.05, r.nn50, r.maxEdge / 125.0});

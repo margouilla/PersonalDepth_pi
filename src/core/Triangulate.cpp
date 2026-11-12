@@ -109,29 +109,86 @@ void InterpolatePixels(InterpMethod m, const std::vector<double>& xy, const std:
   const size_t np = pix.size() / 2, nv = xy.size() / 2;
   out.assign(np, std::numeric_limits<double>::quiet_NaN());
   if (!np || nv < 1 || m == InterpMethod::Tin) return;
+  // grande distance (voisin naturel : coût en r² par pixel ; IDW : toutes les
+  // sondes à moins de D) : au-delà d'un rayon de ~24 pixels, calcul sur une
+  // grille de travail f fois plus grossière, puis valeur de chaque pixel
+  // demandé par interpolation bilinéaire (la surface stockée reste au pas des
+  // sondes).
+  {
+    // facteur en puissance de 2 : la grille de travail tombe sur les bords des
+    // tuiles (256 pixels), donc la même d'une tuile à l'autre
+    int f = 1;
+    while (f < 256 && (0.6 * maxDist + 2) / f > 24.0) f *= 2;
+    if (f > 1) {
+      std::vector<double> cxy(xy.size());
+      for (size_t i = 0; i < xy.size(); ++i) cxy[i] = xy[i] / f;
+      // pixels grossiers nécessaires : les 4 voisins bilinéaires de chaque pixel
+      std::vector<int> cpix;
+      std::vector<long long> keys;
+      keys.reserve(np * 4);
+      auto ckey = [](int i, int j) { return ((long long)(uint32_t)j << 32) | (uint32_t)i; };
+      for (size_t p = 0; p < np; ++p) {
+        const double fx = (pix[2 * p] + 0.5) / f - 0.5, fy = (pix[2 * p + 1] + 0.5) / f - 0.5;
+        const int i0 = (int)std::floor(fx), j0 = (int)std::floor(fy);
+        for (int dj = 0; dj <= 1; ++dj)
+          for (int di = 0; di <= 1; ++di) keys.push_back(ckey(i0 + di, j0 + dj));
+      }
+      std::sort(keys.begin(), keys.end());
+      keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+      cpix.reserve(keys.size() * 2);
+      for (long long k : keys) { cpix.push_back((int)(int32_t)(uint32_t)(k & 0xFFFFFFFFll)); cpix.push_back((int)(k >> 32)); }
+      std::vector<double> cres;
+      InterpolatePixels(m, cxy, val, cpix, maxDist / f, cres);
+      for (size_t p = 0; p < np; ++p) {
+        const double fx = (pix[2 * p] + 0.5) / f - 0.5, fy = (pix[2 * p + 1] + 0.5) / f - 0.5;
+        const int i0 = (int)std::floor(fx), j0 = (int)std::floor(fy);
+        const double tx = fx - i0, ty = fy - j0;
+        double a = 0, w = 0;
+        for (int dj = 0; dj <= 1; ++dj)
+          for (int di = 0; di <= 1; ++di) {
+            const size_t q = std::lower_bound(keys.begin(), keys.end(), ckey(i0 + di, j0 + dj)) - keys.begin();
+            const double v = cres[q];
+            if (!std::isfinite(v)) continue;
+            const double wq = (di ? tx : 1 - tx) * (dj ? ty : 1 - ty) + 1e-9;
+            a += wq * v;
+            w += wq;
+          }
+        if (w > 0) out[p] = a / w;
+      }
+      return;
+    }
+  }
   Buckets B;
   if (m == InterpMethod::Idw) {
     B.build(xy, std::max(1.0, maxDist / 4));
     const double r2max = maxDist * maxDist;
-    std::vector<std::pair<double, int>> near;
+    // recherche par quadrants : les 3 sondes les plus proches dans chaque quart
+    // du plan. Sans cela, entre deux lignes d'un levé, les 12 plus proches
+    // viennent souvent de la même ligne (sondes rapprochées le long de la route)
+    // et la surface fait des marches au lieu de passer d'une ligne à l'autre.
+    std::vector<std::pair<double, int>> near[4];
     for (size_t p = 0; p < np; ++p) {
       const double x = pix[2 * p] + 0.5, y = pix[2 * p + 1] + 0.5;
-      near.clear();
+      for (auto& q : near) q.clear();
       B.around(x, y, maxDist, [&](int k) {
         const double dx = xy[2 * k] - x, dy = xy[2 * k + 1] - y, d2 = dx * dx + dy * dy;
-        if (d2 <= r2max) near.push_back({d2, k});
+        if (d2 <= r2max) near[(dx >= 0 ? 1 : 0) + (dy >= 0 ? 2 : 0)].push_back({d2, k});
       });
-      if (near.empty()) continue;
-      const size_t kk = std::min<size_t>(12, near.size());
-      std::partial_sort(near.begin(), near.begin() + kk, near.end());
-      if (near[0].first < 1e-12) { out[p] = val[near[0].second]; continue; }
       double sw = 0, sv = 0;
-      for (size_t q = 0; q < kk; ++q) {
-        const double w = 1.0 / near[q].first;  // 1 / d²
-        sw += w;
-        sv += w * val[near[q].second];
+      bool exact = false, any = false;
+      for (auto& q : near) {
+        const size_t kk = std::min<size_t>(3, q.size());
+        std::partial_sort(q.begin(), q.begin() + kk, q.end());
+        for (size_t i = 0; i < kk; ++i) {
+          any = true;
+          if (q[i].first < 1e-12) { out[p] = val[q[i].second]; exact = true; break; }
+          const double w = 1.0 / q[i].first;  // 1 / d²
+          sw += w;
+          sv += w * val[q[i].second];
+        }
+        if (exact) break;
       }
-      out[p] = sv / sw;
+      if (!exact && any) out[p] = sv / sw;
     }
     return;
   }
@@ -143,7 +200,9 @@ void InterpolatePixels(InterpMethod m, const std::vector<double>& xy, const std:
     xmin = std::min(xmin, pix[2 * p]); xmax = std::max(xmax, pix[2 * p]);
     ymin = std::min(ymin, pix[2 * p + 1]); ymax = std::max(ymax, pix[2 * p + 1]);
   }
-  const int rcap = (int)std::ceil(std::min(maxDist, 32.0));  // rayon plafonné (coût en r²)
+  // rayon : un point d'un triangle d'arêtes <= D est à moins de D / √3 d'un
+  // sommet ; plafonné (coût en r²), la résolution de la base suivant D
+  const int rcap = (int)std::ceil(std::min(0.6 * maxDist + 2, 128.0));
   const int W = xmax - xmin + 1, H = ymax - ymin + 1;
   std::vector<int> target((size_t)W * H, -1);  // pixel demandé -> rang dans pix
   for (size_t p = 0; p < np; ++p) target[(size_t)(pix[2 * p + 1] - ymin) * W + (pix[2 * p] - xmin)] = (int)p;

@@ -1,0 +1,3016 @@
+# PersonalDepth_pi — interface translation (gettext .po, UTF-8)
+# msgid = English text, msgstr = translation (empty: English is shown).
+# msgctxt, when present, is the exact French source text: it separates two
+# texts that are the same in English but need different translations.
+# Keep the %d, %s, %.2f… of the English text, in the same order.
+# \n is a line break.
+#
+# Your corrected copy: put it in the PersonalDepth_pi user folder (the one
+# that holds the palettes folder), in a "lang" subfolder, with the same
+# file name. It is read after this one and is kept on plugin updates.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. fr: PersonalDepth — bathymétrie personnelle
+msgid "PersonalDepth — personal bathymetry"
+msgstr "PersonalDepth — собственная батиметрия"
+
+#. fr: Marée
+msgid "Tide"
+msgstr "Прилив"
+
+#. fr: Stations de marée OpenCPN (hauteur unique)
+msgid "OpenCPN tide stations (single height)"
+msgstr "Приливные станции OpenCPN (одна высота)"
+
+#. fr: FES2022 maillé (hauteur variable sur la zone)
+msgid "Gridded FES2022 (height varies over the area)"
+msgstr "Сетка FES2022 (высота меняется по области)"
+
+#. fr: FES2022 : hauteur calculée en chaque nœud de l'atlas (1/30°), ajoutée cellule par cellule ; nécessite le fichier .pdtide.
+msgid "FES2022: height computed at every atlas node (1/30°) and added cell by cell; requires the .pdtide file."
+msgstr "FES2022: высота вычисляется в каждом узле атласа (1/30°) и прибавляется по ячейкам; нужен файл .pdtide."
+
+#. fr: atlas FES2022 : FES2022b_ocean.pdtide
+msgid "FES2022 atlas: FES2022b_ocean.pdtide"
+msgstr "Атлас FES2022: FES2022b_ocean.pdtide"
+
+#. fr: facultatif : grille(s) Z0 = niveau moyen au-dessus du ZH (m)
+msgid "optional: Z0 grid(s) = mean sea level above chart datum (m)"
+msgstr "необязательно: сетка(и) Z0 = средний уровень моря над нулём глубин (м)"
+
+#. fr: Z0 par BathyElli NM/ell − ZH/ell (dossier France) si présents
+msgid "Z0 from BathyElli MSL/ell − CD/ell (France folder) if available"
+msgstr "Z0 из BathyElli MSL/ell − CD/ell (папка France), если есть"
+
+#. fr: Ordre de priorité de Z0 : grille fournie, puis BathyElli NM/ell − ZH/ell, puis plus basse mer astronomique FES sur 19 ans (approximation du ZH).
+msgid "Z0 priority: supplied grid, then BathyElli MSL/ell − CD/ell, then FES lowest astronomical tide over 19 years (chart datum approximation)."
+msgstr "Приоритет Z0: заданная сетка, затем BathyElli MSL/ell − CD/ell, затем наинизший теоретический уровень FES за 19 лет (приближение нуля глубин)."
+
+#. fr: Atlas
+msgid "Atlas"
+msgstr "Атлас"
+
+#. fr: Grille Z0
+msgid "Z0 grid"
+msgstr "Сетка Z0"
+
+#. fr: Aucune — profondeurs au zéro hydrographique
+msgid "None — depths at chart datum"
+msgstr "Нет — глубины от нуля глубин"
+
+#. fr: Hauteur d'eau actuelle (heure du PC)
+msgid "Current water height (computer clock)"
+msgstr "Текущая высота воды (часы компьютера)"
+
+#. fr: Date et heure choisies
+msgid "Chosen date and time"
+msgstr "Выбранные дата и время"
+
+#. fr: Faire défiler l'heure de ±12 h par pas de 15 min
+msgid "Scroll the time by ±12 h in 15 min steps"
+msgstr "Сдвиг времени на ±12 ч шагом 15 мин"
+
+#. fr: Courbe de marée…
+msgid "Tide curve…"
+msgstr "Кривая прилива…"
+
+#. fr: Hauteur d'eau en fonction du temps pour chaque point de marée utilisé
+msgid "Water height versus time for each tide point used"
+msgstr "Высота воды во времени для каждой используемой приливной точки"
+
+#. fr: Atlas de marée FES2022
+msgid "FES2022 tide atlas"
+msgstr "Приливный атлас FES2022"
+
+#. fr: Atlas PersonalDepth (*.pdtide)|*.pdtide|Tous|*
+msgid "PersonalDepth atlas (*.pdtide)|*.pdtide|All|*"
+msgstr "Атлас PersonalDepth (*.pdtide)|*.pdtide|Все|*"
+
+#. fr: Grille(s) Z0 : niveau moyen au-dessus du ZH
+msgid "Z0 grid(s): mean sea level above chart datum"
+msgstr "Сетка(и) Z0: средний уровень моря над нулём глубин"
+
+#. fr: Grilles (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|Tous|*
+msgid "Grids (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|All|*"
+msgstr "Сетки (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|Все|*"
+
+#. fr: Base de bathymétrie
+msgid "Bathymetry database"
+msgstr "База батиметрии"
+
+#. fr: dossier de la base (fichiers PD_*.pdb)
+msgid "database folder (PD_*.pdb files)"
+msgstr "папка базы (файлы PD_*.pdb)"
+
+#. fr: Dossier
+msgid "Folder"
+msgstr "Папка"
+
+#. fr: Fichier .pdb
+msgid ".pdb file"
+msgstr "Файл .pdb"
+
+#. fr: Taille
+msgid "Size"
+msgstr "Размер"
+
+#. fr: Sources
+msgid "Sources"
+msgstr "Источники"
+
+#. fr: Case : afficher ou masquer la bathymétrie de ce fichier (sa cellule géographique). Les sources et leur import se gèrent dans « Gestion des données ».
+msgid "Checkbox: show or hide the bathymetry of this file (its geographic cell). Sources and their import are managed in “Data management”."
+msgstr "Флажок: показать или скрыть батиметрию этого файла (его географической ячейки). Источники и их импорт — в «Управлении данными»."
+
+#. fr: Gestion des données…
+msgid "Data management…"
+msgstr "Управление данными…"
+
+#. fr: Importer des fichiers, voir les sources importées et leurs métadonnées, priorités, classes, nettoyage, découpage des fichiers.
+msgid "Import files, view imported sources and their metadata, priorities, classes, cleaning, file splitting."
+msgstr "Импорт файлов, просмотр импортированных источников и их метаданных, приоритеты, классы, очистка, разбиение файлов."
+
+#. fr: Tout
+msgid "All"
+msgstr "Все"
+
+#. fr: Aucun
+msgid "None"
+msgstr "Нет"
+
+#. fr: Centrer
+msgid "Centre"
+msgstr "Центр"
+
+#. fr: Centrer la carte sur les fichiers sélectionnés
+msgid "Centre the chart on the selected files"
+msgstr "Центрировать карту на выбранных файлах"
+
+#. fr: Arrêter
+msgid "Stop"
+msgstr "Стоп"
+
+#. fr: Arrêter l'opération en cours sur la base (import, nettoyage…). Pour un import, les fichiers déjà terminés restent dans la base.
+msgid "Stop the current database operation (import, cleaning…). For an import, files already finished stay in the database."
+msgstr "Остановить текущую операцию с базой (импорт, очистка…). При импорте уже завершённые файлы остаются в базе."
+
+#. fr: Dossier de la base de bathymétrie
+msgid "Bathymetry database folder"
+msgstr "Папка базы батиметрии"
+
+#. fr: Palette et seuils de profondeur
+msgid "Palette and depth thresholds"
+msgstr "Палитра и пороги глубин"
+
+#. fr: (personnalisée)
+msgid "(custom)"
+msgstr "(своя)"
+
+#. fr: Dégradé continu
+msgid "Continuous gradient"
+msgstr "Плавный градиент"
+
+#. fr: Paliers
+msgid "Steps"
+msgstr "Ступени"
+
+#. fr: Automatique
+msgid "Automatic"
+msgstr "Авто"
+
+#. fr: Seuils répartis entre la profondeur minimale et maximale, couleurs reprises de la palette choisie. Modifier un seuil à la main désactive le mode automatique.
+msgid "Thresholds spread between minimum and maximum depth, colours taken from the chosen palette. Editing a threshold by hand turns automatic mode off."
+msgstr "Пороги распределены между минимальной и максимальной глубиной, цвета берутся из выбранной палитры. Ручное изменение порога отключает автоматический режим."
+
+#. fr: toutes les données
+msgid "all data"
+msgstr "все данные"
+
+#. fr: zone affichée
+msgid "displayed area"
+msgstr "видимая область"
+
+#. fr: Toutes les données : base et couches visibles. Zone affichée : recalculé quand la carte se déplace.
+msgid "All data: database and visible layers. Displayed area: recomputed when the chart moves."
+msgstr "Все данные: база и видимые слои. Видимая область: пересчёт при перемещении карты."
+
+#. fr: valeurs rondes
+msgid "round values"
+msgstr "круглые значения"
+
+#. fr: Seuils multiples de 1, 2, 2,5 ou 5 × 10ⁿ (sinon répartis exactement)
+msgid "Thresholds are multiples of 1, 2, 2.5 or 5 × 10ⁿ (otherwise spread exactly)"
+msgstr "Пороги кратны 1, 2, 2,5 или 5 × 10ⁿ (иначе распределены точно)"
+
+#. fr: seuils
+msgid "thresholds"
+msgstr "порогов"
+
+#. fr: min imposé
+msgid "fixed min"
+msgstr "фикс. мин."
+
+#. fr: Premier seuil fixé (ex. 0 m : palette sur la seule bathymétrie, les altitudes gardent une seule couleur)
+msgid "First threshold fixed (e.g. 0 m: palette on bathymetry only, land heights keep a single colour)"
+msgstr "Первый порог фиксирован (напр. 0 м: палитра только для батиметрии, высоты суши одного цвета)"
+
+#. fr: max imposé
+msgid "fixed max"
+msgstr "фикс. макс."
+
+#. fr: Dernier seuil fixé : les fonds plus profonds gardent la dernière couleur
+msgid "Last threshold fixed: deeper bottoms keep the last colour"
+msgstr "Последний порог фиксирован: более глубокое дно сохраняет последний цвет"
+
+#. fr: Seuil (m)
+msgid "Threshold (m)"
+msgstr "Порог (м)"
+
+#. fr: Couleur (double-clic)
+msgid "Colour (double-click)"
+msgstr "Цвет (двойной щелчок)"
+
+#. fr: + seuil
+msgid "+ threshold"
+msgstr "+ порог"
+
+#. fr: − seuil
+msgid "− threshold"
+msgstr "− порог"
+
+#. fr: Importer .cpt…
+msgid "Import .cpt…"
+msgstr "Импорт .cpt…"
+
+#. fr: Exporter .cpt…
+msgid "Export .cpt…"
+msgstr "Экспорт .cpt…"
+
+#. fr: Zone dangereuse si prof. <
+msgid "Danger zone if depth <"
+msgstr "Опасная зона, если глубина <"
+
+#. fr: Seuil (
+msgid "Threshold ("
+msgstr "Порог ("
+
+#. fr: Intervalle (
+msgid "Interval ("
+msgstr "Интервал ("
+
+#. fr: Maîtresse tous les (
+msgid "Major every ("
+msgstr "Основная каждые ("
+
+#. fr: Importer une palette GMT
+msgid "Import a GMT palette"
+msgstr "Импорт палитры GMT"
+
+#. fr: Palette GMT (*.cpt)|*.cpt
+msgid "GMT palette (*.cpt)|*.cpt"
+msgstr "Палитра GMT (*.cpt)|*.cpt"
+
+#. fr: Exporter la palette
+msgid "Export the palette"
+msgstr "Экспорт палитры"
+
+#. fr: Échec de l'écriture
+msgid "Write failed"
+msgstr "Ошибка записи"
+
+#. fr: Isobathes
+msgid "Depth contours"
+msgstr "Изобаты"
+
+#. fr: Afficher les isobathes
+msgid "Show depth contours"
+msgstr "Показать изобаты"
+
+#. fr: Intervalle régulier
+msgid "Regular interval"
+msgstr "Постоянный интервал"
+
+#. fr: Seuils de la palette
+msgid "Palette thresholds"
+msgstr "Пороги палитры"
+
+#. fr: Ligne épaisse toutes les N unités de profondeur (0 = aucune)
+msgid "Thick line every N depth units (0 = none)"
+msgstr "Толстая линия каждые N единиц глубины (0 = нет)"
+
+#. fr: Valeurs sur les lignes
+msgid "Values on lines"
+msgstr "Значения на линиях"
+
+#. fr: Lissage des lignes
+msgid "Line smoothing"
+msgstr "Сглаживание линий"
+
+#. fr: Arrondit les angles du tracé (purement graphique)
+msgid "Rounds the line corners (display only)"
+msgstr "Скругляет углы линий (только отображение)"
+
+#. fr: Niveaux
+msgid "Levels"
+msgstr "Уровни"
+
+#. fr: Intervalle (m)
+msgid "Interval (m)"
+msgstr "Интервал (м)"
+
+#. fr: Maîtresse tous les (m)
+msgid "Major every (m)"
+msgstr "Основная каждые (м)"
+
+#. fr: L'isobathe de sécurité (rouge) suit la zone dangereuse.
+msgid "The safety contour (red) follows the danger zone."
+msgstr "Изобата безопасности (красная) следует опасной зоне."
+
+#. fr: Affichage
+msgid "Display"
+msgstr "Отображение"
+
+#. fr: Ombrage du relief
+msgid "Relief shading"
+msgstr "Отмывка рельефа"
+
+#. fr: Sondes chiffrées
+msgctxt "Sondes chiffrées"
+msgid "Soundings"
+msgstr "Отметки глубин"
+
+#. fr: Lissage (interpolation)
+msgid "Smoothing (interpolation)"
+msgstr "Сглаживание (интерполяция)"
+
+#. fr: Légende + lecture au curseur
+msgid "Legend + cursor readout"
+msgstr "Легенда + показания курсора"
+
+#. fr: Opacité
+msgid "Opacity"
+msgstr "Непрозрачность"
+
+#. fr: Exagération verticale
+msgid "Vertical exaggeration"
+msgstr "Вертикальное преувеличение"
+
+#. fr: Adoucit le relief ombré (rayon en cellules, 0 = aucun). Les couleurs, isobathes et sondes gardent les vraies profondeurs.
+msgid "Softens the shaded relief (radius in cells, 0 = none). Colours, contours and soundings keep the true depths."
+msgstr "Смягчает отмывку рельефа (радиус в ячейках, 0 = нет). Цвета, изобаты и отметки сохраняют истинные глубины."
+
+#. fr: Adoucir le relief
+msgid "Soften relief"
+msgstr "Смягчить рельеф"
+
+#. fr: Décimales
+msgid "Decimals"
+msgstr "Знаков после запятой"
+
+#. fr: Taille du texte
+msgid "Text size"
+msgstr "Размер текста"
+
+#. fr: Curseur : —
+msgid "Cursor: —"
+msgstr "Курсор: —"
+
+#. fr: Curseur : 
+msgid "Cursor: "
+msgstr "Курсор: "
+
+#. fr: Prof. (
+msgid "Depth ("
+msgstr "Глубина ("
+
+#. fr: PersonalDepth — gestion des données
+msgid "PersonalDepth — data management"
+msgstr "PersonalDepth — управление данными"
+
+#. fr: Meilleure résolution, puis plus récente
+msgid "Best resolution, then most recent"
+msgstr "Лучшее разрешение, затем самый новый"
+
+#. fr: Sonde la plus faible
+msgid "Shoalest sounding"
+msgstr "Наименьшая глубина"
+
+#. fr: Levé le plus récent
+msgid "Most recent survey"
+msgstr "Самая новая съёмка"
+
+#. fr: Ordre de la liste (rang manuel)
+msgid "List order (manual rank)"
+msgstr "Порядок списка (ручной ранг)"
+
+#. fr: Dans les recouvrements, chaque pixel prend la valeur de la source prioritaire (pas de moyenne). Changer la règle refusionne la base.
+msgid "Where sources overlap, each pixel takes the value of the priority source (no averaging). Changing the rule re-merges the database."
+msgstr "Где источники перекрываются, каждый пиксель берёт значение приоритетного источника (без усреднения). Смена правила пересобирает базу."
+
+#. fr: Priorité
+msgid "Priority"
+msgstr "Приоритет"
+
+#. fr: Redécouper…
+msgid "Re-split…"
+msgstr "Переразбить…"
+
+#. fr: Changer la taille des cellules géographiques des fichiers .pdb (fichiers plus petits avec des cellules plus petites)
+msgid "Change the size of the geographic cells of the .pdb files (smaller cells give smaller files)"
+msgstr "Изменить размер географических ячеек файлов .pdb (меньшие ячейки дают меньшие файлы)"
+
+#. fr: Fichiers .pdb
+msgid ".pdb files"
+msgstr "Файлы .pdb"
+
+#. fr: Source
+msgid "Source"
+msgstr "Источник"
+
+#. fr: Date du levé
+msgid "Survey date"
+msgstr "Дата съёмки"
+
+#. fr: Rés. (m)
+msgid "Res. (m)"
+msgstr "Разр. (м)"
+
+#. fr: Sondes
+msgctxt "Sondes"
+msgid "Soundings"
+msgstr "Отметки"
+
+#. fr: Rang
+msgid "Rank"
+msgstr "Ранг"
+
+#. fr: Z min
+msgid "Z min"
+msgstr "Z мин"
+
+#. fr: Z max
+msgid "Z max"
+msgstr "Z макс"
+
+#. fr: Réf. verticale
+msgid "Vertical ref."
+msgstr "Высотная система"
+
+#. fr: Système
+msgid "System"
+msgstr "Система"
+
+#. fr: Unité Z
+msgctxt "Unité Z"
+msgid "Z unit"
+msgstr "Ед. Z"
+
+#. fr: Importée le
+msgid "Imported on"
+msgstr "Импортирован"
+
+#. fr: Case : utiliser ou non une source (ou toute une classe) dans la fusion. Maj ou Ctrl + clic : sélection multiple ; une classe sélectionnée compte pour toutes ses sources.
+msgid "Checkbox: use a source (or a whole class) in the merge or not. Shift or Ctrl + click: multiple selection; a selected class counts for all its sources."
+msgstr "Флажок: использовать источник (или целый класс) при слиянии или нет. Shift или Ctrl + щелчок: множественный выбор; выбранный класс действует на все его источники."
+
+#. fr: Importer…
+msgid "Import…"
+msgstr "Импорт…"
+
+#. fr: Fichiers, colonnes, NODATA, bornes, système de coordonnées, référence verticale et transformation vers le ZH, classe.
+msgid "Files, columns, NODATA, bounds, coordinate system, vertical reference and transformation to chart datum, class."
+msgstr "Файлы, столбцы, NODATA, границы, система координат, высотная система и пересчёт к нулю глубин, класс."
+
+#. fr: Monter la sélection dans l'ordre des rangs (règle « rang manuel »)
+msgid "Move the selection up in rank order (“manual rank” rule)"
+msgstr "Поднять выбранное в порядке рангов (правило «ручной ранг»)"
+
+#. fr: Descendre la sélection dans l'ordre des rangs
+msgid "Move the selection down in rank order"
+msgstr "Опустить выбранное в порядке рангов"
+
+#. fr: Retirer
+msgid "Remove"
+msgstr "Удалить"
+
+#. fr: Nettoyer…
+msgid "Clean…"
+msgstr "Очистить…"
+
+#. fr: Retirer des sources sélectionnées les sondes hors des bornes Z1 – Z2, puis refusionner
+msgid "Remove from the selected sources the soundings outside the Z1 – Z2 bounds, then re-merge"
+msgstr "Удалить из выбранных источников отметки вне границ Z1 – Z2, затем пересобрать"
+
+#. fr: Modifier…
+msgid "Edit…"
+msgstr "Изменить…"
+
+#. fr: Date du levé, classe, unité verticale, système de coordonnées, référence verticale des sources sélectionnées (double-clic sur une source : idem)
+msgid "Survey date, class, vertical unit, coordinate system, vertical reference of the selected sources (double-click on a source: same)"
+msgstr "Дата съёмки, класс, единица по вертикали, система координат, высотная система выбранных источников (двойной щелчок по источнику: то же)"
+
+#. fr: Centrer la carte sur les sources sélectionnées
+msgid "Centre the chart on the selected sources"
+msgstr "Центрировать карту на выбранных источниках"
+
+#. fr: classe à donner aux sources sélectionnées
+msgid "class to give to the selected sources"
+msgstr "класс для выбранных источников"
+
+#. fr: Classer la sélection
+msgid "Classify selection"
+msgstr "Классифицировать выбранное"
+
+#. fr: Classe
+msgid "Class"
+msgstr "Класс"
+
+#. fr: Arrêter l'opération en cours. Pour un import, les fichiers déjà terminés restent dans la base ; le fichier en cours est annulé.
+msgid "Stop the current operation. For an import, files already finished stay in the database; the file in progress is cancelled."
+msgstr "Остановить текущую операцию. При импорте уже завершённые файлы остаются в базе; обрабатываемый файл отменяется."
+
+#. fr: Fermer
+msgid "Close"
+msgstr "Закрыть"
+
+#. fr: Retirer cette source de la base ?
+msgid "Remove this source from the database?"
+msgstr "Удалить этот источник из базы?"
+
+#. fr: Retirer ces %d sources de la base ?
+msgid "Remove these %d sources from the database?"
+msgstr "Удалить эти %d источников из базы?"
+
+#. fr: \nLeurs sondes seront supprimées de la base (les fichiers d'origine ne sont pas touchés).
+msgid "\nTheir soundings will be deleted from the database (the original files are not touched)."
+msgstr "\nИх отметки будут удалены из базы (исходные файлы не затрагиваются)."
+
+#. fr: Saisir ou choisir une classe.
+msgid "Enter or choose a class."
+msgstr "Введите или выберите класс."
+
+#. fr: Choisir d'abord le dossier de la base (panneau PersonalDepth).
+msgid "First choose the database folder (PersonalDepth panel)."
+msgstr "Сначала выберите папку базы (панель PersonalDepth)."
+
+#. fr:   … et %d autre(s)\n
+msgid "  … and %d more\n"
+msgstr "  … и ещё %d\n"
+
+#. fr: %d fichier(s) sur %d sont déjà dans la base :\n\n
+msgid "%d of %d file(s) are already in the database:\n\n"
+msgstr "%d из %d файлов уже есть в базе:\n\n"
+
+#. fr: \nImporter seulement les nouveaux fichiers, ou tout réimporter ? Au réimport, la version déjà présente de chaque fichier est remplacée par la nouvelle.
+msgid "\nImport only the new files, or re-import everything? On re-import, the version of each file already present is replaced by the new one."
+msgstr "\nИмпортировать только новые файлы или всё заново? При повторном импорте уже имеющаяся версия каждого файла заменяется новой."
+
+#. fr: Fichiers déjà importés
+msgid "Files already imported"
+msgstr "Файлы уже импортированы"
+
+#. fr: Seulement les nouveaux (%d)
+msgid "Only the new ones (%d)"
+msgstr "Только новые (%d)"
+
+#. fr: Tout réimporter (remplacer)
+msgid "Re-import all (replace)"
+msgstr "Импортировать всё заново (заменить)"
+
+#. fr: Annuler
+msgid "Cancel"
+msgstr "Отмена"
+
+#. fr: Tous ces fichiers sont déjà dans la base.
+msgid "All these files are already in the database."
+msgstr "Все эти файлы уже есть в базе."
+
+#. fr: Les réglages de lecture ont changé : les %d fichier(s) d'origine vont être relus et convertis à nouveau (durée comparable à l'import), puis remplacer les sources actuelles.\n\nContinuer ?
+msgid "The reading settings have changed: the %d original file(s) will be read and converted again (similar time to an import), then replace the current sources.\n\nContinue?"
+msgstr "Параметры чтения изменились: %d исходных файлов будут прочитаны и преобразованы заново (время как при импорте), затем заменят текущие источники.\n\nПродолжить?"
+
+#. fr: Nettoyer les sources
+msgid "Clean sources"
+msgstr "Очистить источники"
+
+#. fr: %d source(s) sélectionnée(s). Les sondes dont la profondeur (ZH, m, positive vers le bas) sort des bornes Z1 – Z2 sont supprimées de la base, puis les pyramides et la fusion sont reconstruites. Les fichiers d'origine ne sont pas touchés.\n\nCe sont les bornes de la fenêtre d'import : les valeurs choisies ici y sont reprises.
+msgid "%d source(s) selected. Soundings whose depth (chart datum, m, positive down) is outside the Z1 – Z2 bounds are deleted from the database, then pyramids and merge are rebuilt. The original files are not touched.\n\nThese are the bounds of the import window: the values chosen here are copied there."
+msgstr "Выбрано источников: %d. Отметки, глубина которых (от нуля глубин, м, вниз положительно) вне границ Z1 – Z2, удаляются из базы, затем пирамиды и слияние пересобираются. Исходные файлы не затрагиваются.\n\nЭто границы окна импорта: выбранные здесь значения копируются туда."
+
+#. fr: Garder de Z1 =
+msgid "Keep from Z1 ="
+msgstr "Оставить от Z1 ="
+
+#. fr: Exemple : -200 à 200 m retire les remplissages 999 (affichés vers -1000 m) et garde l'estran jusqu'à 200 m d'altitude.
+msgid "Example: -200 to 200 m removes 999 fill values (shown around -1000 m) and keeps the foreshore up to 200 m height."
+msgstr "Пример: от -200 до 200 м убирает значения-заполнители 999 (видны около -1000 м) и сохраняет осушку до высоты 200 м."
+
+#. fr: Bornes vides : Z1 doit être inférieur à Z2.
+msgid "Empty bounds: Z1 must be lower than Z2."
+msgstr "Пустой диапазон: Z1 должно быть меньше Z2."
+
+#. fr:   — environ %.0f × %.0f km
+msgid "  — about %.0f × %.0f km"
+msgstr "  — около %.0f × %.0f км"
+
+#. fr:   (actuel)
+msgid "  (current)"
+msgstr "  (текущий)"
+
+#. fr: Taille des cellules géographiques des fichiers .pdb. Des cellules plus petites donnent des fichiers plus petits (à 1 m de résolution, une cellule de 0,25° pleine de données fait de l'ordre de 300 à 600 Mo ; 0,1° : 50 à 100 Mo).\n\nToutes les tuiles sont recopiées dans un sous-dossier puis les anciens fichiers sont remplacés : prévoir 
+msgid "Size of the geographic cells of the .pdb files. Smaller cells give smaller files (at 1 m resolution, a 0.25° cell full of data is about 300 to 600 MB; 0.1°: 50 to 100 MB).\n\nAll tiles are copied into a sub-folder, then the old files are replaced: allow "
+msgstr "Размер географических ячеек файлов .pdb. Меньшие ячейки дают меньшие файлы (при разрешении 1 м ячейка 0,25°, полная данных, занимает около 300–600 МБ; 0,1°: 50–100 МБ).\n\nВсе тайлы копируются во вложенную папку, затем старые файлы заменяются: нужно "
+
+#. fr:  d'espace libre en plus. Les fichiers masqués à l'affichage redeviennent visibles.
+msgid " of extra free space. Files hidden from display become visible again."
+msgstr " свободного места дополнительно. Скрытые файлы снова станут видимыми."
+
+#. fr: Redécouper les fichiers de la base
+msgid "Re-split the database files"
+msgstr "Переразбить файлы базы"
+
+#. fr: cellules de %s — %d fichier(s), %s (le plus gros : %s)
+msgid "%s cells — %d file(s), %s (largest: %s)"
+msgstr "Ячейки %s — %d файл(ов), %s (крупнейший: %s)"
+
+#. fr: cellules de %s (base vide)
+msgid "%s cells (empty database)"
+msgstr "Ячейки %s (пустая база)"
+
+#. fr: résolution puis date
+msgid "resolution then date"
+msgstr "разрешение, затем дата"
+
+#. fr: sonde la plus faible
+msgid "shoalest sounding"
+msgstr "наименьшая глубина"
+
+#. fr: levé le plus récent
+msgid "most recent survey"
+msgstr "самая новая съёмка"
+
+#. fr: rang manuel
+msgid "manual rank"
+msgstr "ручной ранг"
+
+#. fr: Source      : 
+msgid "Source      : "
+msgstr "Источник    : "
+
+#. fr:    (classe 
+msgid "   (class "
+msgstr "   (класс "
+
+#. fr: Fichier     : 
+msgid "File        : "
+msgstr "Файл        : "
+
+#. fr: Levé        : 
+msgid "Survey      : "
+msgstr "Съёмка      : "
+
+#. fr:    importé le 
+msgid "   imported on "
+msgstr "   импортирован "
+
+#. fr:    rang %d (règle : %s)
+msgid "   rank %d (rule: %s)"
+msgstr "   ранг %d (правило: %s)"
+
+#. fr: Résolution  : %.2f m (niveau de tuiles %d)   %lld sondes   Z %.2f … %.2f %s (ZH)\n
+msgid "Resolution  : %.2f m (tile level %d)   %lld soundings   Z %.2f … %.2f %s (CD)\n"
+msgstr "Разрешение  : %.2f м (уровень тайлов %d)   %lld отметок   Z %.2f … %.2f %s (нуль глубин)\n"
+
+#. fr: Coordonnées : 
+msgid "Coordinates : "
+msgstr "Координаты  : "
+
+#. fr:    Réf. verticale : 
+msgid "   Vertical ref.: "
+msgstr "   Высотная система: "
+
+#. fr: Emprise     : lon %.5f … %.5f   lat %.5f … %.5f\n
+msgid "Extent      : lon %.5f … %.5f   lat %.5f … %.5f\n"
+msgstr "Охват       : долг. %.5f … %.5f   шир. %.5f … %.5f\n"
+
+#. fr: Fichiers    : 
+msgid "Files       : "
+msgstr "Файлы       : "
+
+#. fr: %d sources sélectionnées — %s sondes\n
+msgid "%d sources selected — %s soundings\n"
+msgstr "Выбрано источников: %d — отметок: %s\n"
+
+#. fr: Résolution %.2f … %.2f m   Z %.2f … %.2f %s (ZH)\n
+msgid "Resolution %.2f … %.2f m   Z %.2f … %.2f %s (CD)\n"
+msgstr "Разрешение %.2f … %.2f м   Z %.2f … %.2f %s (нуль глубин)\n"
+
+#. fr: Levés du 
+msgid "Surveys from "
+msgstr "Съёмки с "
+
+#. fr:  au 
+msgid " to "
+msgstr " по "
+
+#. fr: Bathymétrie (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|Tous les fichiers|*
+msgid "Bathymetry (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|All files|*"
+msgstr "Батиметрия (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|Все файлы|*"
+
+#. fr: Modifier les sources
+msgid "Edit sources"
+msgstr "Изменить источники"
+
+#. fr: Importer dans la base de bathymétrie
+msgid "Import into the bathymetry database"
+msgstr "Импорт в базу батиметрии"
+
+#. fr: Date du levé imposée
+msgid "Fixed survey date"
+msgstr "Заданная дата съёмки"
+
+#. fr: Sinon : date AAAAMMJJ trouvée dans le nom du fichier, à défaut date du fichier. La date sert à la règle de priorité « plus récent ».
+msgid "Otherwise: YYYYMMDD date found in the file name, failing that the file date. The date is used by the “most recent” priority rule."
+msgstr "Иначе: дата ГГГГММДД из имени файла, если её нет — дата файла. Дата используется правилом приоритета «самый новый»."
+
+#. fr: vide : classe actuelle de chaque source
+msgid "empty: current class of each source"
+msgstr "пусто: текущий класс каждого источника"
+
+#. fr: vide : déduite du nom de chaque fichier (LITTO3D, PFE…)
+msgid "empty: deduced from each file name (LITTO3D, PFE…)"
+msgstr "пусто: по имени каждого файла (LITTO3D, PFE…)"
+
+#. fr: Appliquer
+msgid "Apply"
+msgstr "Применить"
+
+#. fr: Importer
+msgid "Import"
+msgstr "Импорт"
+
+#. fr: Sources à modifier (fichiers d'origine)
+msgid "Sources to edit (original files)"
+msgstr "Изменяемые источники (исходные файлы)"
+
+#. fr: Fichiers à importer
+msgid "Files to import"
+msgstr "Файлы для импорта"
+
+#. fr: La date et la classe se changent sans relire les données. Un changement de lecture, de système de coordonnées, de référence verticale ou d'unité relit les fichiers d'origine (même durée qu'un import).
+msgid "Date and class change without re-reading the data. A change of reading, coordinate system, vertical reference or unit re-reads the original files (same time as an import)."
+msgstr "Дата и класс меняются без повторного чтения данных. Изменение чтения, системы координат, высотной системы или единицы перечитывает исходные файлы (время как при импорте)."
+
+#. fr: \nRéglages d'import d'origine inconnus (source importée avant l'enregistrement des réglages) : les réglages affichés sont ceux du dernier import, à vérifier.
+msgid "\nOriginal import settings unknown (source imported before settings were recorded): the settings shown are those of the last import, please check."
+msgstr "\nИсходные параметры импорта неизвестны (источник импортирован до их сохранения): показаны параметры последнего импорта, проверьте их."
+
+#. fr: \nRéglages affichés : ceux de la première source ; ils s'appliquent à toutes.
+msgid "\nSettings shown: those of the first source; they apply to all."
+msgstr "\nПоказаны параметры первого источника; они применяются ко всем."
+
+#. fr: Ajouter des fichiers…
+msgid "Add files…"
+msgstr "Добавить файлы…"
+
+#. fr: Ajouter un dossier…
+msgid "Add a folder…"
+msgstr "Добавить папку…"
+
+#. fr: Tous les fichiers de bathymétrie du dossier et de ses sous-dossiers (.xyz .txt .csv .dat .asc .xml .tif .bag)
+msgid "All bathymetry files in the folder and its sub-folders (.xyz .txt .csv .dat .asc .xml .tif .bag)"
+msgstr "Все файлы батиметрии в папке и её подпапках (.xyz .txt .csv .dat .asc .xml .tif .bag)"
+
+#. fr: Fichiers de bathymétrie
+msgid "Bathymetry files"
+msgstr "Файлы батиметрии"
+
+#. fr: Dossier de fichiers de bathymétrie
+msgid "Folder of bathymetry files"
+msgstr "Папка с файлами батиметрии"
+
+#. fr: Aucun fichier de bathymétrie dans ce dossier.
+msgid "No bathymetry file in this folder."
+msgstr "В этой папке нет файлов батиметрии."
+
+#. fr: aucun fichier
+msgid "no file"
+msgstr "нет файлов"
+
+#. fr: %u fichier%s
+msgid "%u file%s"
+msgstr "файлов: %u%.0s"
+
+#. fr: Lecture des valeurs
+msgid "Reading values"
+msgstr "Чтение значений"
+
+#. fr: X Y Z (lon lat z / Est Nord z)
+msgid "X Y Z (lon lat z / East North z)"
+msgstr "X Y Z (долг. шир. z / Восток Север z)"
+
+#. fr: Y X Z (lat lon z / Nord Est z)
+msgid "Y X Z (lat lon z / North East z)"
+msgstr "Y X Z (шир. долг. z / Север Восток z)"
+
+#. fr: Automatique (majorité négative = altitudes)
+msgid "Automatic (negative majority = heights)"
+msgstr "Авто (большинство отрицательных = высоты)"
+
+#. fr: Profondeurs positives vers le bas
+msgid "Depths positive down"
+msgstr "Глубины положительны вниз"
+
+#. fr: Altitudes (fond négatif, Z positif vers le haut)
+msgid "Heights (bottom negative, Z positive up)"
+msgstr "Высоты (дно отрицательное, Z вверх положительно)"
+
+#. fr: Sens des valeurs Z du fichier. Les rasters (.asc, .tif) suivent la même règle.
+msgid "Direction of the file Z values. Rasters (.asc, .tif) follow the same rule."
+msgstr "Направление значений Z файла. Растры (.asc, .tif) следуют тому же правилу."
+
+#. fr: Mètres
+msgid "Metres"
+msgstr "Метры"
+
+#. fr: Pieds
+msgid "Feet"
+msgstr "Футы"
+
+#. fr: Unité des valeurs Z du fichier. Les profondeurs sont converties en mètres dans la base ; l'affichage suit ensuite l'unité de profondeur choisie dans OpenCPN (Options › Affichage › Unités).
+msgid "Unit of the file Z values. Depths are converted to metres in the database; display then follows the depth unit chosen in OpenCPN (Options › Display › Units)."
+msgstr "Единица значений Z файла. В базе глубины переводятся в метры; отображение затем следует единице глубин, выбранной в OpenCPN (Параметры › Отображение › Единицы)."
+
+#. fr: Décalage constant ajouté aux profondeurs (dans l'unité de Z), en plus de la transformation verticale ci-dessous
+msgid "Constant offset added to depths (in the Z unit), in addition to the vertical transformation below"
+msgstr "Постоянная поправка к глубинам (в единице Z) в дополнение к вертикальному пересчёту ниже"
+
+#. fr: Cache binaire (.pdpc) à côté des fichiers (réimport rapide)
+msgid "Binary cache (.pdpc) next to the files (fast re-import)"
+msgstr "Двоичный кэш (.pdpc) рядом с файлами (быстрый повторный импорт)"
+
+#. fr: Colonnes
+msgid "Columns"
+msgstr "Столбцы"
+
+#. fr: Sens de Z
+msgid "Z direction"
+msgstr "Направление Z"
+
+#. fr: Unité de Z
+msgctxt "Unité de Z"
+msgid "Z unit"
+msgstr "Единица Z"
+
+#. fr: Décalage (m)
+msgid "Offset (m)"
+msgstr "Поправка (м)"
+
+#. fr: NODATA
+msgid "NODATA"
+msgstr "NODATA"
+
+#. fr: Valeurs Z du fichier à traiter comme absentes, séparées par des espaces ou des « ; » (ex. -9999 9999 -99999 99999). Elles s'ajoutent au NODATA déclaré dans l'entête des grilles ASC / GeoTIFF. Comparées aux valeurs brutes, avant changement de signe et transformation.
+msgid "File Z values to treat as missing, separated by spaces or “;” (e.g. -9999 9999 -99999 99999). They are added to the NODATA declared in ASC / GeoTIFF grid headers. Compared to the raw values, before sign change and transformation."
+msgstr "Значения Z файла, считающиеся отсутствующими, через пробел или «;» (напр. -9999 9999 -99999 99999). Добавляются к NODATA из заголовков сеток ASC / GeoTIFF. Сравниваются с исходными значениями до смены знака и пересчёта."
+
+#. fr: Bornes de Z
+msgid "Z bounds"
+msgstr "Границы Z"
+
+#. fr: Seules les sondes dont la profondeur finale (ZH, positive vers le bas, après signe, décalage et transformation verticale ; dans l'unité de Z choisie) est comprise entre Z1 et Z2 sont importées. Exemple : -200 à 200 m garde l'estran jusqu'à 200 m d'altitude et écarte les remplissages. Ce sont les mêmes bornes que le bouton « Nettoyer » de la base. Au-delà de ±12 km, une valeur est toujours ignorée.
+msgid "Only soundings whose final depth (chart datum, positive down, after sign, offset and vertical transformation; in the chosen Z unit) is between Z1 and Z2 are imported. Example: -200 to 200 m keeps the foreshore up to 200 m height and discards fill values. These are the same bounds as the database “Clean” button. Beyond ±12 km, a value is always ignored."
+msgstr "Импортируются только отметки, итоговая глубина которых (от нуля глубин, вниз положительно, после знака, поправки и вертикального пересчёта; в выбранной единице Z) лежит между Z1 и Z2. Пример: от -200 до 200 м сохраняет осушку до высоты 200 м и отбрасывает значения-заполнители. Это те же границы, что у кнопки «Очистить» базы. За пределами ±12 км значение всегда игнорируется."
+
+#. fr: m (profondeur ZH)
+msgid "m (chart datum depth)"
+msgstr "м (глубина от нуля глубин)"
+
+#. fr: Décalage (
+msgid "Offset ("
+msgstr "Поправка ("
+
+#. fr:  (profondeur ZH)
+msgid " (chart datum depth)"
+msgstr " (глубина от нуля глубин)"
+
+#. fr: Système de coordonnées (X, Y)
+msgid "Coordinate system (X, Y)"
+msgstr "Система координат (X, Y)"
+
+#. fr: Autre — code EPSG ou chaîne PROJ
+msgid "Other — EPSG code or PROJ string"
+msgstr "Другая — код EPSG или строка PROJ"
+
+#. fr: Nord
+msgid "North"
+msgstr "Север"
+
+#. fr: Sud
+msgid "South"
+msgstr "Юг"
+
+#. fr: ex. EPSG:32630 ou +proj=tmerc +lat_0=… +ellps=GRS80
+msgid "e.g. EPSG:32630 or +proj=tmerc +lat_0=… +ellps=GRS80"
+msgstr "напр. EPSG:32630 или +proj=tmerc +lat_0=… +ellps=GRS80"
+
+#. fr: Utiliser le fichier .prj voisin s'il existe (prioritaire)
+msgid "Use the neighbouring .prj file if present (takes priority)"
+msgstr "Использовать соседний файл .prj, если он есть (имеет приоритет)"
+
+#. fr: Fuseau UTM
+msgid "UTM zone"
+msgstr "Зона UTM"
+
+#. fr: Saisir un code EPSG ou une chaîne PROJ.
+msgid "Enter an EPSG code or a PROJ string."
+msgstr "Введите код EPSG или строку PROJ."
+
+#. fr: Système de coordonnées invalide : 
+msgid "Invalid coordinate system: "
+msgstr "Неверная система координат: "
+
+#. fr: Référence verticale des Z et transformation vers le ZH
+msgid "Vertical reference of Z and transformation to chart datum"
+msgstr "Высотная система Z и пересчёт к нулю глубин"
+
+#. fr: Zéro hydrographique — aucune transformation
+msgid "Chart datum — no transformation"
+msgstr "Нуль глубин — без пересчёта"
+
+#. fr: IGN69 (continent) / IGN78C (Corse) → ZH : BathyElli v2.1 + RAF20 + RAC23
+msgid "IGN69 (mainland) / IGN78C (Corsica) → CD: BathyElli v2.1 + RAF20 + RAC23"
+msgstr "IGN69 (материк) / IGN78C (Корсика) → нуль глубин: BathyElli v2.1 + RAF20 + RAC23"
+
+#. fr: Hauteurs ellipsoïdales (RGF93 / WGS84, GNSS) → ZH : BathyElli v2.1
+msgid "Ellipsoidal heights (RGF93 / WGS84, GNSS) → CD: BathyElli v2.1"
+msgstr "Эллипсоидальные высоты (RGF93 / WGS84, GNSS) → нуль глубин: BathyElli v2.1"
+
+#. fr: Autre référence terrestre → ZH : surface ZH/ellipsoïde + géoïde (fichiers)
+msgid "Other land reference → CD: CD/ellipsoid surface + geoid (files)"
+msgstr "Другая наземная система → нуль глубин: поверхность нуль/эллипсоид + геоид (файлы)"
+
+#. fr: Autre → ZH : grille d'écart référence / ZH (fichier)
+msgid "Other → CD: reference / CD separation grid (file)"
+msgstr "Другое → нуль глубин: сетка разности система / нуль глубин (файл)"
+
+#. fr: inverser
+msgid "invert"
+msgstr "обратить"
+
+#. fr: Cocher si la grille donne la profondeur du ZH sous la référence (valeurs positives) au lieu de son altitude.
+msgid "Check if the grid gives the depth of chart datum below the reference (positive values) instead of its height."
+msgstr "Отметьте, если сетка даёт глубину нуля глубин под системой (положительные значения), а не его высоту."
+
+#. fr: dossier BathyElli *ZH*.glhi, RAF20.tac, RAC23.mnt
+msgid "BathyElli *ZH*.glhi, RAF20.tac, RAC23.mnt folder"
+msgstr "Папка BathyElli *ZH*.glhi, RAF20.tac, RAC23.mnt"
+
+#. fr: surface(s) ZH/ellipsoïde : .glhi .xyz .asc .gtx .tac .mnt (séparer par ;)
+msgid "CD/ellipsoid surface(s): .glhi .xyz .asc .gtx .tac .mnt (separate with ;)"
+msgstr "Поверхность(и) нуль/эллипсоид: .glhi .xyz .asc .gtx .tac .mnt (через ;)"
+
+#. fr: géoïde(s) de la référence : .tac .mnt .gtx .asc (séparer par ;, par priorité)
+msgid "reference geoid(s): .tac .mnt .gtx .asc (separate with ;, by priority)"
+msgstr "геоид(ы) системы: .tac .mnt .gtx .asc (через ;, по приоритету)"
+
+#. fr: altitude du ZH dans la référence : .asc .gtx .tac .xyz
+msgid "height of chart datum in the reference: .asc .gtx .tac .xyz"
+msgstr "высота нуля глубин в системе: .asc .gtx .tac .xyz"
+
+#. fr: Z du fichier
+msgid "File Z"
+msgstr "Z файла"
+
+#. fr: Dossier France
+msgid "France folder"
+msgstr "Папка France"
+
+#. fr: Surface(s) ZH
+msgid "CD surface(s)"
+msgstr "Поверхность(и) нуля"
+
+#. fr: Géoïde(s)
+msgid "Geoid(s)"
+msgstr "Геоид(ы)"
+
+#. fr: Grille d'écart
+msgid "Separation grid"
+msgstr "Сетка разности"
+
+#. fr: Dossier BathyElli v2.1 + RAF20 + RAC23
+msgid "BathyElli v2.1 + RAF20 + RAC23 folder"
+msgstr "Папка BathyElli v2.1 + RAF20 + RAC23"
+
+#. fr: Grilles et surfaces (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|Tous|*
+msgid "Grids and surfaces (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|All|*"
+msgstr "Сетки и поверхности (*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt)|*.tac;*.mnt;*.gtx;*.asc;*.glhi;*.xyz;*.txt|Все|*"
+
+#. fr: Surface(s) du zéro hydrographique / ellipsoïde
+msgid "Chart datum / ellipsoid surface(s)"
+msgstr "Поверхность(и) нуль глубин / эллипсоид"
+
+#. fr: Grille(s) de la référence terrestre (géoïde)
+msgid "Land reference grid(s) (geoid)"
+msgstr "Сетка(и) наземной системы (геоид)"
+
+#. fr: Grille d'écart référence / ZH
+msgid "Reference / CD separation grid"
+msgstr "Сетка разности система / нуль глубин"
+
+#. fr: Les profondeurs sont déjà rapportées au zéro hydrographique (cartes, levés Shom).
+msgid "Depths are already referred to chart datum (charts, Shom surveys)."
+msgstr "Глубины уже отнесены к нулю глубин (карты, съёмки Shom)."
+
+#. fr: Altitudes NGF (ex. Litto3D) : profondeur ZH = profondeur + altitude du ZH, calculée à chaque sonde (RAC23 en Corse, RAF20 ailleurs).
+msgid "NGF heights (e.g. Litto3D): CD depth = depth + height of chart datum, computed at each sounding (RAC23 in Corsica, RAF20 elsewhere)."
+msgstr "Высоты NGF (напр. Litto3D): глубина от нуля = глубина + высота нуля глубин, вычисляется для каждой отметки (RAC23 на Корсике, RAF20 в остальных районах)."
+
+#. fr: Hauteurs au-dessus de l'ellipsoïde (levé GNSS/RTK sans géoïde) : profondeur ZH = profondeur + hauteur ellipsoïdale du ZH (BathyElli).
+msgid "Heights above the ellipsoid (GNSS/RTK survey without geoid): CD depth = depth + ellipsoidal height of chart datum (BathyElli)."
+msgstr "Высоты над эллипсоидом (GNSS/RTK без геоида): глубина от нуля = глубина + эллипсоидальная высота нуля глубин (BathyElli)."
+
+#. fr: Hors France : surface du ZH au-dessus de l'ellipsoïde et géoïde de la référence du fichier.
+msgid "Outside France: chart datum surface above the ellipsoid and geoid of the file reference."
+msgstr "Вне Франции: поверхность нуля глубин над эллипсоидом и геоид системы файла."
+
+#. fr: Grille donnant directement l'altitude du ZH dans la référence du fichier.
+msgid "Grid giving directly the height of chart datum in the file reference."
+msgstr "Сетка, прямо дающая высоту нуля глубин в системе файла."
+
+#. fr: Dossier BathyElli v2.1 introuvable :\n
+msgid "BathyElli v2.1 folder not found:\n"
+msgstr "Папка BathyElli v2.1 не найдена:\n"
+
+#. fr: Aucun fichier BathyElli « …ZH.glhi » dans 
+msgid "No BathyElli “…ZH.glhi” file in "
+msgstr "Нет файла BathyElli «…ZH.glhi» в "
+
+#. fr: Ellipsoïde (BathyElli v2.1)
+msgid "Ellipsoid (BathyElli v2.1)"
+msgstr "Эллипсоид (BathyElli v2.1)"
+
+#. fr: RAF20.tac introuvable dans 
+msgid "RAF20.tac not found in "
+msgstr "RAF20.tac не найден в "
+
+#. fr: Surface ZH introuvable :\n
+msgid "CD surface not found:\n"
+msgstr "Поверхность нуля не найдена:\n"
+
+#. fr: Grille de référence introuvable :\n
+msgid "Reference grid not found:\n"
+msgstr "Сетка системы не найдена:\n"
+
+#. fr: Indiquer la surface ZH/ellipsoïde et la grille de la référence terrestre.
+msgid "Specify the CD/ellipsoid surface and the land reference grid."
+msgstr "Укажите поверхность нуль/эллипсоид и сетку наземной системы."
+
+#. fr: Réf. 
+msgid "Ref. "
+msgstr "Сист. "
+
+#. fr: Grille d'écart introuvable :\n
+msgid "Separation grid not found:\n"
+msgstr "Сетка разности не найдена:\n"
+
+#. fr: Écart 
+msgid "Separation "
+msgstr "Разность "
+
+#. fr: Valeur NODATA illisible : « 
+msgid "Unreadable NODATA value: “ "
+msgstr "Нечитаемое значение NODATA: « "
+
+#. fr: Indiquer au moins une valeur NODATA, ou décocher l'option.
+msgid "Enter at least one NODATA value, or uncheck the option."
+msgstr "Введите хотя бы одно значение NODATA или снимите флажок."
+
+#. fr: Bornes de Z : Z1 doit être inférieur à Z2.
+msgid "Z bounds: Z1 must be lower than Z2."
+msgstr "Границы Z: Z1 должно быть меньше Z2."
+
+#. fr: %d fichier(s) d'origine introuvable(s) :
+msgid "%d original file(s) not found:"
+msgstr "Не найдено исходных файлов (%d):"
+
+#. fr: \n\nRelecture impossible : remettre les fichiers à leur place, ou ne changer que la date et la classe.
+msgid "\n\nCannot re-read: put the files back in place, or change only the date and the class."
+msgstr "\n\nПеречитать невозможно: верните файлы на место или измените только дату и класс."
+
+#. fr: Bathymétrie personnelle dynamique (nuages XYZ, grilles, TIN)
+msgid "Dynamic personal bathymetry (XYZ clouds, grids, TIN)"
+msgstr "Динамическая собственная батиметрия (облака XYZ, сетки, TIN)"
+
+#. fr: Affiche de volumineux levés bathymétriques personnels (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG avec GDAL) sous forme de surface colorée ombrée et de sondes chiffrées exactes. Palette, seuils de profondeur, zone dangereuse et ombrage se modifient instantanément, sans régénérer les données — à la manière du module PBG de TimeZero.
+msgid "Displays large personal bathymetric surveys (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG with GDAL) as a shaded coloured surface and exact soundings. Palette, depth thresholds, danger zone and shading change instantly, without regenerating the data — like the TimeZero PBG module."
+msgstr "Показывает большие собственные батиметрические съёмки (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG через GDAL) в виде окрашенной поверхности с отмывкой и точных отметок глубин. Палитра, пороги глубин, опасная зона и отмывка меняются мгновенно, без пересчёта данных — как в модуле PBG TimeZero."
+
+#. fr: Bathymétrie personnelle
+msgid "Personal bathymetry"
+msgstr "Собственная батиметрия"
+
+#. fr:  : terminé
+msgid ": done"
+msgstr ": готово"
+
+#. fr: Préparation de la marée FES2022 (niveau de référence)… %d %%
+msgid "Preparing FES2022 tide (reference level)… %d %%"
+msgstr "Подготовка прилива FES2022 (опорный уровень)… %d %%"
+
+#. fr: Profondeurs au zéro hydrographique (sans marée)
+msgid "Depths at chart datum (no tide)"
+msgstr "Глубины от нуля глубин (без прилива)"
+
+#. fr: En attente d'une couche chargée
+msgid "Waiting for a loaded layer"
+msgstr "Ожидание загруженного слоя"
+
+#. fr: Choisir le fichier de marée FES2022 (.pdtide)
+msgid "Choose the FES2022 tide file (.pdtide)"
+msgstr "Выберите файл прилива FES2022 (.pdtide)"
+
+#. fr: Marée FES2022 : 
+msgid "FES2022 tide: "
+msgstr "Прилив FES2022: "
+
+#. fr: Marée FES2022 en attente
+msgid "FES2022 tide pending"
+msgstr "Прилив FES2022 ожидается"
+
+#. fr: Maree FES %+.2f %s (%+.2f a %+.2f) %s
+msgid "Tide FES %+.2f %s (%+.2f to %+.2f) %s"
+msgstr "Прилив FES %+.2f %s (от %+.2f до %+.2f) %s"
+
+#. fr: FES2022 le %s : hauteur d'eau %+.2f %s au centre (FES %+.2f %s sur le NM, Z0 %.2f %s), de %+.2f à %+.2f %s sur la zone\n%s
+msgid "FES2022 on %s: water height %+.2f %s at centre (FES %+.2f %s above MSL, Z0 %.2f %s), from %+.2f to %+.2f %s over the area\n%s"
+msgstr "FES2022 на %s: высота воды %+.2f %s в центре (FES %+.2f %s над СУМ, Z0 %.2f %s), от %+.2f до %+.2f %s по области\n%s"
+
+#. fr:  — nouvelle zone en préparation
+msgid " — new area being prepared"
+msgstr " — готовится новая область"
+
+#. fr: Marée indisponible : OpenCPN 5.14 ou plus récent requis
+msgid "Tide unavailable: OpenCPN 5.14 or later required"
+msgstr "Прилив недоступен: нужен OpenCPN 5.14 или новее"
+
+#. fr: Aucune station de marée : activer les données de marée d'OpenCPN (Options › Cartes › Marées et courants)
+msgid "No tide station: enable OpenCPN tide data (Options › Charts › Tides and currents)"
+msgstr "Нет приливной станции: включите данные приливов OpenCPN (Параметры › Карты › Приливы и течения)"
+
+#. fr: Hauteur de marée indisponible pour 
+msgid "Tide height unavailable for "
+msgstr "Высота прилива недоступна для "
+
+#. fr: Maree %+.2f %s %s %s
+msgid "Tide %+.2f %s %s %s"
+msgstr "Прилив %+.2f %s %s %s"
+
+#. fr: Station %s (%.1f km) : hauteur d'eau %+.2f %s le %s
+msgid "Station %s (%.1f km): water height %+.2f %s on %s"
+msgstr "Станция %s (%.1f км): высота воды %+.2f %s на %s"
+
+#. fr:  — station éloignée, à vérifier
+msgid " — distant station, please check"
+msgstr " — станция далеко, проверьте"
+
+#. fr: Sonde 
+msgid "Sounding "
+msgstr "Отметка "
+
+#. fr: Grille 
+msgid "Grid "
+msgstr "Сетка "
+
+#. fr: %.2f %s ZH → %.2f %s (marée %+.2f %s)
+msgid "%.2f %s CD → %.2f %s (tide %+.2f %s)"
+msgstr "%.2f %s нуль → %.2f %s (прилив %+.2f %s)"
+
+#. fr: Mise à jour des statistiques des sources
+msgid "Updating source statistics"
+msgstr "Обновление статистики источников"
+
+#. fr: échec
+msgid "failed"
+msgstr "ошибка"
+
+#. fr: Annulé
+msgid "Cancelled"
+msgstr "Отменено"
+
+#. fr: arrêté
+msgid "stopped"
+msgstr "остановлено"
+
+#. fr:  fichier
+msgid " file"
+msgstr " файл"
+
+#. fr: arrêté — 
+msgid "stopped — "
+msgstr "остановлено — "
+
+#. fr:  fichier(s) importé(s) ; le fichier en cours est annulé
+msgid " file(s) imported; the file in progress is cancelled"
+msgstr " файл(ов) импортировано; обрабатываемый файл отменён"
+
+#. fr:  : lecture
+msgid ": reading"
+msgstr ": чтение"
+
+#. fr: lecture impossible
+msgid "unreadable"
+msgstr "нечитаем"
+
+#. fr: converti
+msgid "converted"
+msgstr "преобразовано"
+
+#. fr:  : retrait de l'ancienne version
+msgid ": removing the old version"
+msgstr ": удаление старой версии"
+
+#. fr:  (ancienne version) : 
+msgid " (old version): "
+msgstr " (старая версия): "
+
+#. fr:  importé(s)\n
+msgid " imported\n"
+msgstr " импортировано\n"
+
+#. fr: Modification
+msgid "Edit"
+msgstr "Изменение"
+
+#. fr: Redécoupage des fichiers en cellules de
+msgid "Re-splitting files into cells of"
+msgstr "Переразбиение файлов на ячейки"
+
+#. fr: Retrait de 
+msgid "Removing "
+msgstr "Удаление "
+
+#. fr: Nettoyage de 
+msgid "Cleaning "
+msgstr "Очистка "
+
+#. fr: Masquage
+msgid "Hiding"
+msgstr "Скрытие"
+
+#. fr: Classement des sources
+msgid "Classifying sources"
+msgstr "Классификация источников"
+
+#. fr: Classe 
+msgid "Class "
+msgstr "Класс "
+
+#. fr: Nouvelle règle de priorité : fusion
+msgid "New priority rule: merging"
+msgstr "Новое правило приоритета: слияние"
+
+#. fr: TimeZero PBG (bleus)
+msgid "TimeZero PBG (blues)"
+msgstr "TimeZero PBG (синие)"
+
+#. fr: Automatique : %d seuils de %.1f à %.1f %s (%s%s)
+msgid "Automatic: %d thresholds from %.1f to %.1f %s (%s%s)"
+msgstr "Авто: %d порогов от %.1f до %.1f %s (%s%s)"
+
+#. fr: , bornes imposées
+msgid ", fixed bounds"
+msgstr ", фиксированные границы"
+
+#. fr: Marée désactivée (profondeurs au zéro hydrographique)
+msgid "Tide off (depths at chart datum)"
+msgstr "Прилив выключен (глубины от нуля глубин)"
+
+#. fr: En attente de données affichées
+msgid "Waiting for displayed data"
+msgstr "Ожидание отображаемых данных"
+
+#. fr: Marée FES2022 en préparation
+msgid "FES2022 tide being prepared"
+msgstr "Прилив FES2022 готовится"
+
+#. fr: FES2022 maillé
+msgid "Gridded FES2022"
+msgstr "Сетка FES2022"
+
+#. fr: Aucun point de l'emprise dans le modèle FES2022
+msgid "No point of the extent inside the FES2022 model"
+msgstr "Ни одна точка области не попадает в модель FES2022"
+
+#. fr: Aucune station de marée
+msgid "No tide station"
+msgstr "Нет приливной станции"
+
+#. fr: Station OpenCPN
+msgid "OpenCPN station"
+msgstr "Станция OpenCPN"
+
+#. fr: Aucun point de marée
+msgid "No tide point"
+msgstr "Нет приливной точки"
+
+#. fr: Hauteur d'eau au-dessus du ZH (
+msgid "Water height above chart datum ("
+msgstr "Высота воды над нулём глубин ("
+
+#. fr:   (heure locale)
+msgid "  (local time)"
+msgstr "  (местное время)"
+
+#. fr: PersonalDepth — courbe de marée
+msgid "PersonalDepth — tide curve"
+msgstr "PersonalDepth — кривая прилива"
+
+#. fr: Bornes automatiques
+msgid "Automatic bounds"
+msgstr "Авто-границы"
+
+#. fr: Un cycle de marée (24 h 50) centré sur l'instant choisi, hauteurs englobant les courbes affichées. Modifier une borne repasse en manuel.
+msgid "One tide cycle (24 h 50) centred on the chosen time, heights enclosing the displayed curves. Editing a bound switches to manual."
+msgstr "Один приливный цикл (24 ч 50) с центром на выбранном времени, высоты охватывают показанные кривые. Изменение границы переключает на ручной режим."
+
+#. fr: Du
+msgid "From"
+msgstr "С"
+
+#. fr: au
+msgid "to"
+msgstr "по"
+
+#. fr: Hauteur de
+msgid "Height from"
+msgstr "Высота от"
+
+#. fr: Cliquer sur un point de la légende pour l'afficher ou le masquer. Trait rouge : instant choisi dans le cadre Marée.
+msgid "Click a point in the legend to show or hide it. Red line: time chosen in the Tide box."
+msgstr "Щёлкните точку в легенде, чтобы показать или скрыть её. Красная линия: время, выбранное в блоке «Прилив»."
+
+#. fr: Base : ouverture impossible de 
+msgid "Database: cannot open "
+msgstr "База: не удаётся открыть "
+
+#. fr: Base : 
+msgid "Database: "
+msgstr "База: "
+
+#. fr: erreur SQL
+msgid "SQL error"
+msgstr "ошибка SQL"
+
+#. fr: Divers
+msgid "Misc"
+msgstr "Разное"
+
+#. fr: Dossier de base inaccessible : 
+msgid "Database folder not accessible: "
+msgstr "Папка базы недоступна: "
+
+#. fr: Fusion des tuiles
+msgid "Merging tiles"
+msgstr "Слияние тайлов"
+
+#. fr: Source vide
+msgid "Empty source"
+msgstr "Пустой источник"
+
+#. fr: Répartition des sondes
+msgid "Distributing soundings"
+msgstr "Распределение отметок"
+
+#. fr: Comblement des trous
+msgid "Filling holes"
+msgstr "Заполнение пропусков"
+
+#. fr: Aucune sonde importée
+msgid "No sounding imported"
+msgstr "Ни одна отметка не импортирована"
+
+#. fr: Pyramide de la source
+msgid "Source pyramid"
+msgstr "Пирамида источника"
+
+#. fr: Import terminé
+msgid "Import finished"
+msgstr "Импорт завершён"
+
+#. fr: Taille de cellule invalide
+msgid "Invalid cell size"
+msgstr "Неверный размер ячейки"
+
+#. fr: Copie des tuiles
+msgid "Copying tiles"
+msgstr "Копирование тайлов"
+
+#. fr: Remplacement des fichiers
+msgid "Replacing files"
+msgstr "Замена файлов"
+
+#. fr: Impossible de supprimer 
+msgid "Cannot delete "
+msgstr "Не удаётся удалить "
+
+#. fr:  (fichier ouvert ?) ; la nouvelle base est dans 
+msgid " (file open?); the new database is in "
+msgstr " (файл открыт?); новая база находится в "
+
+#. fr: Déplacement impossible : 
+msgid "Cannot move: "
+msgstr "Не удаётся переместить: "
+
+#. fr: tuiles natives
+msgid "native tiles"
+msgstr "исходные тайлы"
+
+#. fr: pyramide
+msgid "pyramid"
+msgstr "пирамида"
+
+#. fr: Source inconnue
+msgid "Unknown source"
+msgstr "Неизвестный источник"
+
+#. fr: Base vide dans cette zone
+msgid "Empty database in this area"
+msgstr "Пустая база в этой области"
+
+#. fr: Aucune donnée de la base dans cette zone
+msgid "No database data in this area"
+msgstr "Нет данных базы в этой области"
+
+#. fr: Nuage vide
+msgid "Empty cloud"
+msgstr "Пустое облако"
+
+#. fr: Format raster 
+msgid "Raster format "
+msgstr "Растровый формат "
+
+#. fr:  : plugin compilé sans GDAL (utiliser .asc ou .xyz)
+msgid ": plugin built without GDAL (use .asc or .xyz)"
+msgstr ": модуль собран без GDAL (используйте .asc или .xyz)"
+
+#. fr: Aucune sonde dans la couverture de la référence verticale
+msgid "No sounding inside the vertical reference coverage"
+msgstr "Ни одной отметки в зоне действия высотной системы"
+
+#. fr: Réf. terrestre
+msgid "Land ref."
+msgstr "Наз. сист."
+
+#. fr:  — %zu sondes hors couverture NON converties
+msgid " — %zu soundings outside coverage NOT converted"
+msgstr " — %zu отметок вне зоны НЕ пересчитаны"
+
+#. fr: Aucune sonde entre %.1f et %.1f m (bornes d'import)
+msgid "No sounding between %.1f and %.1f m (import bounds)"
+msgstr "Нет отметок между %.1f и %.1f м (границы импорта)"
+
+#. fr: Mémoire insuffisante : augmenter la taille de cellule
+msgid "Not enough memory: increase the cell size"
+msgstr "Недостаточно памяти: увеличьте размер ячейки"
+
+#. fr: %s — chargement %d %%
+msgid "%s — loading %d %%"
+msgstr "%s — загрузка %d %%"
+
+#. fr: %s — ERREUR : %s
+msgid "%s — ERROR: %s"
+msgstr "%s — ОШИБКА: %s"
+
+#. fr: %s%s — %.2f M sondes, %.2f…%.2f m, cellule %.1f m%s, %d×%d%s%s
+msgid "%s%s — %.2f M soundings, %.2f…%.2f m, cell %.1f m%s, %d×%d%s%s"
+msgstr "%s%s — %.2f млн отметок, %.2f…%.2f м, ячейка %.1f м%s, %d×%d%s%s"
+
+#. fr: (masqué) 
+msgid "(hidden) "
+msgstr "(скрыт) "
+
+#. fr:  (grille native)
+msgid " (native grid)"
+msgstr " (исходная сетка)"
+
+#. fr:  (pas d'origine)
+msgid " (original spacing)"
+msgstr " (исходный шаг)"
+
+#. fr: Impossible d'ouvrir 
+msgid "Cannot open "
+msgstr "Не удаётся открыть "
+
+#. fr: Palette CPT vide
+msgid "Empty CPT palette"
+msgstr "Пустая палитра CPT"
+
+#. fr: Carte marine (paliers)
+msgid "Nautical chart (steps)"
+msgstr "Морская карта (ступени)"
+
+#. fr: Arc-en-ciel
+msgid "Rainbow"
+msgstr "Радуга"
+
+#. fr: Sécurité tirant d'eau
+msgid "Draught safety"
+msgstr "Безопасность по осадке"
+
+#. fr: Niveaux de gris
+msgid "Greyscale"
+msgstr "Оттенки серого"
+
+#. fr: Coordonnées hors plage lon/lat (ex. %.2f %.2f) : 
+msgid "Coordinates out of lon/lat range (e.g. %.2f %.2f): "
+msgstr "Координаты вне диапазона долг./шир. (напр. %.2f %.2f): "
+
+#. fr: Conversion impossible : vérifier le système de coordonnées
+msgid "Conversion failed: check the coordinate system"
+msgstr "Ошибка пересчёта: проверьте систему координат"
+
+#. fr: Aucune sonde lisible (format attendu : X Y Z)
+msgid "No readable sounding (expected format: X Y Z)"
+msgstr "Нет читаемых отметок (ожидаемый формат: X Y Z)"
+
+#. fr: Entête ASC invalide
+msgid "Invalid ASC header"
+msgstr "Неверный заголовок ASC"
+
+#. fr: Fichier ASC tronqué
+msgid "Truncated ASC file"
+msgstr "Обрезанный файл ASC"
+
+#. fr: Grille hors plage lon/lat : 
+msgid "Grid out of lon/lat range: "
+msgstr "Сетка вне диапазона долг./шир.: "
+
+#. fr: Grille vide
+msgid "Empty grid"
+msgstr "Пустая сетка"
+
+#. fr: Aucun point <P> trouvé
+msgid "No <P> point found"
+msgstr "Не найдено ни одной точки <P>"
+
+#. fr: GDAL ne peut pas ouvrir 
+msgid "GDAL cannot open "
+msgstr "GDAL не может открыть "
+
+#. fr: Géoréférencement absent ou tourné
+msgid "Georeferencing missing or rotated"
+msgstr "Привязка отсутствует или с поворотом"
+
+#. fr: Raster vide
+msgid "Empty raster"
+msgstr "Пустой растр"
+
+#. fr: Code EPSG:
+msgid "EPSG code:"
+msgstr "Код EPSG:"
+
+#. fr:  non pris en charge (utiliser une chaîne PROJ)
+msgid " not supported (use a PROJ string)"
+msgstr " не поддерживается (используйте строку PROJ)"
+
+#. fr: Définition sans +proj
+msgid "Definition without +proj"
+msgstr "Определение без +proj"
+
+#. fr: Datum +datum=
+msgid "Datum +datum="
+msgstr "Датум +datum="
+
+#. fr:  non reconnu (utiliser +towgs84)
+msgid " not recognised (use +towgs84)"
+msgstr " не распознан (используйте +towgs84)"
+
+#. fr: Ellipsoïde +ellps=
+msgid "Ellipsoid +ellps="
+msgstr "Эллипсоид +ellps="
+
+#. fr:  inconnu
+msgctxt " inconnu"
+msgid " unknown"
+msgstr " неизвестен"
+
+#. fr: +towgs84 doit avoir 3 ou 7 valeurs
+msgid "+towgs84 must have 3 or 7 values"
+msgstr "+towgs84 должен содержать 3 или 7 значений"
+
+#. fr: Unité +units=
+msgid "Unit +units="
+msgstr "Единица +units="
+
+#. fr:  inconnue
+msgctxt " inconnue"
+msgid " unknown"
+msgstr " неизвестна"
+
+#. fr: +zone UTM invalide
+msgid "Invalid UTM +zone"
+msgstr "Неверная +zone UTM"
+
+#. fr: Stéréographique non polaire : utiliser +proj=sterea
+msgid "Non-polar stereographic: use +proj=sterea"
+msgstr "Неполярная стереографическая: используйте +proj=sterea"
+
+#. fr: Projection +proj=
+msgid "Projection +proj="
+msgstr "Проекция +proj="
+
+#. fr:  non prise en charge
+msgid " not supported"
+msgstr " не поддерживается"
+
+#. fr: Monde
+msgid "World"
+msgstr "Мир"
+
+#. fr: WGS84 — longitude / latitude (GPS)
+msgid "WGS84 — longitude / latitude (GPS)"
+msgstr "WGS84 — долгота / широта (GPS)"
+
+#. fr: UTM WGS84 — fuseau et hémisphère
+msgid "UTM WGS84 — zone and hemisphere"
+msgstr "UTM WGS84 — зона и полушарие"
+
+#. fr: Web Mercator (Google, OSM)
+msgid "Web Mercator (Google, OSM)"
+msgstr "Web Mercator (Google, OSM)"
+
+#. fr: Mercator WGS84 (World Mercator)
+msgid "Mercator WGS84 (World Mercator)"
+msgstr "Меркатор WGS84 (World Mercator)"
+
+#. fr: UPS Nord (stéréographique polaire)
+msgid "UPS North (polar stereographic)"
+msgstr "UPS Север (полярная стереографическая)"
+
+#. fr: UPS Sud (stéréographique polaire)
+msgid "UPS South (polar stereographic)"
+msgstr "UPS Юг (полярная стереографическая)"
+
+#. fr: Arctique stéréographique polaire
+msgid "Arctic polar stereographic"
+msgstr "Арктическая полярная стереографическая"
+
+#. fr: NSIDC Arctique stéréographique polaire
+msgid "NSIDC Arctic polar stereographic"
+msgstr "Арктическая полярная стереографическая NSIDC"
+
+#. fr: Antarctique stéréographique polaire
+msgid "Antarctic polar stereographic"
+msgstr "Антарктическая полярная стереографическая"
+
+#. fr: France
+msgid "France"
+msgstr "Франция"
+
+#. fr: RGF93 / Lambert-93
+msgid "RGF93 / Lambert-93"
+msgstr "RGF93 / Lambert-93"
+
+#. fr: RGF93 / CC%d (conique conforme)
+msgid "RGF93 / CC%d (conformal conic)"
+msgstr "RGF93 / CC%d (равноугольная коническая)"
+
+#. fr: RGF93 — longitude / latitude
+msgid "RGF93 — longitude / latitude"
+msgstr "RGF93 — долгота / широта"
+
+#. fr: NTF / Lambert II étendu
+msgid "NTF / Lambert II extended"
+msgstr "NTF / Lambert II расширенная"
+
+#. fr: NTF / Lambert I carto
+msgid "NTF / Lambert I carto"
+msgstr "NTF / Lambert I carto"
+
+#. fr: NTF / Lambert III carto
+msgid "NTF / Lambert III carto"
+msgstr "NTF / Lambert III carto"
+
+#. fr: NTF / Lambert IV carto (Corse)
+msgid "NTF / Lambert IV carto (Corsica)"
+msgstr "NTF / Lambert IV carto (Корсика)"
+
+#. fr: NTF / Lambert Nord France
+msgid "NTF / Lambert North France"
+msgstr "NTF / Lambert Северная Франция"
+
+#. fr: NTF / Lambert Centre France
+msgid "NTF / Lambert Centre France"
+msgstr "NTF / Lambert Центральная Франция"
+
+#. fr: NTF / Lambert Sud France
+msgid "NTF / Lambert South France"
+msgstr "NTF / Lambert Южная Франция"
+
+#. fr: NTF / Lambert Corse
+msgid "NTF / Lambert Corsica"
+msgstr "NTF / Lambert Корсика"
+
+#. fr: France outre-mer
+msgid "French overseas"
+msgstr "Заморская Франция"
+
+#. fr: Antilles — RGAF09 / UTM 20N
+msgid "French Antilles — RGAF09 / UTM 20N"
+msgstr "Французские Антилы — RGAF09 / UTM 20N"
+
+#. fr: Guyane — RGFG95 / UTM 22N
+msgid "French Guiana — RGFG95 / UTM 22N"
+msgstr "Французская Гвиана — RGFG95 / UTM 22N"
+
+#. fr: La Réunion — RGR92 / UTM 40S
+msgid "Réunion — RGR92 / UTM 40S"
+msgstr "Реюньон — RGR92 / UTM 40S"
+
+#. fr: Mayotte — RGM04 / UTM 38S
+msgid "Mayotte — RGM04 / UTM 38S"
+msgstr "Майотта — RGM04 / UTM 38S"
+
+#. fr: Saint-Pierre-et-Miquelon — RGSPM06 / UTM 21N
+msgid "Saint Pierre and Miquelon — RGSPM06 / UTM 21N"
+msgstr "Сен-Пьер и Микелон — RGSPM06 / UTM 21N"
+
+#. fr: Nouvelle-Calédonie — RGNC91-93 / Lambert NC
+msgid "New Caledonia — RGNC91-93 / Lambert NC"
+msgstr "Новая Каледония — RGNC91-93 / Lambert NC"
+
+#. fr: Polynésie — RGPF / UTM (fuseau 5 à 7 S)
+msgid "French Polynesia — RGPF / UTM (zones 5 to 7 S)"
+msgstr "Французская Полинезия — RGPF / UTM (зоны 5–7 S)"
+
+#. fr: Europe
+msgid "Europe"
+msgstr "Европа"
+
+#. fr: ETRS89 / UTM — fuseau (Espagne, Italie, Norvège…)
+msgid "ETRS89 / UTM — zone (Spain, Italy, Norway…)"
+msgstr "ETRS89 / UTM — зона (Испания, Италия, Норвегия…)"
+
+#. fr: ED50 / UTM — fuseau (anciennes cartes)
+msgid "ED50 / UTM — zone (old charts)"
+msgstr "ED50 / UTM — зона (старые карты)"
+
+#. fr: ETRS89 — longitude / latitude
+msgid "ETRS89 — longitude / latitude"
+msgstr "ETRS89 — долгота / широта"
+
+#. fr: ED50 — longitude / latitude
+msgid "ED50 — longitude / latitude"
+msgstr "ED50 — долгота / широта"
+
+#. fr: ETRS89 / Lambert conique Europe (LCC)
+msgid "ETRS89 / Lambert Conic Europe (LCC)"
+msgstr "ETRS89 / Ламберт коническая Европа (LCC)"
+
+#. fr: Royaume-Uni — OSGB36 / British National Grid
+msgid "United Kingdom — OSGB36 / British National Grid"
+msgstr "Великобритания — OSGB36 / British National Grid"
+
+#. fr: Irlande — IRENET95 / Irish Transverse Mercator
+msgid "Ireland — IRENET95 / Irish Transverse Mercator"
+msgstr "Ирландия — IRENET95 / Irish Transverse Mercator"
+
+#. fr: Pays-Bas — Amersfoort / RD New
+msgid "Netherlands — Amersfoort / RD New"
+msgstr "Нидерланды — Amersfoort / RD New"
+
+#. fr: Belgique — BD72 / Lambert belge 1972
+msgid "Belgium — BD72 / Belgian Lambert 1972"
+msgstr "Бельгия — BD72 / Belgian Lambert 1972"
+
+#. fr: Belgique — ETRS89 / Lambert belge 2008
+msgid "Belgium — ETRS89 / Belgian Lambert 2008"
+msgstr "Бельгия — ETRS89 / Belgian Lambert 2008"
+
+#. fr: Luxembourg — LUREF / Gauss
+msgid "Luxembourg — LUREF / Gauss"
+msgstr "Люксембург — LUREF / Gauss"
+
+#. fr: Suisse — CH1903+ / LV95
+msgid "Switzerland — CH1903+ / LV95"
+msgstr "Швейцария — CH1903+ / LV95"
+
+#. fr: Suisse — CH1903 / LV03
+msgid "Switzerland — CH1903 / LV03"
+msgstr "Швейцария — CH1903 / LV03"
+
+#. fr: Allemagne — DHDN / Gauss-Krüger zone 2
+msgid "Germany — DHDN / Gauss-Krüger zone 2"
+msgstr "Германия — DHDN / Гаусс-Крюгер зона 2"
+
+#. fr: Allemagne — DHDN / Gauss-Krüger zone 3
+msgid "Germany — DHDN / Gauss-Krüger zone 3"
+msgstr "Германия — DHDN / Гаусс-Крюгер зона 3"
+
+#. fr: Allemagne — DHDN / Gauss-Krüger zone 4
+msgid "Germany — DHDN / Gauss-Krüger zone 4"
+msgstr "Германия — DHDN / Гаусс-Крюгер зона 4"
+
+#. fr: Allemagne — DHDN / Gauss-Krüger zone 5
+msgid "Germany — DHDN / Gauss-Krüger zone 5"
+msgstr "Германия — DHDN / Гаусс-Крюгер зона 5"
+
+#. fr: Portugal — ETRS89 / PT-TM06
+msgid "Portugal — ETRS89 / PT-TM06"
+msgstr "Португалия — ETRS89 / PT-TM06"
+
+#. fr: Italie — Monte Mario / Gauss-Boaga Ouest
+msgid "Italy — Monte Mario / Gauss-Boaga West"
+msgstr "Италия — Monte Mario / Gauss-Boaga Запад"
+
+#. fr: Italie — Monte Mario / Gauss-Boaga Est
+msgid "Italy — Monte Mario / Gauss-Boaga East"
+msgstr "Италия — Monte Mario / Gauss-Boaga Восток"
+
+#. fr: Suède — SWEREF99 TM
+msgid "Sweden — SWEREF99 TM"
+msgstr "Швеция — SWEREF99 TM"
+
+#. fr: Finlande — ETRS-TM35FIN
+msgid "Finland — ETRS-TM35FIN"
+msgstr "Финляндия — ETRS-TM35FIN"
+
+#. fr: Pologne — ETRS89 / CS92
+msgid "Poland — ETRS89 / CS92"
+msgstr "Польша — ETRS89 / CS92"
+
+#. fr: Croatie — HTRS96 / TM
+msgid "Croatia — HTRS96 / TM"
+msgstr "Хорватия — HTRS96 / TM"
+
+#. fr: Grèce — GGRS87 / Greek Grid
+msgid "Greece — GGRS87 / Greek Grid"
+msgstr "Греция — GGRS87 / Greek Grid"
+
+#. fr: Estonie — L-EST97
+msgid "Estonia — L-EST97"
+msgstr "Эстония — L-EST97"
+
+#. fr: Lettonie — LKS92 / TM
+msgid "Latvia — LKS92 / TM"
+msgstr "Латвия — LKS92 / TM"
+
+#. fr: Lituanie — LKS94 / TM
+msgid "Lithuania — LKS94 / TM"
+msgstr "Литва — LKS94 / TM"
+
+#. fr: Amériques
+msgid "Americas"
+msgstr "Америка"
+
+#. fr: NAD83 / UTM — fuseau (Amérique du Nord)
+msgid "NAD83 / UTM — zone (North America)"
+msgstr "NAD83 / UTM — зона (Северная Америка)"
+
+#. fr: NAD27 / UTM — fuseau (anciennes cartes)
+msgid "NAD27 / UTM — zone (old charts)"
+msgstr "NAD27 / UTM — зона (старые карты)"
+
+#. fr: SIRGAS 2000 / UTM — fuseau (Amérique du Sud)
+msgid "SIRGAS 2000 / UTM — zone (South America)"
+msgstr "SIRGAS 2000 / UTM — зона (Южная Америка)"
+
+#. fr: Océanie
+msgid "Oceania"
+msgstr "Океания"
+
+#. fr: Australie — GDA2020 / MGA — fuseau
+msgid "Australia — GDA2020 / MGA — zone"
+msgstr "Австралия — GDA2020 / MGA — зона"
+
+#. fr: Australie — GDA94 / MGA — fuseau
+msgid "Australia — GDA94 / MGA — zone"
+msgstr "Австралия — GDA94 / MGA — зона"
+
+#. fr: Nouvelle-Zélande — NZGD2000 / NZTM
+msgid "New Zealand — NZGD2000 / NZTM"
+msgstr "Новая Зеландия — NZGD2000 / NZTM"
+
+#. fr: les coordonnées ressemblent à du Lambert-93 (EPSG:2154)
+msgid "coordinates look like Lambert-93 (EPSG:2154)"
+msgstr "координаты похожи на Lambert-93 (EPSG:2154)"
+
+#. fr: les coordonnées ressemblent à du Lambert II étendu (EPSG:27572)
+msgid "coordinates look like Lambert II extended (EPSG:27572)"
+msgstr "координаты похожи на Lambert II расширенную (EPSG:27572)"
+
+#. fr: les coordonnées ressemblent à une zone conique conforme (CC%d, EPSG:%d)
+msgid "coordinates look like a conformal conic zone (CC%d, EPSG:%d)"
+msgstr "координаты похожи на зону равноугольной конической (CC%d, EPSG:%d)"
+
+#. fr: les coordonnées ressemblent à de l'UTM (choisir le fuseau : 30, 31 ou 32 N en France métropolitaine)
+msgid "coordinates look like UTM (choose the zone: 30, 31 or 32 N in mainland France)"
+msgstr "координаты похожи на UTM (выберите зону: 30, 31 или 32 N для материковой Франции)"
+
+#. fr: coordonnées projetées : choisir le système de coordonnées du fichier
+msgid "projected coordinates: choose the file coordinate system"
+msgstr "проекционные координаты: выберите систему координат файла"
+
+#. fr: Fichier de marée .pdtide invalide : 
+msgid "Invalid .pdtide tide file: "
+msgstr "Неверный файл прилива .pdtide: "
+
+#. fr: Entête .pdtide incohérent : 
+msgid "Inconsistent .pdtide header: "
+msgstr "Несогласованный заголовок .pdtide: "
+
+#. fr: Fichier .pdtide tronqué
+msgid "Truncated .pdtide file"
+msgstr "Обрезанный файл .pdtide"
+
+#. fr: Lecture de l'index .pdtide impossible
+msgid "Cannot read the .pdtide index"
+msgstr "Не удаётся прочитать индекс .pdtide"
+
+#. fr: Lecture d'une tuile .pdtide impossible
+msgid "Cannot read a .pdtide tile"
+msgstr "Не удаётся прочитать тайл .pdtide"
+
+#. fr: Tuile .pdtide corrompue
+msgid "Corrupt .pdtide tile"
+msgstr "Повреждённый тайл .pdtide"
+
+#. fr: Atlas de marée non ouvert
+msgid "Tide atlas not open"
+msgstr "Приливный атлас не открыт"
+
+#. fr: Zone hors de l'atlas de marée
+msgid "Area outside the tide atlas"
+msgstr "Область вне приливного атласа"
+
+#. fr: Zone trop grande pour la marée maillée
+msgid "Area too large for the gridded tide"
+msgstr "Область слишком велика для сеточного прилива"
+
+#. fr: Aucune onde connue dans 
+msgid "No known constituent in "
+msgstr "Нет известных гармоник в "
+
+#. fr: Zone hors du modèle de marée
+msgid "Area outside the tide model"
+msgstr "Область вне приливной модели"
+
+#. fr: Aucune référence ZH disponible pour la marée maillée
+msgid "No chart datum reference available for the gridded tide"
+msgstr "Нет опорного нуля глубин для сеточного прилива"
+
+#. fr: Tuile tronquée
+msgid "Truncated tile"
+msgstr "Обрезанный тайл"
+
+#. fr: Tuile incohérente
+msgid "Inconsistent tile"
+msgstr "Несогласованный тайл"
+
+#. fr: Entête de grille IGN illisible : 
+msgid "Unreadable IGN grid header: "
+msgstr "Нечитаемый заголовок сетки IGN: "
+
+#. fr: Ordre de grille IGN inconnu dans 
+msgid "Unknown IGN grid order in "
+msgstr "Неизвестный порядок сетки IGN в "
+
+#. fr: Nombre de valeurs incohérent avec l'entête : 
+msgid "Number of values inconsistent with the header: "
+msgstr "Число значений не соответствует заголовку: "
+
+#. fr: Entête ASC invalide : 
+msgid "Invalid ASC header: "
+msgstr "Неверный заголовок ASC: "
+
+#. fr: Fichier ASC tronqué : 
+msgid "Truncated ASC file: "
+msgstr "Обрезанный файл ASC: "
+
+#. fr: Fichier .gtx tronqué
+msgid "Truncated .gtx file"
+msgstr "Обрезанный файл .gtx"
+
+#. fr: Entête .gtx invalide
+msgid "Invalid .gtx header"
+msgstr "Неверный заголовок .gtx"
+
+#. fr: Format de grille non reconnu (
+msgid "Unrecognised grid format ("
+msgstr "Нераспознанный формат сетки ("
+
+#. fr: ) : .tac, .mnt, .asc ou .gtx attendu
+msgid "): .tac, .mnt, .asc or .gtx expected"
+msgstr "): ожидается .tac, .mnt, .asc или .gtx"
+
+#. fr: Aucun point « lon lat valeur » dans 
+msgid "No “lon lat value” point in "
+msgstr "Нет точки «долг. шир. значение» в "
+
+#. fr: Emprise trop grande pour la référence verticale
+msgid "Extent too large for the vertical reference"
+msgstr "Охват слишком велик для высотной системы"
+
+#. fr: Référence verticale : surface ZH requise
+msgid "Vertical reference: CD surface required"
+msgstr "Высотная система: нужна поверхность нуля глубин"
+
+#. fr: Le levé est hors de la couverture des surfaces de référence
+msgid "The survey is outside the coverage of the reference surfaces"
+msgstr "Съёмка вне зоны действия опорных поверхностей"
+
+#. fr: Référence verticale : grille d'écart requise
+msgid "Vertical reference: separation grid required"
+msgstr "Высотная система: нужна сетка разности"
+
+#. fr:   (a %.1f m)
+msgid "  (at %.1f m)"
+msgstr "  (в %.1f м)"
+
+#. fr: %d source(s)
+msgid "%d source(s)"
+msgstr "Источников: %d"
+
+#. fr: Affichage de %d source(s)
+msgid "Showing %d source(s)"
+msgstr "Показ источников: %d"
+
+#. fr: Masquage de %d source(s)
+msgid "Hiding %d source(s)"
+msgstr "Скрытие источников: %d"
+
+#. fr: Retrait de %d source(s)
+msgid "Removing %d source(s)"
+msgstr "Удаление источников: %d"
+
+#. fr: Nettoyage de %d source(s)
+msgid "Cleaning %d source(s)"
+msgstr "Очистка источников: %d"
+
+#. fr: Import (%d fichier(s))
+msgid "Import (%d file(s))"
+msgstr "Импорт (файлов: %d)"
+
+#. fr: Modification (%d source(s))
+msgid "Edit (%d source(s))"
+msgstr "Изменение (источников: %d)"
+
+#. fr: (conique conforme)
+msgid "(conformal conic)"
+msgstr "(равноугольная коническая)"
+
+#. fr:  »
+msgid "”"
+msgstr "”"
+
+#. fr: NO
+msgid "NW"
+msgstr "СЗ"
+
+#. fr: O
+msgid "W"
+msgstr "З"
+
+#. fr: SO
+msgid "SW"
+msgstr "ЮЗ"
+
+#. fr: %.2f Go
+msgid "%.2f GB"
+msgstr "%.2f ГБ"
+
+#. fr: %.0f Mo
+msgid "%.0f MB"
+msgstr "%.0f МБ"
+
+#. fr: %.0f ko
+msgid "%.0f KB"
+msgstr "%.0f КБ"
+
+#. fr: Z0 : %s%s%s
+msgid "Z0: %s%s%s"
+msgstr "Z0: %s%s%s"
+
+#. fr: grille 
+msgid "grid "
+msgstr "сетка "
+
+#. fr: PBMA FES 
+msgid "FES LAT "
+msgstr "FES НТУ "
+
+#. fr: Résolution imposée
+msgid "Fixed resolution"
+msgstr "Заданное разрешение"
+
+#. fr: m (automatique si décoché)
+msgid "m (automatic if unticked)"
+msgstr "м (авто, если флажок снят)"
+
+#. fr: Pas horizontal de stockage des sondes dans la base. Sinon estimé : pas de la grille, ou espacement des sondes consécutives (lignes de sonde), ou surface / nombre de sondes. Une valeur plus grande donne une surface plus continue entre des lignes de sonde espacées ; dans chaque case, la sonde la plus faible est gardée.
+msgid "Horizontal step used to store the soundings in the database. Otherwise estimated: grid step, or spacing of consecutive soundings (sounding lines), or area / number of soundings. A larger value gives a more continuous surface between widely spaced sounding lines; in each cell the shoalest sounding is kept."
+msgstr "Горизонтальный шаг хранения отметок в базе. Иначе оценивается: шаг сетки, или расстояние между соседними отметками (галсы), или площадь / число отметок. Большее значение даёт более сплошную поверхность между далёкими галсами; в каждой ячейке сохраняется наименьшая глубина."
+
+#. fr: Format personnalisé (colonnes choisies)
+msgid "Custom format (chosen columns)"
+msgstr "Свой формат (выбранные столбцы)"
+
+#. fr: Fichiers texte (.xyz .txt .csv .dat) : les trois premiers nombres de chaque ligne, ou un format personnalisé (lignes d'entête, séparateurs, colonnes X, Y, Z, date et heure) réglé avec « Format… ».
+msgid "Text files (.xyz .txt .csv .dat): the first three numbers of each line, or a custom format (header lines, separators, X, Y, Z, date and time columns) set with 'Format…'."
+msgstr "Текстовые файлы (.xyz .txt .csv .dat): первые три числа каждой строки или свой формат (строки заголовка, разделители, столбцы X, Y, Z, даты и времени), задаваемый кнопкой «Формат…»."
+
+#. fr: Format…
+msgid "Format…"
+msgstr "Формат…"
+
+#. fr: X : col. %d, Y : col. %d, Z : col. %d
+msgid "X: col. %d, Y: col. %d, Z: col. %d"
+msgstr "X: столб. %d, Y: столб. %d, Z: столб. %d"
+
+#. fr: , date : col. %d
+msgid ", date: col. %d"
+msgstr ", дата: столб. %d"
+
+#. fr: , heure : col. %d
+msgid ", time: col. %d"
+msgstr ", время: столб. %d"
+
+#. fr:  ; %d ligne(s) d'entête
+msgid "; %d header line(s)"
+msgstr "; строк заголовка: %d"
+
+#. fr: Format du fichier texte
+msgid "Text file format"
+msgstr "Формат текстового файла"
+
+#. fr: Espaces / tabulations
+msgid "Spaces / tabs"
+msgstr "Пробелы / табуляции"
+
+#. fr: Virgule
+msgid "Comma"
+msgstr "Запятая"
+
+#. fr: Point-virgule
+msgid "Semicolon"
+msgstr "Точка с запятой"
+
+#. fr: Tabulation
+msgid "Tab"
+msgstr "Табуляция"
+
+#. fr: Point (12.5)
+msgid "Period (12.5)"
+msgstr "Точка (12.5)"
+
+#. fr: Virgule (12,5)
+msgid "Comma (12,5)"
+msgstr "Запятая (12,5)"
+
+#. fr: Année-mois-jour
+msgid "Year-month-day"
+msgstr "Год-месяц-день"
+
+#. fr: Jour/mois/année
+msgid "Day/month/year"
+msgstr "День/месяц/год"
+
+#. fr: Mois/jour/année
+msgid "Month/day/year"
+msgstr "Месяц/день/год"
+
+#. fr: Lignes d'entête à ignorer
+msgid "Header lines to skip"
+msgstr "Пропустить строк заголовка"
+
+#. fr: Séparateur de colonnes
+msgid "Column separator"
+msgstr "Разделитель столбцов"
+
+#. fr: Séparateur décimal
+msgid "Decimal mark"
+msgstr "Десятичный знак"
+
+#. fr: Ordre des dates
+msgid "Date order"
+msgstr "Порядок даты"
+
+#. fr: Détection automatique
+msgid "Automatic detection"
+msgstr "Автоопределение"
+
+#. fr: Enregistrer le format…
+msgid "Save format…"
+msgstr "Сохранить формат…"
+
+#. fr: Charger un format…
+msgid "Load format…"
+msgstr "Загрузить формат…"
+
+#. fr: X — longitude / Est
+msgid "X — longitude / East"
+msgstr "X — долгота / Восток"
+
+#. fr: Y — latitude / Nord
+msgid "Y — latitude / North"
+msgstr "Y — широта / Север"
+
+#. fr: Z — profondeur
+msgid "Z — depth"
+msgstr "Z — глубина"
+
+#. fr: Date (ou date et heure)
+msgid "Date (or date and time)"
+msgstr "Дата (или дата и время)"
+
+#. fr: Heure
+msgid "Time"
+msgstr "Время"
+
+#. fr: Aperçu des premières lignes du fichier :
+msgid "Preview of the first lines of the file:"
+msgstr "Просмотр первых строк файла:"
+
+#. fr: OK
+msgid "OK"
+msgstr "OK"
+
+#. fr: Enregistrer le format
+msgid "Save the format"
+msgstr "Сохранить формат"
+
+#. fr: Format PersonalDepth (*.pdfmt)|*.pdfmt
+msgid "PersonalDepth format (*.pdfmt)|*.pdfmt"
+msgstr "Формат PersonalDepth (*.pdfmt)|*.pdfmt"
+
+#. fr: Charger un format
+msgid "Load a format"
+msgstr "Загрузить формат"
+
+#. fr: Fichier de format illisible
+msgid "Unreadable format file"
+msgstr "Нечитаемый файл формата"
+
+#. fr: — (aucune)
+msgid "— (none)"
+msgstr "— (нет)"
+
+#. fr: Colonne %d
+msgid "Column %d"
+msgstr "Столбец %d"
+
+#. fr:  · date
+msgid " · date"
+msgstr " · дата"
+
+#. fr:  · heure
+msgid " · time"
+msgstr " · время"
+
+#. fr: 1re sonde : X = %.8g   Y = %.8g   Z = %.4g
+msgid "1st sounding: X = %.8g   Y = %.8g   Z = %.4g"
+msgstr "1-я отметка: X = %.8g   Y = %.8g   Z = %.4g"
+
+#. fr: Aucun fichier à prévisualiser : le format sera appliqué à l'import.
+msgid "No file to preview: the format will be applied at import."
+msgstr "Нет файла для просмотра: формат будет применён при импорте."
+
+#. fr: Aperçu : %d ligne(s) de données lisible(s) sur %d. Cases rouges : valeur illisible pour ce rôle.
+msgid "Preview: %d readable data line(s) out of %d. Red cells: value unreadable for this role."
+msgstr "Просмотр: читаемых строк данных %d из %d. Красные ячейки: значение нечитаемо для этой роли."
+
+#. fr: Sinon : première date de la colonne date (format personnalisé), ou date AAAAMMJJ trouvée dans le nom du fichier, à défaut date du fichier. La date sert à la règle de priorité « plus récent ».
+msgid "Otherwise: first date of the date column (custom format), or YYYYMMDD date found in the file name, failing that the file date. The date is used by the \"most recent\" priority rule."
+msgstr "Иначе: первая дата из столбца даты (свой формат) или дата ГГГГММДД из имени файла, если её нет — дата файла. Дата используется правилом приоритета «самый новый»."
+
+#. fr: Automatique — fichier .prj, sinon longitude / latitude WGS84
+msgid "Automatic — .prj file, otherwise WGS84 longitude / latitude"
+msgstr "Авто — файл .prj, иначе долгота / широта WGS84"
+
+#. fr: États-Unis — State Plane
+msgid "United States — State Plane"
+msgstr "США — State Plane"
+
+#. fr: ENC OpenCPN (S-52)
+msgid "OpenCPN ENC (S-52)"
+msgstr "ENC OpenCPN (S-52)"
+
+#. fr: Aide sur les formats…
+msgid "Format help…"
+msgstr "Справка по форматам…"
+
+#. fr: Aide sur les formats
+msgid "Format help"
+msgstr "Справка по форматам"
+
+#. fr: format X et Y : nombre
+msgid "X and Y format: number"
+msgstr "Формат X и Y: число"
+
+#. fr: format : automatique
+msgid "format: automatic"
+msgstr "формат: авто"
+
+#. fr: Gabarit des coordonnées X et Y en degrés, minutes, secondes : D M S X (ex. « D M S.S X », « DDMM.MX »). Vide : nombre décimal. Voir « Aide sur les formats ».
+msgid "Pattern of the X and Y coordinates in degrees, minutes, seconds: D M S X (e.g. 'D M S.S X', 'DDMM.MX'). Empty: decimal number. See 'Format help'."
+msgstr "Шаблон координат X и Y в градусах, минутах, секундах: D M S X (напр. «D M S.S X», «DDMM.MX»). Пусто: десятичное число. См. «Справка по форматам»."
+
+#. fr: Gabarit de la date : y M d h m s z AP (ex. « yyyy/M/d », « d/M/y h:m:s », « MMM d, y »). Vide : reconnaissance automatique. Voir « Aide sur les formats ».
+msgid "Date pattern: y M d h m s z AP (e.g. 'yyyy/M/d', 'd/M/y h:m:s', 'MMM d, y'). Empty: automatic recognition. See 'Format help'."
+msgstr "Шаблон даты: y M d h m s z AP (напр. «yyyy/M/d», «d/M/y h:m:s», «MMM d, y»). Пусто: автоопределение. См. «Справка по форматам»."
+
+#. fr: Gabarit de l'heure (ex. « h:m:s.s », « hhmmss », « h:m:sAP »). Vide : reconnaissance automatique. Voir « Aide sur les formats ».
+msgid "Time pattern (e.g. 'h:m:s.s', 'hhmmss', 'h:m:sAP'). Empty: automatic recognition. See 'Format help'."
+msgstr "Шаблон времени (напр. «h:m:s.s», «hhmmss», «h:m:sAP»). Пусто: автоопределение. См. «Справка по форматам»."
+
+#. fr:  ; coordonnées : 
+msgid "; coordinates: "
+msgstr "; координаты: "
+
+#. fr:  ; date : 
+msgid "; date: "
+msgstr "; дата: "
+
+#. fr:  ; heure : 
+msgid "; time: "
+msgstr "; время: "
+
+#. fr: Date et heure — champs
+msgid "Date and time — fields"
+msgstr "Дата и время — поля"
+
+#. fr: Date et heure — exemples
+msgid "Date and time — examples"
+msgstr "Дата и время — примеры"
+
+#. fr: Coordonnées X / Y — champs
+msgid "X / Y coordinates — fields"
+msgstr "Координаты X / Y — поля"
+
+#. fr: Coordonnées X / Y — exemples
+msgid "X / Y coordinates — examples"
+msgstr "Координаты X / Y — примеры"
+
+#. fr: Caractère
+msgid "Character"
+msgstr "Символ"
+
+#. fr: Champ
+msgid "Field"
+msgstr "Поле"
+
+#. fr: Texte
+msgid "Text"
+msgstr "Текст"
+
+#. fr: Format
+msgid "Format"
+msgstr "Формат"
+
+#. fr: Remarque
+msgid "Note"
+msgstr "Примечание"
+
+#. fr: Année (yy : 2 chiffres)
+msgid "Year (yy: 2 digits)"
+msgstr "Год (yy: 2 цифры)"
+
+#. fr: Mois (majuscule ; MMM : nom du mois)
+msgid "Month (uppercase; MMM: month name)"
+msgstr "Месяц (заглавная; MMM: название месяца)"
+
+#. fr: Jour
+msgid "Day"
+msgstr "День"
+
+#. fr: Heure (0-24)
+msgid "Hour (0-24)"
+msgstr "Час (0-24)"
+
+#. fr: Minute (minuscule)
+msgid "Minute (lowercase)"
+msgstr "Минута (строчная)"
+
+#. fr: Secondes (s.s : avec décimales)
+msgid "Seconds (s.s: with decimals)"
+msgstr "Секунды (s.s: с десятичными)"
+
+#. fr: Millisecondes
+msgid "Milliseconds"
+msgstr "Миллисекунды"
+
+#. fr: AM / PM
+msgid "AM / PM"
+msgstr "AM / PM"
+
+#. fr: 11 février 1983 (attention à l'ordre jour / mois)
+msgid "11 February 1983 (beware of day / month order)"
+msgstr "11 февраля 1983 (внимание к порядку день / месяц)"
+
+#. fr: 2 novembre 1983
+msgid "2 November 1983"
+msgstr "2 ноября 1983"
+
+#. fr: Date et heure dans la même colonne
+msgid "Date and time in the same column"
+msgstr "Дата и время в одном столбце"
+
+#. fr: Heure sur 24 h sauf champ AM/PM
+msgid "24-hour clock unless an AM/PM field is present"
+msgstr "24-часовой формат, если нет поля AM/PM"
+
+#. fr: z : millièmes de seconde
+msgid "z: thousandths of a second"
+msgstr "z: тысячные доли секунды"
+
+#. fr: yy : 1970-2069
+msgid "yy: 1970-2069"
+msgstr "yy: 1970-2069"
+
+#. fr: Nom du mois (anglais ou français) ou abréviation
+msgid "Month name (English or French) or abbreviation"
+msgstr "Название месяца (английское или французское) или сокращение"
+
+#. fr: Abréviation à 3 lettres
+msgid "3-letter abbreviation"
+msgstr "Сокращение из 3 букв"
+
+#. fr: Lettres répétées collées : largeur fixe
+msgid "Repeated letters with no separator: fixed width"
+msgstr "Повторяющиеся буквы без разделителя: фиксированная ширина"
+
+#. fr: \\ : caractère suivant littéral
+msgid "\\ : next character is literal"
+msgstr "\\ : следующий символ берётся буквально"
+
+#. fr: Colonne Heure séparée
+msgid "Separate Time column"
+msgstr "Отдельный столбец времени"
+
+#. fr: Degrés (D.D : avec décimales)
+msgid "Degrees (D.D: with decimals)"
+msgstr "Градусы (D.D: с десятичными)"
+
+#. fr: Minutes (M.M : avec décimales)
+msgid "Minutes (M.M: with decimals)"
+msgstr "Минуты (M.M: с десятичными)"
+
+#. fr: Secondes (S.S : avec décimales)
+msgid "Seconds (S.S: with decimals)"
+msgstr "Секунды (S.S: с десятичными)"
+
+#. fr: Hémisphère N, S, E, W (ou O)
+msgid "Hemisphere N, S, E, W (or O)"
+msgstr "Полушарие N, S, E, W (или O)"
+
+#. fr: Degrés décimaux (comme le champ vide)
+msgid "Decimal degrees (same as an empty field)"
+msgstr "Десятичные градусы (как пустое поле)"
+
+#. fr: Degrés et minutes décimales
+msgid "Degrees and decimal minutes"
+msgstr "Градусы и десятичные минуты"
+
+#. fr: Degrés, minutes, secondes décimales
+msgid "Degrees, minutes, decimal seconds"
+msgstr "Градусы, минуты, десятичные секунды"
+
+#. fr: La ponctuation doit figurer dans le format
+msgid "Punctuation must be included in the format"
+msgstr "Знаки препинания должны входить в формат"
+
+#. fr: Hémisphères sud et ouest : valeur négative
+msgid "Southern and western hemispheres: negative value"
+msgstr "Южное и западное полушария: отрицательное значение"
+
+#. fr: Nombre négatif dans un hémisphère négatif : positif
+msgid "A negative number in a negative hemisphere is positive"
+msgstr "Отрицательное число в отрицательном полушарии положительно"
+
+#. fr: Format NMEA : largeur fixe
+msgid "NMEA format: fixed width"
+msgstr "Формат NMEA: фиксированная ширина"
+
+#. fr: format : nombre
+msgid "format: number"
+msgstr "формат: число"
+
+#. fr: Gabarit de la coordonnée en degrés, minutes, secondes : D M S X (ex. « D M S.S X », « DDMM.MX »). Vide : nombre décimal, ou degrés-minutes-secondes reconnus automatiquement (« 54° 00' 28.44\" N »). Voir « Aide sur les formats ».
+msgid "Coordinate pattern in degrees, minutes, seconds: D M S X (e.g. 'D M S.S X', 'DDMM.MX'). Empty: decimal number, or degrees-minutes-seconds read automatically ('54° 00' 28.44\" N'). See 'Format help'."
+msgstr "Шаблон координаты в градусах, минутах, секундах: D M S X (напр. «D M S.S X», «DDMM.MX»). Пусто: десятичное число или градусы-минуты-секунды, распознаваемые автоматически («54° 00' 28.44\" N»). См. «Справка по форматам»."
+
+#. fr: Sens : automatique
+msgid "Direction: automatic"
+msgstr "Направление: авто"
+
+#. fr: Profondeurs (positives vers le bas)
+msgid "Depths (positive down)"
+msgstr "Глубины (вниз положительно)"
+
+#. fr: Altitudes (positives vers le haut)
+msgid "Heights (positive up)"
+msgstr "Высоты (вверх положительно)"
+
+#. fr: Sens des valeurs Z du fichier. Automatique : altitudes si la majorité des valeurs est négative.
+msgid "Direction of the file Z values. Automatic: heights if most values are negative."
+msgstr "Направление значений Z файла. Авто: высоты, если большинство значений отрицательно."
+
+#. fr: Unité des valeurs Z du fichier (la base est toujours en mètres).
+msgid "Unit of the file Z values (the database is always in metres)."
+msgstr "Единица значений Z файла (база всегда в метрах)."
+
+#. fr:  → profondeur %.3f m
+msgid " → depth %.3f m"
+msgstr " → глубина %.3f м"
+
+#. fr:  ; format X : 
+msgid "; X format: "
+msgstr "; формат X: "
+
+#. fr:  ; format Y : 
+msgid "; Y format: "
+msgstr "; формат Y: "
+
+#. fr: Lecture au curseur
+msgid "Cursor readout"
+msgstr "Показания курсора"
+
+#. fr: Bandeau de palette sur la carte
+msgid "Palette banner on the chart"
+msgstr "Полоса палитры на карте"
+
+#. fr: A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée ou toutes les données ; clic sur une profondeur : borne de la palette ; clic sur les couleurs : préréglages ; petite rampe : bandeau horizontal ou vertical ; roue : ce panneau.
+msgid "A / M: automatic or manual palette; View / All: thresholds from the displayed area or all data; click a depth: palette bound; click the colours: presets; small colour bar: horizontal or vertical banner; gear: this panel."
+msgstr "A / M: автоматическая или ручная палитра; Вид / Все: пороги по видимой области или по всем данным; щелчок по глубине: граница палитры; щелчок по цветам: готовые палитры; маленькая цветная полоска: горизонтальная или вертикальная полоса; шестерёнка: эта панель."
+
+#. fr: Profondeur minimale de la palette
+msgid "Palette minimum depth"
+msgstr "Минимальная глубина палитры"
+
+#. fr: Profondeur maximale de la palette
+msgid "Palette maximum depth"
+msgstr "Максимальная глубина палитры"
+
+#. fr: \n(vide = valeur calculée d'après les données)
+msgid "\n(empty = value computed from the data)"
+msgstr "\n(пусто = значение по данным)"
+
+#. fr: Palette
+msgid "Palette"
+msgstr "Палитра"
+
+#. fr: Valeur numérique attendue.
+msgid "A numeric value is expected."
+msgstr "Ожидается число."
+
+#. fr: La profondeur minimale doit être inférieure à la maximale.
+msgid "The minimum depth must be less than the maximum."
+msgstr "Минимальная глубина должна быть меньше максимальной."
+
+#. fr: Vue
+msgid "View"
+msgstr "Вид"
+
+#. fr: en bas, centré
+msgid "bottom, centred"
+msgstr "снизу, по центру"
+
+#. fr: en haut, centré
+msgid "top, centred"
+msgstr "сверху, по центру"
+
+#. fr: en bas à gauche
+msgid "bottom left"
+msgstr "снизу слева"
+
+#. fr: libre (déplacé à la souris)
+msgid "free (dragged with the mouse)"
+msgstr "свободно (перетаскивается мышью)"
+
+#. fr: Le bandeau se déplace aussi en le faisant glisser sur la carte.
+msgid "The banner can also be dragged on the chart."
+msgstr "Полосу можно также перетаскивать по карте."
+
+#. fr: Verrouiller la position du bandeau
+msgid "Lock the banner position"
+msgstr "Закрепить положение полосы"
+
+#. fr: Enregistrer dans mes palettes…
+msgid "Save to my palettes…"
+msgstr "Сохранить в мои палитры…"
+
+#. fr: Enregistre la palette affichée (seuils, couleurs, mode, zone dangereuse) dans le dossier de palettes : elle apparaît ensuite dans la liste et dans le menu du bandeau.
+msgid "Saves the displayed palette (thresholds, colours, mode, danger zone) in the palette folder: it then appears in the list and in the banner menu."
+msgstr "Сохраняет показанную палитру (пороги, цвета, режим, опасная зона) в папку палитр: затем она появляется в списке и в меню полосы."
+
+#. fr: Dossier de palettes…
+msgid "Palette folder…"
+msgstr "Папка палитр…"
+
+#. fr: Choisir le dossier des palettes (.cpt). Les palettes GMT déposées dans ce dossier sont aussi proposées.
+msgid "Choose the palette folder (.cpt). GMT palettes placed in this folder are offered too."
+msgstr "Выберите папку палитр (.cpt). Палитры GMT, положенные в эту папку, тоже предлагаются."
+
+#. fr: Ma palette : 
+msgid "My palette: "
+msgstr "Моя палитра: "
+
+#. fr: Nom de la palette
+msgid "Palette name"
+msgstr "Название палитры"
+
+#. fr: Enregistrer dans mes palettes
+msgid "Save to my palettes"
+msgstr "Сохранить в мои палитры"
+
+#. fr: Impossible de créer le dossier 
+msgid "Cannot create the folder "
+msgstr "Не удаётся создать папку "
+
+#. fr: Remplacer la palette existante ?
+msgid "Replace the existing palette?"
+msgstr "Заменить существующую палитру?"
+
+#. fr: Dossier de palettes
+msgid "Palette folder"
+msgstr "Папка палитр"
+
+#. fr: Surface couverte : 
+msgid "Covered area: "
+msgstr "Покрытая площадь: "
+
+#. fr:  (cumulée, recouvrements comptés pour chaque source)\n
+msgid " (cumulative, overlaps counted for each source)\n"
+msgstr " (суммарно, перекрытия учитываются для каждого источника)\n"
+
+#. fr:  ; %d ligne(s) illisible(s) ignorée(s)
+msgid "; %d unreadable line(s) ignored"
+msgstr "; пропущено нечитаемых строк: %d"
+
+#. fr:  — %lld sondes sans date et %lld hors période écartées
+msgid " — %lld soundings without date and %lld outside the period discarded"
+msgstr " — отброшено отметок без даты: %lld, вне периода: %lld"
+
+#. fr: %d fichier(s), %d hauteurs du %s au %s ; de %.2f à %.2f %s
+msgid "%d file(s), %d levels from %s to %s; from %.2f to %.2f %s"
+msgstr "Файлов: %d, уровней: %d с %s по %s; от %.2f до %.2f %s"
+
+#. fr: 1 jour
+msgid "1 day"
+msgstr "1 сутки"
+
+#. fr: Aucun fichier de hauteurs d'eau (.txt, .csv, .dat) dans 
+msgid "No water level file (.txt, .csv, .dat) in "
+msgstr "Нет файлов уровней воды (.txt, .csv, .dat) в "
+
+#. fr: Aucune hauteur d'eau lisible (format attendu : date heure, hauteur)
+msgid "No readable water level (expected format: date time, level)"
+msgstr "Нет читаемых уровней воды (ожидаемый формат: дата время, уровень)"
+
+#. fr: Aucune sonde corrigée par les hauteurs d'eau : %lld sans date lisible, %lld hors de la période des hauteurs (%s … %s)
+msgid "No sounding corrected by the water levels: %lld without a readable date, %lld outside the water level period (%s … %s)"
+msgstr "Ни одна отметка не исправлена по уровням воды: без читаемой даты %lld, вне периода уровней %lld (%s … %s)"
+
+#. fr: Courbe…
+msgid "Curve…"
+msgstr "График…"
+
+#. fr: Dossier des hauteurs d'eau
+msgid "Water level folder"
+msgstr "Папка уровней воды"
+
+#. fr: Dossier…
+msgid "Folder…"
+msgstr "Папка…"
+
+#. fr: Fichier de hauteurs d'eau
+msgid "Water level file"
+msgstr "Файл уровней воды"
+
+#. fr: Fichier ou dossier de hauteurs d'eau introuvable : 
+msgid "Water level file or folder not found: "
+msgstr "Файл или папка уровней воды не найдены: "
+
+#. fr: Fichiers texte « date heure, hauteur » d'une échelle ou d'un marégraphe (ex. 2026-11-01 05:00:00,0.35 ou 2026-11-01,0.35), dans l'unité de Z. Un dossier : tous ses fichiers .txt, .csv, .dat forment une seule série. Chaque sonde est corrigée de la hauteur interpolée à son heure : le format personnalisé doit indiquer la colonne date (et heure), sur la même horloge que les hauteurs.
+msgid "Text files \"date time, level\" from a staff gauge or tide gauge (e.g. 2026-11-01 05:00:00,0.35 or 2026-11-01,0.35), in the Z unit. A folder: all its .txt, .csv, .dat files form one series. Each sounding is corrected by the level interpolated at its time: the custom format must give the date (and time) column, on the same clock as the levels."
+msgstr "Текстовые файлы «дата время, уровень» с водомерного поста или мареографа (напр. 2026-11-01 05:00:00,0.35 или 2026-11-01,0.35), в единице Z. Папка: все её файлы .txt, .csv, .dat образуют один ряд. Каждая отметка исправляется уровнем, интерполированным на её время: свой формат должен указывать столбец даты (и времени) по тем же часам, что и уровни."
+
+#. fr: Fichier…
+msgid "File…"
+msgstr "Файл…"
+
+#. fr: Hauteurs d'eau (*.txt;*.csv;*.dat)|*.txt;*.csv;*.dat|Tous les fichiers|*.*
+msgid "Water levels (*.txt;*.csv;*.dat)|*.txt;*.csv;*.dat|All files|*.*"
+msgstr "Уровни воды (*.txt;*.csv;*.dat)|*.txt;*.csv;*.dat|Все файлы|*.*"
+
+#. fr: Hauteurs d'eau observées
+msgid "Observed water levels"
+msgstr "Наблюдённые уровни воды"
+
+#. fr: Les sondes n'ont pas d'heure : la correction par hauteurs d'eau prend le niveau du jour du levé. Cocher « Date du levé » et la choisir, ou mettre la date (AAAAMMJJ) dans le nom des fichiers, ou bien choisir « Format personnalisé » avec la colonne date (et heure). Fichiers sans date :
+msgid "The soundings have no time: the water level correction takes the level of the survey day. Tick \"Survey date\" and choose it, or put the date (YYYYMMDD) in the file names, or choose \"Custom format\" with the date (and time) column. Files without a date:"
+msgstr "У отметок нет времени: поправка по уровням воды берёт уровень дня съёмки. Отметьте «Дата съёмки» и выберите её, или укажите дату (ГГГГММДД) в именах файлов, или выберите «Свой формат» со столбцом даты (и времени). Файлы без даты:"
+
+#. fr: Molette : zoom sur le temps ; double-clic : toute la période.
+msgid "Wheel: zoom on time; double-click: whole period."
+msgstr "Колесо: масштаб по времени; двойной щелчок: весь период."
+
+#. fr: \nUne sonde est corrigée par interpolation entre les deux hauteurs qui l'encadrent (valeur extrême gardée jusqu'à %s hors de la période).
+msgid "\nA sounding is corrected by interpolating between the two levels around it (end value kept up to %s outside the period)."
+msgstr "\nОтметка исправляется интерполяцией между двумя соседними уровнями (крайнее значение сохраняется до %s вне периода)."
+
+#. fr: hauteurs d'eau observées
+msgid "observed water levels"
+msgstr "наблюдённые уровни воды"
+
+#. fr: hauteurs d'eau observées (%+.2f…%+.2f m)
+msgid "observed water levels (%+.2f…%+.2f m)"
+msgstr "наблюдённые уровни воды (%+.2f…%+.2f м)"
+
+#. fr: profondeur = sonde + hauteur
+msgid "depth = sounding + level"
+msgstr "глубина = отметка + уровень"
+
+#. fr: profondeur = sonde − hauteur (hauteur au-dessus du zéro)
+msgid "depth = sounding − level (level above datum)"
+msgstr "глубина = отметка − уровень (уровень над нулём)"
+
+#. fr:  · hauteur
+msgid " · level"
+msgstr " · уровень"
+
+#. fr: 1re hauteur : %.4g → %.3f m
+msgid "1st level: %.4g → %.3f m"
+msgstr "1-й уровень: %.4g → %.3f м"
+
+#. fr: Correction appliquée à chaque sonde avec la hauteur d'eau à son heure.
+msgid "Correction applied to each sounding with the water level at its time."
+msgstr "Поправка, применяемая к каждой отметке по уровню воды на её время."
+
+#. fr: Fichiers texte d'une échelle ou d'un marégraphe : date (et heure) et hauteur d'eau (ex. 2026-11-01 05:00:00,0.35). Un dossier : tous ses fichiers .txt, .csv, .dat forment une seule série. Colonnes, unité, convention et fuseau horaire se règlent avec « Format… ». Chaque sonde est corrigée de la hauteur interpolée à son heure ; sans colonne date, la hauteur du jour du levé est prise.
+msgid "Text files from a staff gauge or tide gauge: date (and time) and water level (e.g. 2026-11-01 05:00:00,0.35). A folder: all its .txt, .csv, .dat files form one series. Columns, unit, convention and time zone are set with \"Format…\". Each sounding is corrected by the level interpolated at its time; without a date column, the level of the survey day is used."
+msgstr "Текстовые файлы водомерного поста или мареографа: дата (и время) и уровень воды (напр. 2026-11-01 05:00:00,0.35). Папка: все её файлы .txt, .csv, .dat образуют один ряд. Столбцы, единица, правило и часовой пояс задаются кнопкой «Формат…». Каждая отметка исправляется уровнем, интерполированным на её время; без столбца даты берётся уровень дня съёмки."
+
+#. fr: Format du fichier de hauteurs d'eau
+msgid "Water level file format"
+msgstr "Формат файла уровней воды"
+
+#. fr: Fuseau horaire des dates et heures du fichier (décalage fixe sur UTC, sans passage à l'heure d'été). Les sondes et les hauteurs d'eau sont comparées en UTC : régler chaque fichier sur son propre fuseau.
+msgid "Time zone of the dates and times in the file (fixed offset from UTC, no daylight saving change). Soundings and water levels are compared in UTC: set each file to its own time zone."
+msgstr "Часовой пояс дат и времени в файле (постоянное смещение от UTC, без летнего времени). Отметки и уровни воды сравниваются в UTC: задайте каждому файлу его часовой пояс."
+
+#. fr: Fuseau horaire
+msgid "Time zone"
+msgstr "Часовой пояс"
+
+#. fr: Hauteur d'eau
+msgid "Water level"
+msgstr "Уровень воды"
+
+#. fr: Unité des hauteurs d'eau du fichier.
+msgid "Unit of the water levels in the file."
+msgstr "Единица уровней воды в файле."
+
+#. fr: \nDates et heures en UTC.
+msgid "\nDates and times in UTC."
+msgstr "\nДаты и время в UTC."
+
+#. fr: format : reconnaissance automatique (date heure, hauteur)
+msgid "format: automatic recognition (date time, level)"
+msgstr "формат: автоопределение (дата время, уровень)"
+
+#. fr: hauteur : col. %d
+msgid "level: col. %d"
+msgstr "уровень: столб. %d"
+
+#. fr: mètres
+msgid "metres"
+msgstr "метры"
+
+#. fr: pieds
+msgid "feet"
+msgstr "футы"
+
+#. fr: profondeur = sonde − hauteur
+msgid "depth = sounding − level"
+msgstr "глубина = отметка − уровень"
+
+#. fr: Fuseau 
+msgid "Time zone "
+msgstr "Часовой пояс "
+
+#. fr: Zones interpolées de la base
+msgid "Interpolated areas of the database"
+msgstr "Интерполированные зоны базы"
+
+#. fr: Surface calculée entre les sondes d'un nuage de points à l'import (levés en lignes, sondes de carte…). Décoché : seules les cases mesurées sont affichées.
+msgid "Surface computed between the soundings of a point cloud at import (line surveys, chart soundings…). Unticked: only measured cells are shown."
+msgstr "Поверхность, вычисленная между отметками облака точек при импорте (галсы, отметки с карт…). Флажок снят: показываются только измеренные ячейки."
+
+#. fr: les distinguer (plus claires)
+msgid "distinguish them (lighter)"
+msgstr "выделять их (светлее)"
+
+#. fr: Couleur des zones interpolées éclaircie pour les distinguer des zones mesurées. Les sondes affichées ne sont jamais interpolées.
+msgid "Colour of interpolated areas lightened to tell them from measured areas. Displayed soundings are never interpolated."
+msgstr "Цвет интерполированных зон осветлён, чтобы отличать их от измеренных. Показываемые отметки глубин никогда не интерполированы."
+
+#. fr:   (interpolé)
+msgid "  (interpolated)"
+msgstr "  (интерполировано)"
+
+#. fr:  : analyse du levé
+msgid " : survey analysis"
+msgstr " : анализ съёмки"
+
+#. fr: Interpolation entre les sondes
+msgid "Interpolation between soundings"
+msgstr "Интерполяция между отметками"
+
+#. fr: Pas horizontal de stockage des sondes dans la base. Sinon estimé par l'analyse du levé : pas de la grille, ou espacement des sondes le long des routes (levé en lignes), ou espacement typique des sondes. Dans chaque case, la sonde la plus faible est gardée.
+msgid "Horizontal storage step of the soundings in the database. Otherwise estimated by the survey analysis: grid step, or sounding spacing along the tracks (line survey), or typical sounding spacing. In each cell, the shoalest sounding is kept."
+msgstr "Горизонтальный шаг хранения отметок в базе. Иначе определяется анализом съёмки: шаг сетки, или расстояние между отметками вдоль галсов (съёмка галсами), или типичное расстояние между отметками. В каждой ячейке сохраняется наименьшая глубина."
+
+#. fr: automatique (d'après les données)
+msgid "automatic (from the data)"
+msgstr "авто (по данным)"
+
+#. fr: sondeur classique (un faisceau, routes ou profils)
+msgid "single-beam echosounder (tracks or profiles)"
+msgstr "однолучевой эхолот (галсы или профили)"
+
+#. fr: sondeur multifaisceaux (large fauchée)
+msgid "multibeam echosounder (wide swath)"
+msgstr "многолучевой эхолот (широкая полоса)"
+
+#. fr: lidar bathymétrique
+msgid "bathymetric lidar"
+msgstr "батиметрический лидар"
+
+#. fr: sondes de carte (sélection)
+msgid "chart soundings (selection)"
+msgstr "отметки глубин с карт (выборка)"
+
+#. fr: sondes au plomb (levés anciens)
+msgid "lead-line soundings (old surveys)"
+msgstr "промеры лотом (старые съёмки)"
+
+#. fr: Règle la distance maximale d'interpolation entre les sondes. Automatique : levé en lignes reconnu à l'écart entre les routes, sinon deux fois l'espacement des sondes. Multifaisceaux et lidar : trois fois. Sondes de carte et plomb : au moins les grands écarts courants entre sondes, plafond de 1 000 m / 500 m.
+msgid "Sets the maximum interpolation distance between soundings. Automatic: line survey recognised from the gap between tracks, otherwise twice the sounding spacing. Multibeam and lidar: three times. Chart soundings and lead line: at least the usual large gaps between soundings, capped at 1,000 m / 500 m."
+msgstr "Задаёт максимальное расстояние интерполяции между отметками. Авто: съёмка галсами распознаётся по расстоянию между галсами, иначе — два расстояния между отметками. Многолучевой эхолот и лидар: три. Отметки с карт и промеры лотом: не меньше обычных больших промежутков между отметками, предел 1 000 м / 500 м."
+
+#. fr: Type de levé
+msgid "Survey type"
+msgstr "Тип съёмки"
+
+#. fr: automatique
+msgid "automatic"
+msgstr "авто"
+
+#. fr: grille (pas régulier)
+msgid "grid (regular step)"
+msgstr "сетка (регулярный шаг)"
+
+#. fr: nuage de points
+msgid "point cloud"
+msgstr "облако точек"
+
+#. fr: Grille : nœuds réguliers, déjà traitée, stockée à son pas sans interpolation. Nuage : sondes sans pas défini, surface interpolée entre elles. Automatique : réseau régulier cherché dans le système du fichier, en lon/lat et en UTM.
+msgid "Grid: regular nodes, already processed, stored at its step without interpolation. Cloud: soundings with no defined step, surface interpolated between them. Automatic: regular lattice searched in the file system, in lon/lat and in UTM."
+msgstr "Сетка: регулярные узлы, уже обработана, хранится со своим шагом без интерполяции. Облако: отметки без определённого шага, поверхность интерполируется между ними. Авто: регулярная решётка ищется в системе файла, в долготе/широте и в UTM."
+
+#. fr: Interpoler entre les sondes (nuages de points)
+msgid "Interpolate between soundings (point clouds)"
+msgstr "Интерполировать между отметками (облака точек)"
+
+#. fr: Surface triangulée entre les sondes, sans franchir un vide plus large que la distance maximale. Marquée « interpolée » dans la base : une sonde mesurée l'emporte toujours, et l'affichage peut la masquer ou l'éclaircir.
+msgid "Triangulated surface between soundings, never across a gap wider than the maximum distance. Marked \"interpolated\" in the database: a measured sounding always wins, and the display can hide or lighten it."
+msgstr "Триангулированная поверхность между отметками, никогда не через промежуток шире максимального расстояния. Помечается в базе как «интерполированная»: измеренная отметка всегда приоритетна, а отображение может её скрыть или осветлить."
+
+#. fr: Nature
+msgid "Nature"
+msgstr "Тип данных"
+
+#. fr: en lon/lat
+msgid "in lon/lat"
+msgstr "в долготе/широте"
+
+#. fr: en UTM 
+msgid "in UTM "
+msgstr "в UTM "
+
+#. fr: dans le système du fichier
+msgid "in the file system"
+msgstr "в системе файла"
+
+#. fr: grille %.2f × %.2f m (%s), %.0f %% des nœuds occupés
+msgid "grid %.2f × %.2f m (%s), %.0f %% of nodes filled"
+msgstr "сетка %.2f × %.2f м (%s), заполнено %.0f %% узлов"
+
+#. fr: nuage en lignes : sondes tous les %.2f m, lignes ~%.0f m ; D = %.0f m
+msgid "line survey: soundings every %.2f m, lines ~%.0f m; D = %.0f m"
+msgstr "съёмка галсами: отметки через %.2f м, галсы ~%.0f м; D = %.0f м"
+
+#. fr: nuage : espacement ~%.2f m ; D = %.2f m
+msgid "cloud: spacing ~%.2f m; D = %.2f m"
+msgstr "облако: шаг ~%.2f м; D = %.2f м"
+
+#. fr:  (imposé)
+msgid " (forced)"
+msgstr " (принудительно)"
+
+#. fr: Distance max
+msgid "Max distance"
+msgstr "Макс. расстояние"
+
+#. fr: Distance maximale d'interpolation : la surface n'est jamais tendue entre deux sondes plus éloignées que cette distance (vides plus larges laissés vides). Décoché : déduite de l'analyse du levé et du type de levé. La valeur utilisée s'affiche dans Gestion des données.
+msgid "Maximum interpolation distance: the surface is never stretched between two soundings farther apart than this distance (wider gaps stay empty). Unticked: worked out from the survey analysis and the survey type. The value used is shown in Data management."
+msgstr "Максимальное расстояние интерполяции: поверхность никогда не натягивается между двумя отметками, удалёнными больше этого расстояния (более широкие промежутки остаются пустыми). Флажок снят: определяется по анализу и типу съёмки. Использованное значение видно в «Управлении данными»."
+
+#. fr:  ; %s, D utilisée %.0f m, %lld pixels interpolés
+msgid " ; %s, D used %.0f m, %lld interpolated pixels"
+msgstr " ; %s, D %.0f м, интерполировано пикселей: %lld"
+
+#. fr:  ; D imposée
+msgid " ; D set by hand"
+msgstr " ; D задано вручную"
+
+#. fr: Analyse     : 
+msgid "Analysis    : "
+msgstr "Анализ      : "
+
+#. fr: Enregistrer la palette…
+msgid "Save palette…"
+msgstr "Сохранить палитру…"
+
+#. fr: Enregistrer la palette
+msgid "Save palette"
+msgstr "Сохранить палитру"
+
+#. fr: Restaurer les palettes d'origine
+msgid "Restore original palettes"
+msgstr "Восстановить исходные палитры"
+
+#. fr: Choisir le dossier des palettes (.cpt) : toutes les palettes proposées (sauf ENC S-52) sont les fichiers de ce dossier, palettes d'origine comprises. On peut les modifier, les renommer, les supprimer, y déposer des palettes GMT.
+msgid "Choose the palette folder (.cpt): all the palettes offered (except ENC S-52) are the files of this folder, original palettes included. They can be edited, renamed, deleted, and GMT palettes can be dropped there."
+msgstr "Выберите папку палитр (.cpt): все предлагаемые палитры (кроме ENC S-52) — это файлы этой папки, включая исходные. Их можно изменять, переименовывать, удалять, класть туда палитры GMT."
+
+#. fr: Réécrit dans le dossier les palettes livrées avec le plugin (remplace les fichiers du même nom).
+msgid "Writes the palettes shipped with the plugin back into the folder (replaces the files of the same name)."
+msgstr "Записывает в папку палитры, поставляемые с модулем (заменяет файлы с тем же именем)."
+
+#. fr: Réécrire les palettes d'origine dans le dossier de palettes ? Les fichiers du même nom sont remplacés.
+msgid "Write the original palettes back into the palette folder? Files of the same name are replaced."
+msgstr "Записать исходные палитры обратно в папку палитр? Файлы с тем же именем будут заменены."
+
+#. fr: TIN (linéaire)
+msgid "TIN (linear)"
+msgstr "TIN (линейная)"
+
+#. fr: voisin naturel (Sibson)
+msgid "natural neighbour (Sibson)"
+msgstr "естественный сосед (Сибсон)"
+
+#. fr: IDW (inverse de la distance)
+msgid "IDW (inverse distance)"
+msgstr "IDW (обратные расстояния)"
+
+#. fr: voisin naturel
+msgid "natural neighbour"
+msgstr "естественный сосед"
+
+#. fr: Méthode de calcul des valeurs interpolées. La zone remplie est la même pour toutes (triangles dont aucun côté ne dépasse la distance maximale). Automatique : voisin naturel pour un levé en lignes, sinon TIN. TIN : plan dans chaque triangle, le plus rapide. Voisin naturel : surface plus douce, sans arêtes de triangles. IDW : moyenne des 12 sondes les plus proches pondérée par l'inverse du carré de la distance, peut former des « cuvettes » autour des sondes isolées.
+msgid "Method used to compute the interpolated values. The filled area is the same for all (triangles with no side longer than the maximum distance). Automatic: natural neighbour for a line survey, otherwise TIN. TIN: a plane in each triangle, the fastest. Natural neighbour: smoother surface, without triangle edges. IDW: mean of the 12 nearest soundings weighted by the inverse square distance; may form \"dimples\" around isolated soundings."
+msgstr "Метод вычисления интерполированных значений. Заполняемая область одинакова для всех (треугольники, ни одна сторона которых не длиннее максимального расстояния). Авто: естественный сосед для съёмки галсами, иначе TIN. TIN: плоскость в каждом треугольнике, самый быстрый. Естественный сосед: более гладкая поверхность без рёбер треугольников. IDW: среднее 12 ближайших отметок с весом, обратным квадрату расстояния; может давать «ямки» вокруг одиночных отметок."
+
+#. fr: méthode automatique
+msgid "automatic method"
+msgstr "авто-метод"
+
+#. fr: Base
+msgid "Database"
+msgstr "База"
+
+#. fr: Isobathes et sondes
+msgid "Contours and soundings"
+msgstr "Изобаты и отметки"
+
+#. fr: Afficher les sondes
+msgid "Show soundings"
+msgstr "Показать отметки"
+
+#. fr: Espacement
+msgid "Spacing"
+msgstr "Интервал"
+
+#. fr: Écart minimal entre deux sondes affichées (pixels d'écran).
+msgid "Minimum gap between two displayed soundings (screen pixels)."
+msgstr "Минимальное расстояние между двумя показанными отметками (пиксели экрана)."
+
+#. fr: Taille des sondes et des valeurs des isobathes.
+msgid "Size of the soundings and of the depth contour values."
+msgstr "Размер отметок и значений изобат."
+

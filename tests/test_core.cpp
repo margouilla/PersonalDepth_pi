@@ -1165,6 +1165,56 @@ int main(int argc, char** argv) {
     CHECK(std::string(pd::tr("Marée")) == "Marée");
     std::printf("Langues (fr / en / ru) : OK\n");
   }
+  {  // fichiers de traduction .po (anglais -> langue), lus au démarrage
+    CHECK(pd::FormatSignature("%d de %s, %.2f %% %lld") == "dsfd");
+    // aller-retour : modèle russe écrit puis relu = table compilée
+    const std::string po = Tmp("pd_ru.po");
+    std::string e;
+    CHECK(pd::WriteTranslationTemplate(po, pd::kRussian, e));
+    CHECK(pd::LoadTranslations({po}) > 700);
+    static const char* const fr[][2] = {
+#include "../src/core/LangTable.inc"
+    };
+    pd::SetLanguage(pd::kRussian);
+    std::vector<std::string> viaPo;
+    for (const auto& x : fr) viaPo.push_back(pd::tr(x[0]));
+    pd::ClearTranslations();
+    size_t same = 0;
+    for (size_t i = 0; i < viaPo.size(); ++i) same += viaPo[i] == pd::tr(fr[i][0]);
+    CHECK(same == viaPo.size());
+    // deux textes français de même anglais (« Soundings ») restent distincts
+    CHECK(pd::LoadTranslations({po}) > 700);
+    CHECK(std::string(pd::tr("Sondes chiffrées")) != pd::tr("Sondes"));
+    // fichier de l'utilisateur : remplace une entrée ; format faux : ignoré
+    const std::string user = Tmp("pd_ru_user.po");
+    if (FILE* f = std::fopen(user.c_str(), "wb")) {
+      std::fputs("msgid \"Tide\"\nmsgstr \"Прилив (исправлено)\"\n\n"
+                 "msgid \"%u file%s\"\nmsgstr \"файлов %s\"\n\n"
+                 "msgid \"Max distance\"\nmsgstr \"\"\n", f);
+      std::fclose(f);
+    }
+    std::string notes;
+    CHECK(pd::LoadTranslations({po, user}, &notes) > 700);
+    CHECK(std::string(pd::tr("Marée")) == "Прилив (исправлено)");
+    char b[64];
+    std::snprintf(b, sizeof b, pd::tr("%u fichier%s"), 3u, "s");
+    CHECK(std::string(b) == "файлов: 3");  // entrée fautive ignorée
+    CHECK(notes.find("%u file%s") != std::string::npos);
+    CHECK(std::string(pd::tr("Distance max")) == "Макс. расстояние");  // vide : ignorée
+    // autre langue, sans table compilée : fichier seul, sinon anglais
+    pd::ClearTranslations();
+    if (FILE* f = std::fopen(user.c_str(), "wb")) {
+      std::fputs("msgid \"Tide\"\nmsgstr \"Gezeiten\"\n", f);
+      std::fclose(f);
+    }
+    CHECK(pd::LoadTranslations({user}) == 1);
+    pd::SetLanguage(pd::kOther);
+    CHECK(std::string(pd::tr("Marée")) == "Gezeiten" && std::string(pd::tr("Distance max")) == "Max distance");
+    CHECK(pd::LoadTranslations({Tmp("absent.po")}) == -1);
+    pd::ClearTranslations();
+    pd::SetLanguage(pd::kFrench);
+    std::printf("Fichiers de traduction .po : OK\n");
+  }
   {  // interpolation entre les lignes d'un levé monofaisceau, à l'import
     std::string err;
     DepthTile a, b;
@@ -1237,6 +1287,23 @@ int main(int argc, char** argv) {
     bool sawOld = false;
     for (size_t k = 0; k < v.size(); ++k) sawOld = sawOld || (!ip[k] && std::fabs(v.z[k] - 30.f) < 0.01f);
     CHECK(sawOld);
+    {  // surface stable au zoom : un point entre deux lignes garde sa valeur
+       // interpolée (à 0,1 m près) quel que soit le niveau de la vue
+      const double lp = -4.50 + 300 * kx, lq = lat0 + 350 * ky;
+      for (int vz : {14, 15, 16, 17, 18, 20}) {
+        PointCloud w;
+        std::vector<uint8_t> wi;
+        CHECK(db.buildView(lp - 40 * kx, lp + 40 * kx, lq - 40 * ky, lq + 40 * ky, vz, 100000, w, dl, dt, used,
+                           err, nullptr, &src, &wi));
+        size_t best = 0;
+        double bd = 1e30;
+        for (size_t k = 0; k < w.size(); ++k) {
+          const double d = std::hypot((w.lon(k) - lp) / kx, (w.lat(k) - lq) / ky);
+          if (d < bd) { bd = d; best = k; }
+        }
+        CHECK(bd < 40 && std::fabs(w.z[best] - 13.5f) < 0.2f);
+      }
+    }
     std::printf("Interpolation à l'import (lignes à 100 m, D %.0f m) : OK\n", m.interpD);
     // autres méthodes : même zone, valeurs voisines entre deux lignes (12,5 m)
     for (int meth : {1, 2}) {

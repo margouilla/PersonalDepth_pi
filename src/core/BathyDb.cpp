@@ -784,6 +784,9 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
                               DbSource meta, bool gridded, DbPriority prio, std::string& err,
                               const DbProgress& progress, const std::atomic<bool>* cancel,
                               int64_t* newId) {
+  // surface interpolée calculée au niveau des sondes : pixel d'au moins D / 128
+  // (coût de l'interpolation borné, quel que soit le D choisi)
+  if (!gridded && meta.interpD > 0) meta.res = std::max(meta.res, meta.interpD / 128.0);
   const int zs = meta.level > 0 ? meta.level : LevelForResolution(meta.res, midLat);
   std::mt19937_64 rng((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count() ^
                       (uint64_t)std::random_device{}());
@@ -1012,23 +1015,22 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     rcache.clear();
   }
 
-  // 2 bis) nuage : surface interpolée (triangulation de Delaunay des pixels
-  //    mesurés, interpolation linéaire) dans les pixels vides, sans franchir
+  // 2 bis) nuage : surface interpolée dans les pixels vides, au niveau même des
+  //    sondes (une seule surface, la même à toutes les échelles), sans franchir
   //    une arête de plus de D ni garder les sondes presque alignées. Calcul
   //    tuile par tuile avec une marge de D (sommets des tuiles voisines).
-  //    Niveau : celui des sondes, sauf levé en lignes (D bien plus grand que
-  //    le pas des sondes) : niveau plus grossier, pixel ~ D / 8, la surface
-  //    entre les lignes étant reprise à l'affichage aux niveaux plus fins.
-  const int ilevel = meta.interpD > 0
-                         ? std::min(zs, LevelForResolution(std::max(meta.res, meta.interpD / 8.0), midLat))
-                         : zs;
   long long nInterp = 0;
   auto interpolate = [&](int zl, std::set<TK>& keys, const std::function<const DepthTile*(const TK&)>& get,
                          const std::function<bool(const TK&, DepthTile&)>& put, float p0, float p1) -> bool {
     const double pxM = 156543.03392804097 * std::cos(midLat * M_PI / 180.0) / std::ldexp(1.0, zl);
     const double Dpx = meta.interpD / std::max(1e-6, pxM);
     if (Dpx < 1.5) return true;
-    const int mt = std::max(1, (int)std::ceil(Dpx / 256.0));
+    // marge de sommets autour de la tuile : D (TIN, IDW) ; 2 D pour le voisin
+    // naturel, dont la valeur dépend des sondes jusqu'à ~1,2 D (sinon coupure
+    // droite au bord des tuiles)
+    const InterpMethod method = (InterpMethod)meta.interpMethod;
+    const double Mpx = (method == InterpMethod::NaturalNeighbour ? 2.0 : 1.0) * Dpx + 2;
+    const int mt = std::max(1, (int)std::ceil(Mpx / 256.0));
     struct Vx { int32_t x, y, v; };
     std::map<TK, std::vector<Vx>> vcache;
     auto vertsOf = [&](const TK& k) -> const std::vector<Vx>& {
@@ -1055,7 +1057,6 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     std::vector<double> xy;
     std::vector<int32_t> val;
     std::vector<int> filled;  // pixels remplis (i, j) pour une autre méthode que le TIN
-    const InterpMethod method = (InterpMethod)meta.interpMethod;
     const double D2 = Dpx * Dpx;
     for (const TK& T : targets) {
       if (cancel && *cancel) { err = "Annulé"; return false; }
@@ -1063,8 +1064,8 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
         progress(p0 + (p1 - p0) * q / targets.size(), pd::tr("Interpolation entre les sondes"));
       for (auto it = vcache.begin(); it != vcache.end();)  // rangées passées
         it = it->first.second < T.second - mt ? vcache.erase(it) : std::next(it);
-      const double bx0 = T.first * 256.0 - Dpx, bx1 = T.first * 256.0 + 256 + Dpx;
-      const double by0 = T.second * 256.0 - Dpx, by1 = T.second * 256.0 + 256 + Dpx;
+      const double bx0 = T.first * 256.0 - Mpx, bx1 = T.first * 256.0 + 256 + Mpx;
+      const double by0 = T.second * 256.0 - Mpx, by1 = T.second * 256.0 + 256 + Mpx;
       xy.clear();
       val.clear();
       for (int dy = -mt; dy <= mt; ++dy)
@@ -1142,7 +1143,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     for (const TK& k : added) keys.insert(k);
     return true;
   };
-  if (!gridded && meta.interpD > 0 && ilevel == zs) {  // au niveau des sondes
+  if (!gridded && meta.interpD > 0) {
     if (!interpolate(
             zs, keysZs, tileAt,
             [&](const TK& T, DepthTile& out) {
@@ -1178,35 +1179,6 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
                     [&](float f) { if (progress) progress(0.5f + 0.1f * f, pd::tr("Pyramide de la source")); },
                     cancel))
     return false;
-  // levé en lignes : surface interpolée au niveau grossier, puis sa pyramide
-  if (!gridded && meta.interpD > 0 && ilevel < zs) {
-    std::set<TK> keys;
-    for (const Key& k : touched)
-      if (std::get<0>(k) == ilevel) keys.insert(TK(std::get<1>(k), std::get<2>(k)));
-    std::map<TK, DepthTile> lc;  // tuiles du niveau grossier (peu nombreuses)
-    auto get = [&](const TK& k) -> const DepthTile* {
-      auto it = lc.find(k);
-      if (it != lc.end()) return &it->second;
-      DepthTile t;
-      if (!readSrc(meta.id, ilevel, k.first, k.second, t)) return nullptr;
-      return &lc.emplace(k, std::move(t)).first->second;
-    };
-    std::set<TK> written;
-    if (!interpolate(
-            ilevel, keys, get,
-            [&](const TK& T, DepthTile& out) {
-              written.insert(T);
-              touched.insert(Key(ilevel, T.first, T.second));
-              return writeSrc(meta.id, ilevel, T.first, T.second, out, err);
-            },
-            0.6f, 0.65f))
-      return false;
-    lc.clear();
-    std::map<TK, DepthTile> none;
-    if (!written.empty() &&
-        !buildPyramid(meta.id, ilevel, keys, none, false, touched, err, nullptr, cancel))
-      return false;
-  }
   meta.interpCount = nInterp;
   if (meta.interpD > 0) {
     char b[200];
@@ -1756,65 +1728,30 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
     }
     return it->second.allocated() ? &it->second : nullptr;
   };
-  // Surface interpolée lissée (bilinéaire) depuis le niveau L = zz - d :
-  // 1 = valeur (au moins un pixel interpolé parmi les quatre), 0 = sinon (voir
-  // un niveau plus haut). Un trou entouré de sondes mesurées seulement (levé
-  // dense) n'est jamais rempli : aucun pixel interpolé autour, à aucun niveau.
-  auto bilinear = [&](int d, long long gx, long long gy, int32_t& v, int64_t& src) -> int {
-    const int L = zz - d;
-    const double sc = std::ldexp(1.0, -d);
-    const double fx = (gx + 0.5) * sc - 0.5, fy = (gy + 0.5) * sc - 0.5;
-    const long long i0 = (long long)std::floor(fx), j0 = (long long)std::floor(fy);
-    const double tx = fx - i0, ty = fy - j0;
-    double acc = 0, ws = 0;
-    int n = 0, ni = 0;
-    for (int dj = 0; dj <= 1; ++dj)
-      for (int di = 0; di <= 1; ++di) {
-        const long long px = i0 + di, py = j0 + dj;
-        if (px < 0 || py < 0) continue;
-        const DepthTile* t = tileOf(L, px >> 8, py >> 8);
-        if (!t) continue;
-        const int k = (int)((py & 255) * 256 + (px & 255));
-        if (t->v[k] == DepthTile::kEmpty) continue;
-        const double w = (di ? tx : 1 - tx) * (dj ? ty : 1 - ty) + 1e-6;
-        acc += w * t->v[k];
-        ws += w;
-        ++n;
-        if (t->isInterp(k)) { ++ni; src = t->sourceAt(k); }
-      }
-    if (!ni && n == 4) {  // entouré de mesures : surface interpolée juste autour ?
-      // (croisement de lignes d'un levé : rempli ; trou d'un levé dense : non)
-      for (int dj = -1; dj <= 2 && !ni; ++dj)
-        for (int di = -1; di <= 2 && !ni; ++di) {
-          const long long px = i0 + di, py = j0 + dj;
-          if (px < 0 || py < 0 || (di >= 0 && di <= 1 && dj >= 0 && dj <= 1)) continue;
-          const DepthTile* t = tileOf(L, px >> 8, py >> 8);
-          if (t && t->isInterp((int)((py & 255) * 256 + (px & 255)))) ni = 1;
-        }
-    }
-    if (!ni) return 0;  // mesures seulement (ou rien) : voir un niveau plus haut
-    v = (int32_t)std::lround(acc / ws);
-    return 1;
-  };
+  // Niveau propre de chaque source (celui de ses sondes et de sa surface
+  // interpolée) : au-dessus, ses pixels ne sont que des agrégats de pyramide.
+  std::unordered_map<int64_t, int> srcLevel;
+  for (const DbSource& m : sources_) srcLevel[m.id] = m.level;
+  // Valeur d'un pixel : celle du niveau de la vue ; sinon (tuile absente ou
+  // pixel vide) celle d'une source plus grossière, à son propre niveau
+  // seulement. On ne remonte jamais aux agrégats d'une source plus fine : la
+  // surface d'une source et son emprise sont les mêmes à toutes les échelles.
   auto pixel = [&](long long gx, long long gy, int32_t& v, int64_t& src, bool& ip) -> bool {
-    bool fineExists = false;  // une tuile plus fine existe : pas de valeur mesurée grossière
     for (int d = 0; zz - d >= kDbMinLevel && d <= 10; ++d) {
       const long long px = gx >> d, py = gy >> d;
       const DepthTile* t = tileOf(zz - d, px >> 8, py >> 8);
-      if (!t) {  // tuile absente : niveau inférieur (rien plus haut si un niveau fin existait)
-        if (fineExists) return false;
-        continue;
-      }
+      if (!t) continue;
       const int k = (int)((py & 255) * 256 + (px & 255));
-      v = t->v[k];
-      if (v != DepthTile::kEmpty && (d == 0 || (!fineExists && !t->isInterp(k)))) {
-        src = t->sourceAt(k);
-        ip = t->isInterp(k);
-        return true;  // valeur du niveau (ou d'une source plus grossière)
+      if (t->v[k] == DepthTile::kEmpty) continue;
+      const int64_t s = t->sourceAt(k);
+      if (d > 0) {
+        auto it = srcLevel.find(s);
+        if (it == srcLevel.end() || it->second != zz - d) continue;  // agrégat d'une source plus fine
       }
-      // vide ici, ou surface interpolée d'un niveau plus grossier : lissée
-      if (bilinear(d, gx, gy, v, src) == 1) { ip = true; return true; }
-      fineExists = true;  // niveau plus grossier
+      v = t->v[k];
+      src = s;
+      ip = t->isInterp(k);
+      return true;
     }
     return false;
   };

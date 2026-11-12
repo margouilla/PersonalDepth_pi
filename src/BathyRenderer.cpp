@@ -801,13 +801,9 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
   for (const Label& L : m_labels) {
     if (L.contour) {  // valeur d'isobathe : teinte des lignes, centrée sur la ligne
       uint32_t c = IsSafety(s, L.depth) ? s.ramp.safetyColor : s.contourColor;
-      if (s.contourHalo) {
-        glColor4f(0.35f + 0.65f * R_(c) / 255.f, 0.35f + 0.65f * G_(c) / 255.f,
-                  0.35f + 0.65f * B_(c) / 255.f, 1.f);
-      } else {  // chiffres pleins à la couleur des lignes, sans liseré
-        glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, 1.f);
-        m_glPlain = true;
-      }
+      // chiffres pleins à la couleur des lignes, sans liseré
+      glColor4f(R_(c) / 255.f, G_(c) / 255.f, B_(c) / 255.f, 1.f);
+      m_glPlain = true;
       DrawGLText(L.x, L.y, DepthText(s, L.depth), 1.f, true);
       m_glPlain = false;
       continue;
@@ -1506,12 +1502,8 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
       wxString t = DepthText(s, L.depth);
       dc.SetFont(fontBig);
       wxSize e = dc.GetTextExtent(t);
-      if (s.contourHalo) {
-        halo(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2, wxColour(R_(c), G_(c), B_(c)));
-      } else {
-        dc.SetTextForeground(wxColour(R_(c), G_(c), B_(c)));
-        dc.DrawText(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2);
-      }
+      dc.SetTextForeground(wxColour(R_(c), G_(c), B_(c)));
+      dc.DrawText(t, (int)L.x - e.x / 2, (int)L.y - e.y / 2);
       continue;
     }
     FormatDepth(L.depth * s.depthK, s.decimals, ip, dp);

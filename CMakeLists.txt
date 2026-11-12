@@ -161,10 +161,12 @@ if(PD_BUILD_PLUGIN)
       set_target_properties(PersonalDepth_pi PROPERTIES PREFIX "")
       install(TARGETS PersonalDepth_pi RUNTIME DESTINATION plugins)
       install(FILES data/personaldepth.svg DESTINATION plugins/PersonalDepth_pi/data)
+      install(DIRECTORY data/lang DESTINATION plugins/PersonalDepth_pi/data)
     else()
       install(TARGETS PersonalDepth_pi LIBRARY DESTINATION lib/opencpn)
       install(FILES data/personaldepth.svg
               DESTINATION share/opencpn/plugins/PersonalDepth_pi/data)
+      install(DIRECTORY data/lang DESTINATION share/opencpn/plugins/PersonalDepth_pi/data)
     endif()
 
     # ------------------------------------- paquet pour OpenCPN (.tar.gz)

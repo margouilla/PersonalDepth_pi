@@ -260,12 +260,35 @@ void PersonalDepth_pi::EncContours(float& shallow, float& safety, float& deep) {
 
 // Langue choisie dans Options › Utilisateur › Options générales › Langue
 // d'OpenCPN : français si la locale commence par « fr », anglais sinon.
+// Langue de l'interface d'OpenCPN : français, anglais, russe, ou toute langue
+// dont un fichier de traduction PersonalDepth_<code>.po est présent (sinon
+// anglais). Fichiers lus : celui livré avec le plugin (data/lang), puis la copie
+// de l'utilisateur (dossier lang du dossier utilisateur du plugin), prioritaire.
 bool PersonalDepth_pi::UpdateLanguage() {
   const wxString loc = GetLocaleCanonicalName().Lower();
-  const int lang = (loc.empty() || loc.StartsWith("fr")) ? pd::kFrench
-                   : loc.StartsWith("ru")                 ? pd::kRussian
-                                                          : pd::kEnglish;
-  if (lang == m_lang) return false;
+  const wxString code = loc.Left(2);
+  if (code == m_langCode && m_lang >= 0) return false;
+  m_langCode = code;
+  int lang = (loc.empty() || code == "fr") ? pd::kFrench : code == "en" ? pd::kEnglish : pd::kOther;
+  pd::ClearTranslations();
+  if (lang == pd::kOther) {
+    const wxString sep = wxFileName::GetPathSeparator();
+    const wxString name = "PersonalDepth_" + code + ".po";
+    const wxString files[] = {
+        GetPluginDataDir("PersonalDepth_pi") + sep + "data" + sep + "lang" + sep + name,
+        wxFileName(DefaultPaletteDir()).GetPath() + sep + "lang" + sep + name};
+    std::vector<std::string> paths;
+    for (const wxString& f : files)
+      if (wxFileExists(f)) paths.push_back(f.ToUTF8().data());
+    std::string notes;
+    if (!paths.empty() && pd::LoadTranslations(paths, &notes) > 0) {
+      if (!notes.empty()) wxLogMessage("PersonalDepth_pi: %s", wxString::FromUTF8(notes.c_str()));
+    } else {
+      pd::ClearTranslations();
+    }
+    // russe : table compilée en repli ; autre langue sans fichier : anglais
+    lang = code == "ru" ? pd::kRussian : pd::HasTranslations() ? pd::kOther : pd::kEnglish;
+  }
   m_lang = lang;
   pd::SetLanguage(lang);
   return true;
@@ -774,13 +797,13 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("BannerFx", (double)m_set.bannerFx);
   c->Write("BannerFy", (double)m_set.bannerFy);
   c->Write("BannerLock", m_set.bannerLock);
+  c->Write("PanelTab", m_set.panelTab);
   c->Write("BannerVertical", m_set.bannerVertical);
   c->Write("Contours", m_set.contours);
   c->Write("ContourMode", m_set.contourMode);
   c->Write("ContourStep", (double)m_set.contourStep);
   c->Write("ContourMajor", (double)m_set.contourMajor);
   c->Write("ContourLabels", m_set.contourLabels);
-  c->Write("ContourHalo", m_set.contourHalo);
   c->Write("ContourSmooth", m_set.contourSmooth);
   c->Write("ContourColor", (long)m_set.contourColor);
   c->Write("CrsCode", W8(m_set.crsCode.c_str()));
@@ -874,13 +897,13 @@ void PersonalDepth_pi::LoadConfig() {
     m_set.bannerFy = (float)std::min(1.0, std::max(0.0, fy));
   }
   c->Read("BannerLock", &m_set.bannerLock, m_set.bannerLock);
+  c->Read("PanelTab", &m_set.panelTab, m_set.panelTab);
   c->Read("BannerVertical", &m_set.bannerVertical, m_set.bannerVertical);
   c->Read("Contours", &m_set.contours, m_set.contours);
   c->Read("ContourMode", &m_set.contourMode, m_set.contourMode);
   if (c->Read("ContourStep", &d) && d > 0) m_set.contourStep = (float)d;
   if (c->Read("ContourMajor", &d) && d >= 0) m_set.contourMajor = (float)d;
   c->Read("ContourLabels", &m_set.contourLabels, m_set.contourLabels);
-  c->Read("ContourHalo", &m_set.contourHalo, m_set.contourHalo);
   c->Read("ContourSmooth", &m_set.contourSmooth, m_set.contourSmooth);
   long col;
   if (c->Read("ContourColor", &col)) m_set.contourColor = (uint32_t)col;

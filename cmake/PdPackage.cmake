@@ -36,6 +36,7 @@ file(MAKE_DIRECTORY "${libdir}" "${datadir}")
 file(COPY "${LIB}" DESTINATION "${libdir}"
      FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 file(COPY "${SRC}/data/personaldepth.svg" DESTINATION "${datadir}")
+file(COPY "${SRC}/data/lang" DESTINATION "${datadir}")  # traductions .po
 configure_file("${SRC}/LICENSE" "${datadir}/license.txt" COPYONLY)
 configure_file("${BIN}/metadata.xml" "${top}/metadata.xml" COPYONLY)
 file(MAKE_DIRECTORY "${OUT}")

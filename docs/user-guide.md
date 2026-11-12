@@ -107,23 +107,30 @@ mouse to put it anywhere on the chart (the position is kept). In *Display*
 you can hide it, choose a fixed position (bottom centre, top centre, bottom
 left, free) and **lock its position**.
 
+<img src="images/en/11-banner_horizontal.png" alt="Horizontal banner" height="50"> <img src="images/en/11-banner_vertical.png" alt="Vertical banner" height="220">
+
+![Banner: drag, A/M, preset, orientation](images/gif/g1-banner.gif)
+
 > 🧪 **Testers — check:** every click on the banner works, the chart does
 > not move when clicking on or dragging the banner, and the locked banner
 > cannot be dragged.
 
 ## 3. The main panel
 
-The panel is divided into five sections, from top to bottom:
+The panel is divided into five tabs:
 
-| Section | Role |
+| Tab | Content |
 |---|---|
-| **Bathymetry database** | Database folder, list of `.pdb` files (tick to show or hide), *All* / *None*, *Centre*, **Data management…**, *Stop* |
-| **Tide** | Tide source and moment, information line, **Tide curve…** |
-| **Palette and depth thresholds** | Colours, thresholds, automatic mode, danger zone |
-| **Depth contours** | Isobaths: interval, major lines, labels |
-| **Display** | Opacity, relief shading, soundings, smoothing, cursor readout, palette banner |
+| **Database** | Database folder, list of `.pdb` files (tick to show or hide), *All* / *None*, *Centre*, **Data management…**, *Stop* |
+| **Tide** | Tide source and moment, information line, **Tide curve…** (§ 8) |
+| **Palette** | Colours, thresholds, automatic mode, danger zone, palette folder (§ 6) |
+| **Contours and soundings** | Depth contours (interval, major lines, values) and soundings (spacing, decimals, text size) (§ 7) |
+| **Display** | Opacity, relief shading, smoothing, interpolated areas, cursor readout, palette banner (§ 7) |
 
-<img src="images/en/03-main-panel_1.png" alt="Main panel (top)" width="49%"> <img src="images/en/03-main-panel_2.png" alt="Main panel (bottom)" width="49%">
+The *Cursor: …* line (depth under the cursor) stays visible below the tabs,
+whatever the open tab. The last open tab is remembered.
+
+![Database tab](images/en/03-tab-database.png)
 
 Every change is applied immediately on the chart. The panel can stay open
 while you use OpenCPN; closing it keeps the display.
@@ -139,7 +146,8 @@ compare with the official chart.
 
 *Bathymetry database* › **Data management…** › **Import…**
 
-![Import window](images/en/04-import.png)
+![Import window (top)](images/en/04-import_1.png)
+![Import window (bottom)](images/en/04-import_2.png)
 
 **Files** — *Add files…* or *Add a folder…* (all bathymetry files of the
 folder and its sub-folders). Supported: XYZ text (`.xyz .txt .csv .dat`, any
@@ -177,15 +185,21 @@ the number of interpolated cells):
 
 **Interpolation** — for a point cloud, a surface is triangulated (TIN)
 between the soundings, filling the cells without a sounding, but **never
-across a gap wider than the maximum distance D**: D is the usual gap between
-lines for a line survey, otherwise twice the sounding spacing (three times
+across a gap wider than the maximum distance D**: for a line survey, D covers
+the large gaps between lines (1.25 × the gap exceeded by only 5 % of the
+intervals between lines); otherwise twice the sounding spacing (three times
 for multibeam and lidar; for chart soundings and lead line, at least the
 usual large gaps between soundings, capped at 1,000 m / 500 m). Interpolated
 cells are marked as such in the database: a **measured** cell always wins,
 whatever the source and the priority rule; the *Display* panel can hide or
 lighten them (§ 7); soundings are never taken from them and the cursor shows
 *(interpolated)*. Set *Survey type* to the real kind of survey if the
-automatic result is not right (e.g. old lead-line survey).
+automatic result is not right (e.g. old lead-line survey), or set *Max
+distance*: a larger value fills more gaps, never fewer.
+
+The surface is computed once, at the sounding step (at most D / 128), and is
+drawn **the same at every scale**: no hole or streak that appears or
+disappears when zooming.
 
 **Interpolation method** — the filled area is the same for all methods (the
 triangles with no side longer than D); only the values change:
@@ -193,7 +207,8 @@ triangles with no side longer than D); only the values change:
   lines, the long thin triangles can leave streaks along the lines.
 - **Natural neighbour (Sibson)**: a weighted mix of the surrounding soundings
   (discrete Sibson method), smoother, without triangle edges.
-- **IDW (inverse distance)**: mean of the 12 nearest soundings within D,
+- **IDW (inverse distance)**: mean of the 3 nearest soundings in each quarter
+  around the point (12 at most) within D,
   weighted by the inverse square distance; smooth, but forms "dimples" around
   isolated or outlying soundings.
 
@@ -201,6 +216,10 @@ The *automatic method* takes the natural neighbour for a line survey (no
 triangle streaks between the lines) and TIN otherwise. The method used is
 shown with the analysis in *Data management*. To change
 it, re-import the survey.
+
+<img src="images/en/14-interpolation_LignesSeules.png" alt="Line survey without interpolation" width="49%"> <img src="images/en/14-interpolation_LignesInterpoles.png" alt="Same survey interpolated" width="49%">
+
+*Lake Okeechobee (NOAA): lines only, then interpolated between the lines.*
 
 > 🧪 **Testers — check:** a single-beam survey in lines gives a continuous
 > surface between the lines but not across wide gaps; a grid file is not
@@ -272,10 +291,14 @@ applied to the whole file, taken at noon in the time zone of the water levels;
 the day comes from *Survey date* or, failing that, from a date `YYYYMMDD` in
 the file name.
 
+![Water-level file format](images/en/12-water-level-format.png)
+
+![Observed water-level curve](images/en/13-water-level-curve.png)
+
 > 🧪 **Testers — check:** a survey with water levels gives the expected
 > corrected depths; the curve matches your gauge.
 
-<!-- capture à venir : ![Custom text format](images/en/10-text-format.png) -->
+![Custom text format](images/en/10-text-format.png)
 
 **Coordinate system (X, Y)** — choose from the list: *Automatic* (the `.prj`
 file next to the data, otherwise longitude / latitude in degrees), WGS84, UTM,
@@ -338,7 +361,9 @@ in km² and NM²; for several sources, the sum).
 
 ## 6. Palette and depth thresholds
 
-![Palette section](images/en/06-palette.png)
+![Palette tab](images/en/06-palette.png)
+
+![Palette changed live](images/gif/g2-palette-live.gif)
 
 - **Presets**: *TimeZero PBG (blues)*, *Nautical chart (steps)*, *OpenCPN
   ENC (S-52)* (the depth colours of OpenCPN's vector charts, with the
@@ -373,17 +398,30 @@ Depths are positive downwards; negative values are above chart datum
 > 🧪 **Testers — check:** every palette change is instant on the chart
 > (no reload); the danger zone matches the depth you set.
 
-## 7. Depth contours and display
+## 7. Depth contours, soundings and display
 
 ![Depth contours and soundings](images/en/07-contours-soundings.png)
 
+![Contours and soundings tab](images/en/07-tab-contours.png)
+
+**Contours and soundings tab**
+
 **Depth contours** — *Show depth contours*; levels at a *Regular interval*
 or on the *Palette thresholds*; *Major every* N units (thick line); *Values on
-lines*, with or without a *White outline on values*; *Line smoothing* (display
+lines* (solid figures, in the line colour); *Line smoothing* (display
 only). No line is drawn in the gaps of the
 survey.
 
-**Display**
+**Soundings** — *Show soundings*: exact soundings (shoalest per screen
+cell), never taken from interpolated areas; *Spacing* (minimum gap between
+two soundings on screen); *Decimals*; *Text size* (soundings and contour
+values).
+
+**Display tab**
+
+![Display tab](images/en/07-tab-display.png)
+
+![Interpolated areas: hide, lighten, cursor](images/gif/g3-interpolation.gif)
 
 | Setting | Effect |
 |---|---|
@@ -391,7 +429,6 @@ survey.
 | Relief shading | Hillshading and its strength |
 | Vertical exaggeration | Accentuates the relief of the shading |
 | Soften relief | Smooths the shading only (colours, contours and soundings keep the true depths) |
-| Soundings | Exact soundings (shoalest per screen cell), spacing, decimals, text size |
 | Smoothing (interpolation) | Smooth colours between grid cells |
 | Interpolated areas of the database | Show the surface interpolated at import between soundings; *distinguish them (lighter)* lightens its colours |
 | Cursor readout | Depth and source next to the cursor |
@@ -403,7 +440,9 @@ survey.
 
 ## 8. Tide
 
-![Tide section](images/en/08-tide.png)
+![Tide tab](images/en/08-tide.png)
+
+![Tide slider ±12 h](images/gif/g4-tide.gif)
 
 By default the displayed depths are at chart datum. The *Tide* section adds
 the water height of a given moment, pixel by pixel:
@@ -440,9 +479,21 @@ W, Centre, E, SW, S, SE — spread over your data).
   zone and tide heights switch together.
 - **Language** follows OpenCPN: *Options › User › General options ›
   Language*. French gives French, Russian gives Russian, any other language
-  gives English. Class
+  gives English, unless a translation file exists for it (below). Class
   names and labels stored in the database keep the language they were
   created in.
+- **Translation files** — translations other than English are text files
+  `PersonalDepth_<code>.po` (gettext format, editable in a text editor or in
+  Poedit): `msgid` = English text, `msgstr` = translation, and the original
+  French text as a comment. The plugin ships `PersonalDepth_ru.po` in
+  `data/lang` of its folder. To correct a translation or add one (e.g.
+  `PersonalDepth_de.po` for German), put the file in the `lang` subfolder of
+  the plugin's user folder (the one that holds the `palettes` folder; on
+  Windows `%LOCALAPPDATA%\opencpn\plugins\PersonalDepth_pi\lang`): it is read
+  after the shipped file, its entries win, and plugin updates leave it alone.
+  Only the changed entries are needed. Restart OpenCPN to apply it. A
+  translation whose `%d`, `%s`, `%.2f`… differ from the English text is
+  ignored (noted in OpenCPN's log).
 
 > 🧪 **Testers — check:** switching OpenCPN between metres and feet updates
 > the whole display; English or Russian texts that are wrong or still in
@@ -488,8 +539,8 @@ On a Raspberry Pi, prefer importing on a PC and copying the `.pdb` files.
 - Mercator chart projection assumed; antimeridian not handled.
 - Older datums (NTF, ED50, OSGB36…): mean Helmert parameters (~1–2 m).
 - Interpolation is done at import: re-import a survey to apply a new survey
-  type or nature. *Clean…* on a source rebuilds its coarse levels without the
-  interpolation of widely spaced line surveys (re-import to get it back).
+  type, nature or max distance. Line surveys imported before beta.9 should be
+  re-imported (interpolated surface computed differently).
 - Text files over 200 MB are imported in blocks (limited memory); a very
   dense survey makes a large database: a *Fixed resolution* (e.g. 0.5 m)
   reduces it a lot.

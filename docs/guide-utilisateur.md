@@ -114,23 +114,30 @@ est gardée). Dans *Affichage*, on peut le masquer, choisir une position fixe
 (en bas au centre, en haut au centre, en bas à gauche, libre) et **verrouiller
 sa position**.
 
+<img src="images/fr/11-banner_horizontal.png" alt="Bandeau horizontal" height="50"> &nbsp; <img src="images/fr/11-banner_vertical.png" alt="Bandeau vertical" height="220">
+
+![Bandeau : déplacement, A/M, préréglage, orientation](images/gif/g1-banner.gif)
+
 > 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne, la
 > carte ne se déplace pas quand on clique sur le bandeau ou qu'on le fait
 > glisser, et le bandeau verrouillé ne se déplace pas.
 
 ## 3. Le panneau principal
 
-Le panneau comprend cinq cadres, de haut en bas :
+Le panneau est découpé en cinq onglets :
 
-| Cadre | Rôle |
+| Onglet | Contenu |
 |---|---|
-| **Base de bathymétrie** | Dossier de la base, liste des fichiers `.pdb` (case : afficher / masquer), *Tout* / *Aucun*, *Centrer*, **Gestion des données…**, *Arrêter* |
-| **Marée** | Source et moment de la marée, ligne d'information, **Courbe de marée…** |
-| **Palette et seuils de profondeur** | Couleurs, seuils, mode automatique, zone dangereuse |
-| **Isobathes** | Intervalle, isobathes maîtresses, valeurs |
-| **Affichage** | Opacité, ombrage, sondes, lissage, lecture au curseur, bandeau de palette |
+| **Base** | Dossier de la base, liste des fichiers `.pdb` (case : afficher / masquer), *Tout* / *Aucun*, *Centrer*, **Gestion des données…**, *Arrêter* |
+| **Marée** | Source et moment de la marée, ligne d'information, **Courbe de marée…** (§ 8) |
+| **Palette** | Couleurs, seuils, mode automatique, zone dangereuse, dossier de palettes (§ 6) |
+| **Isobathes et sondes** | Isobathes (intervalle, maîtresses, valeurs) et sondes chiffrées (espacement, décimales, taille du texte) (§ 7) |
+| **Affichage** | Opacité, ombrage, lissage, zones interpolées, lecture au curseur, bandeau de palette (§ 7) |
 
-<img src="images/fr/03-main-panel_1.png" alt="Panneau principal (haut)" width="49%"> <img src="images/fr/03-main-panel_2.png" alt="Panneau principal (bas)" width="49%">
+La ligne *Curseur : …* (profondeur sous le curseur) reste affichée sous les
+onglets, quel que soit l'onglet ouvert. Le dernier onglet ouvert est retenu.
+
+![Onglet Base](images/fr/03-tab-database.png)
 
 Chaque réglage s'applique immédiatement sur la carte. Le panneau peut rester
 ouvert pendant l'utilisation d'OpenCPN ; le fermer conserve l'affichage.
@@ -186,8 +193,9 @@ distance D utilisée et le nombre de cases interpolées) :
 
 **Interpolation** — pour un nuage, une surface est triangulée (TIN) entre
 les sondes et remplit les cases sans sonde, mais **sans jamais franchir un
-vide plus large que la distance maximale D** : D vaut l'écart habituel entre
-les lignes pour un levé en lignes, sinon deux fois l'espacement des sondes
+vide plus large que la distance maximale D** : pour un levé en lignes, D
+couvre les grands écarts entre lignes (1,25 × l'écart que dépassent seulement
+5 % des intervalles entre lignes) ; sinon deux fois l'espacement des sondes
 (trois fois en multifaisceaux et lidar ; pour les sondes de carte et au
 plomb, au moins les grands écarts courants entre sondes, plafond 1 000 m /
 500 m). Les cases interpolées sont marquées comme telles dans la base : une
@@ -195,7 +203,12 @@ case **mesurée** l'emporte toujours, quelles que soient la source et la
 règle de priorité ; le panneau *Affichage* peut les masquer ou les
 éclaircir (§ 7) ; les sondes affichées n'en viennent jamais et le curseur
 indique *(interpolé)*. Choisir le *Type de levé* réel si le résultat
-automatique ne convient pas (ex. ancien levé au plomb).
+automatique ne convient pas (ex. ancien levé au plomb), ou fixer la
+*Distance max* : une valeur plus grande comble plus de vides, jamais moins.
+
+La surface est calculée une seule fois, au pas des sondes (au plus D / 128),
+et s'affiche **à l'identique à toutes les échelles** : pas de trou ni de
+strie qui apparaît ou disparaît en zoomant.
 
 **Méthode d'interpolation** — la zone remplie est la même pour toutes les
 méthodes (les triangles dont aucun côté ne dépasse D) ; seules les valeurs
@@ -205,13 +218,17 @@ changent :
   stries le long des lignes.
 - **Voisin naturel (Sibson)** : mélange pondéré des sondes voisines (méthode
   de Sibson discrète), plus doux, sans arêtes de triangles.
-- **IDW (inverse de la distance)** : moyenne des 12 sondes les plus proches à
-  moins de D, pondérée par l'inverse du carré de la distance ; doux, mais
+- **IDW (inverse de la distance)** : moyenne des 3 sondes les plus proches
+  dans chaque quart autour du point (12 au plus), à moins de D, pondérée par l'inverse du carré de la distance ; doux, mais
   forme des « cuvettes » autour des sondes isolées ou aberrantes.
 
 La *méthode automatique* prend le voisin naturel pour un levé en lignes (pas
 de traînées de triangles entre les lignes) et le TIN sinon. La méthode utilisée s'affiche avec l'analyse dans *Gestion des données*.
 Pour en changer, réimporter le levé.
+
+<img src="images/fr/14-interpolation_LignesSeules.png" alt="Levé en lignes sans interpolation" width="49%"> <img src="images/fr/14-interpolation_LignesInterpoles.png" alt="Même levé interpolé" width="49%">
+
+*Lac Okeechobee (NOAA) : lignes seules, puis interpolées entre les lignes.*
 
 > 🧪 **Testeurs — à vérifier :** un levé monofaisceau en lignes donne une
 > surface continue entre les lignes mais pas au travers des grands vides ;
@@ -287,6 +304,10 @@ la hauteur du **jour du levé** est appliquée à tout le fichier, prise à midi
 dans le fuseau des hauteurs d'eau ; le jour vient de *Date du levé* ou, à
 défaut, d'une date `AAAAMMJJ` dans le nom du fichier.
 
+![Format du fichier de hauteurs d'eau](images/fr/12-water-level-format.png)
+
+![Courbe des hauteurs d'eau observées](images/fr/13-water-level-curve.png)
+
 > 🧪 **Testeurs — à vérifier :** un levé avec hauteurs d'eau donne les
 > profondeurs corrigées attendues ; la courbe correspond à votre échelle.
 
@@ -357,7 +378,9 @@ NM² ; pour plusieurs sources, la somme).
 
 ## 6. Palette et seuils de profondeur
 
-![Cadre Palette](images/fr/06-palette.png)
+![Onglet Palette](images/fr/06-palette.png)
+
+![Palette modifiée en direct](images/gif/g2-palette-live.gif)
 
 - **Préréglages** : *TimeZero PBG (bleus)*, *Carte marine (paliers)*,
   *ENC OpenCPN (S-52)* (les couleurs de profondeur des cartes vectorielles
@@ -396,17 +419,30 @@ au-dessus du ZH (estran, terre).
 > sur la carte (sans rechargement) ; la zone dangereuse correspond à la
 > profondeur choisie.
 
-## 7. Isobathes et affichage
+## 7. Isobathes, sondes et affichage
 
 ![Isobathes et sondes](images/fr/07-contours-soundings.png)
 
+![Onglet Isobathes et sondes](images/fr/07-tab-contours.png)
+
+**Onglet Isobathes et sondes**
+
 **Isobathes** — *Afficher les isobathes* ; niveaux à *Intervalle régulier* ou
 sur les *Seuils de la palette* ; *Maîtresse tous les* N unités (trait épais) ;
-*Valeurs sur les lignes*, avec ou sans *Contour blanc des valeurs* ;
+*Valeurs sur les lignes* (chiffres pleins, à la couleur des lignes) ;
 *Lissage des lignes* (purement graphique). Aucune
 ligne n'est tracée dans les trous du levé.
 
-**Affichage**
+**Sondes chiffrées** — *Afficher les sondes* : sondes exactes (la plus
+faible par case d'écran), jamais prises dans les zones interpolées ;
+*Espacement* (écart minimal entre deux sondes à l'écran) ; *Décimales* ;
+*Taille du texte* (sondes et valeurs des isobathes).
+
+**Onglet Affichage**
+
+![Onglet Affichage](images/fr/07-tab-display.png)
+
+![Zones interpolées : masquer, éclaircir, curseur](images/gif/g3-interpolation.gif)
 
 | Réglage | Effet |
 |---|---|
@@ -414,7 +450,6 @@ ligne n'est tracée dans les trous du levé.
 | Ombrage du relief | Ombrage et son intensité |
 | Exagération verticale | Accentue le relief de l'ombrage |
 | Adoucir le relief | Lisse l'ombrage seul (couleurs, isobathes et sondes gardent les vraies profondeurs) |
-| Sondes chiffrées | Sondes exactes (la plus faible par case d'écran), espacement, décimales, taille du texte |
 | Lissage (interpolation) | Couleurs fondues entre les mailles |
 | Zones interpolées de la base | Affiche la surface interpolée à l'import entre les sondes ; *les distinguer (plus claires)* éclaircit ses couleurs |
 | Lecture au curseur | Profondeur et source à côté du curseur |
@@ -426,7 +461,9 @@ ligne n'est tracée dans les trous du levé.
 
 ## 8. Marée
 
-![Cadre Marée](images/fr/08-tide.png)
+![Onglet Marée](images/fr/08-tide.png)
+
+![Curseur de marée ±12 h](images/gif/g4-tide.gif)
 
 Par défaut, les profondeurs affichées sont au ZH. Le cadre *Marée* ajoute la
 hauteur d'eau d'un moment donné, pixel par pixel :
@@ -465,9 +502,22 @@ données).
   seuils, zone dangereuse et hauteurs de marée changent ensemble.
 - La **langue** suit OpenCPN : *Options › Utilisateur › Options générales ›
   Langue*. Français → français ; russe → russe ; toute autre langue →
-  anglais. Les noms de
-  classe et libellés enregistrés dans la base restent dans la langue où ils
-  ont été créés.
+  anglais, sauf si un fichier de traduction existe pour elle (ci-dessous).
+  Les noms de classe et libellés enregistrés dans la base restent dans la
+  langue où ils ont été créés.
+- **Fichiers de traduction** — les traductions autres que l'anglais sont des
+  fichiers texte `PersonalDepth_<code>.po` (format gettext, modifiable dans un
+  éditeur de texte ou dans Poedit) : `msgid` = texte anglais, `msgstr` =
+  traduction, et en commentaire le texte français d'origine. Le plugin livre
+  `PersonalDepth_ru.po` dans `data/lang` de son dossier. Pour corriger une
+  traduction ou en ajouter une (ex. `PersonalDepth_de.po` pour l'allemand),
+  placer le fichier dans le sous-dossier `lang` du dossier utilisateur du
+  plugin (celui qui contient le dossier `palettes`, sous Windows
+  `%LOCALAPPDATA%\opencpn\plugins\PersonalDepth_pi\lang`) : il est lu après le
+  fichier livré, ses entrées l'emportent, et les mises à jour du plugin ne le
+  touchent pas. Il suffit d'y mettre les entrées modifiées. Relancer OpenCPN
+  pour l'appliquer. Une traduction dont les `%d`, `%s`, `%.2f`… diffèrent de
+  l'anglais est ignorée (signalée dans le journal d'OpenCPN).
 
 > 🧪 **Testeurs — à vérifier :** passer OpenCPN de mètres en pieds met à jour
 > tout l'affichage ; textes anglais ou russes erronés ou restés en français
@@ -515,9 +565,9 @@ un PC puis copier les fichiers `.pdb`.
 - Projection de carte supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36…) : paramètres de Helmert moyens (~1–2 m).
 - L'interpolation est faite à l'import : réimporter un levé pour appliquer
-  un autre type de levé ou une autre nature. *Nettoyer…* une source
-  reconstruit ses niveaux grossiers sans l'interpolation des levés en lignes
-  très espacées (réimporter pour la retrouver).
+  un autre type de levé, une autre nature ou une autre distance max. Les
+  levés en lignes importés avant la beta.9 sont à réimporter (surface
+  interpolée calculée autrement).
 - Les fichiers texte de plus de 200 Mo sont importés par blocs (mémoire
   limitée) ; un levé très dense donne une grosse base : une *Résolution
   imposée* (ex. 0,5 m) la réduit fortement.

@@ -10,6 +10,8 @@
 //            [hint=0..5] [force=1|2] [db=<dossier> [view=<fichier>] [zoom=lon0,lon1,lat0,lat1]
 //            [stream=<sondes par bloc>]]
 #include <algorithm>
+#include <atomic>
+#include <thread>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -45,6 +47,9 @@ int main(int argc, char** argv) {
   bool onlyImport = false;
   std::string viewOut;
   double forceRes = 0;  // résolution imposée (m)
+  double forceD = 0;    // distance maximale imposée (m)
+  int viewZ = 22;       // niveau de la vue (échelle d'affichage simulée)
+  double cancelAfter = 0;  // « Arrêter » simulé au bout de n secondes
   int method = -1;      // -1 auto (voisin naturel si lignes), 0 TIN, 1 voisin naturel, 2 IDW
   size_t streamN = 0;  // import par blocs (sondes par bloc)
   double zb[4] = {0, 0, 0, 0};
@@ -64,6 +69,9 @@ int main(int argc, char** argv) {
     else if (a.rfind("force=", 0) == 0) force = std::atoi(a.c_str() + 6);
     else if (a.rfind("db=", 0) == 0) { dbDir = a.substr(3); onlyImport = true; }
     else if (a.rfind("view=", 0) == 0) viewOut = a.substr(5);
+    else if (a.rfind("stop=", 0) == 0) cancelAfter = std::atof(a.c_str() + 5);
+    else if (a.rfind("vz=", 0) == 0) viewZ = std::atoi(a.c_str() + 3);
+    else if (a.rfind("dmax=", 0) == 0) forceD = std::atof(a.c_str() + 5);
     else if (a.rfind("res=", 0) == 0) forceRes = std::atof(a.c_str() + 4);
     else if (a.rfind("method=", 0) == 0) method = std::atoi(a.c_str() + 7);
     else if (a.rfind("stream=", 0) == 0) streamN = (size_t)std::atoll(a.c_str() + 7);
@@ -95,17 +103,51 @@ int main(int argc, char** argv) {
     m.date = "2020-01-01";
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
+    if (forceD > 0 && !sh.isGrid()) m.interpD = forceD;
     if (forceRes > 0) m.res = forceRes;
     m.interpMethod = method >= 0 ? method : (sh.lines ? 1 : 0);
+    std::printf("PARAMÈTRES    : D %.1f m, res %.2f m, méthode %d\n", m.interpD, m.res, m.interpMethod);
+    std::fflush(stdout);
     size_t blocks = 0, pts = 0;
+    static std::atomic<bool> stopFlag{false};
+    auto tStart = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point tStop{};
+    std::thread stopper;
+    if (cancelAfter > 0)
+      stopper = std::thread([&] {
+        std::this_thread::sleep_for(std::chrono::duration<double>(cancelAfter));
+        tStop = std::chrono::steady_clock::now();
+        stopFlag = true;
+        std::printf("ARRÊTER       : demandé à %.0f s\n", cancelAfter);
+        std::fflush(stdout);
+      });
+    std::string lastStep;
+    int lastPct = -1;
+    DbProgress showProg = [&](float f, const std::string& step) {
+      const int pct = (int)(f * 100);
+      if (step != lastStep || pct / 5 != lastPct / 5) {
+        std::printf("  %6.1f s  %3d %%  %s\n",
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - tStart).count(), pct, step.c_str());
+        std::fflush(stdout);
+        lastStep = step;
+        lastPct = pct;
+      }
+    };
     BathyDb::CloudFeed feed = [&](const BathyDb::CloudSink& sink, std::string& fe) {
       XYZBlockSink each = [&](PointCloud& b) { ++blocks; pts += b.size(); return sink(b, 0.5f); };
       return LoadXYZ(path, o, buf, fe, nullptr, nullptr, &each, streamN);
     };
     int64_t id = 0;
     auto t2 = std::chrono::steady_clock::now();
-    bool okI = db.importCloudStream(feed, midLat, m, sh.isGrid(), DbPriority::ResolutionDate, e, nullptr, nullptr, &id);
+    bool okI = db.importCloudStream(feed, midLat, m, sh.isGrid(), DbPriority::ResolutionDate, e, showProg,
+                                    cancelAfter > 0 ? &stopFlag : nullptr, &id);
     double ti = std::chrono::duration<double>(std::chrono::steady_clock::now() - t2).count();
+    if (stopper.joinable()) {
+      stopper.join();
+      if (stopFlag)
+        std::printf("ARRÊT         : effectif %.2f s après la demande (%s)\n",
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - tStop).count(), e.c_str());
+    }
     long long bytes = 0;
     for (auto& f : std::filesystem::directory_iterator(dbDir)) bytes += (long long)f.file_size();
     const DbSource* d = db.source(id);
@@ -155,8 +197,10 @@ int main(int argc, char** argv) {
     m.date = "2020-01-01";
     m.interpD = sh.isGrid() ? 0 : sh.maxEdge;
     m.res = m.interpD > 0 ? sh.interpRes : sh.storeRes;
+    if (forceD > 0) { m.interpD = forceD; }
     if (forceRes > 0) m.res = forceRes;
     m.interpMethod = method >= 0 ? method : (sh.lines ? 1 : 0);
+    std::printf("PARAMÈTRES    : D %.1f m, res %.2f m, méthode %d\n", m.interpD, m.res, m.interpMethod);
     int64_t id = 0;
     auto t2 = std::chrono::steady_clock::now();
     // durée de chaque étape (changement de message de progression)
@@ -186,7 +230,7 @@ int main(int argc, char** argv) {
       std::vector<int64_t> src;
       std::vector<uint8_t> ip;
       const bool zm = zb[1] > zb[0];
-      if (db.buildView(zm ? zb[0] : pc.lonMin, zm ? zb[1] : pc.lonMax, zm ? zb[2] : pc.latMin, zm ? zb[3] : pc.latMax, 22, 3000000, v, dl, dt, used, e, nullptr,
+      if (db.buildView(zm ? zb[0] : pc.lonMin, zm ? zb[1] : pc.lonMax, zm ? zb[2] : pc.latMin, zm ? zb[3] : pc.latMax, viewZ, 3000000, v, dl, dt, used, e, nullptr,
                        &src, &ip)) {
         FILE* f = std::fopen(viewOut.c_str(), "w");
         for (size_t k = 0; k < v.size(); ++k) std::fprintf(f, "%.7f %.7f %.2f %d\n", v.lon(k), v.lat(k), v.z[k], (int)ip[k]);

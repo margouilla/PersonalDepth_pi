@@ -69,6 +69,7 @@ struct DisplaySettings {
   int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche, 3 libre
   float bannerFx = 0.5f, bannerFy = 0.85f;  // position libre : centre (fraction du canevas)
   bool bannerLock = false;    // bandeau non déplaçable à la souris
+  int panelTab = 0;           // onglet ouvert du panneau principal
   bool bannerVertical = false;  // rampe verticale (sinon horizontale)
   unsigned version = 1;       // incrémenté à chaque changement de couleurs
   // Isobathes (calculées à la volée depuis la grille, mises en cache)
@@ -77,7 +78,6 @@ struct DisplaySettings {
   float contourStep = 1.f;    // m
   float contourMajor = 5.f;   // isobathe maîtresse tous les ... m (0 = aucune)
   bool contourLabels = true;
-  bool contourHalo = true;          // contour blanc autour des valeurs des isobathes
   bool contourSmooth = true;
   uint32_t contourColor = pd::RGBA(25, 45, 95);
   unsigned contourVersion = 1;  // incrémenté à chaque changement de réglage
@@ -278,7 +278,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
   bool UpdateLanguage();  // langue d'OpenCPN (français / anglais) ; true si elle a changé
-  int m_lang = -1;        // pd::kFrench, kEnglish, kRussian
+  int m_lang = -1;        // pd::kFrench, kEnglish, kRussian, kOther
+  wxString m_langCode;    // code de la langue d'OpenCPN (2 lettres)
 
   wxBitmap m_icon;
   int m_toolId = -1;
