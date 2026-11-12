@@ -1,6 +1,7 @@
 #!/bin/bash
 # PersonalDepth_pi - compilation Linux dans un conteneur Debian (GitHub Actions)
-# Usage : tools/ci/build-linux.sh <target> <target-version> <target-arch> [pré-version] [tests 0/1]
+# Usage : tools/ci/build-linux.sh <target> <target-version> <target-arch> [pré-version] [tests 0/1/light]
+#   tests light : tests allégés (émulation QEMU, ex. armhf)
 # ex.   : tools/ci/build-linux.sh debian-arm64 12 arm64 beta.4 1
 set -euo pipefail
 target=$1 tversion=$2 tarch=$3 pre=${4:-} tests=${5:-1}
@@ -13,6 +14,8 @@ cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DPD_WITH_GDAL=OFF \
 cmake --build build-ci -j"$(nproc)"
 if [ "$tests" = 1 ]; then
   (cd build-ci && ctest --output-on-failure)
+elif [ "$tests" = light ]; then
+  (cd build-ci && PD_TEST_LIGHT=1 ctest --output-on-failure)
 fi
 cmake --build build-ci --target pd-package
 ls -l dist

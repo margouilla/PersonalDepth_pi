@@ -1,13 +1,12 @@
-# PersonalDepth_pi - compilation Linux / Raspberry Pi / macOS
+# PersonalDepth_pi - compilation Windows / Linux / Raspberry Pi / macOS
 #
-# - à chaque push sur main (ou à la main, onglet Actions › Run workflow) :
-#   compilation + tests ; les paquets sont téléchargeables dans « Artifacts »
-#   en bas de la page du run ;
+# - à chaque push sur main, pull request (ou à la main, onglet Actions › Run
+#   workflow) : compilation + tests sur chaque plateforme ; les paquets sont
+#   téléchargeables dans « Artifacts » en bas de la page du run ;
 # - à chaque tag v* (ex. v0.1.0-beta.4) : en plus, brouillon de release GitHub
-#   avec tous les paquets. Ajouter le paquet Windows (build.ps1 -Package), le
-#   texte, puis publier.
+#   avec tous les paquets, Windows compris. Ajouter le texte, puis publier.
 #
-# Le paquet Windows reste compilé localement (build.ps1).
+# Tests : test_core (cœur du plugin), allégé pour armhf (émulation QEMU).
 name: build
 
 on:
@@ -67,7 +66,7 @@ jobs:
             target: debian-armhf
             tversion: '12'
             arch: armhf
-            tests: 0   # émulation qemu : lente, tests omis
+            tests: light   # émulation qemu : lente, tests allégés
     steps:
       - uses: actions/checkout@v4
       - name: Pré-version (tag v0.1.0-beta.4 -> beta.4)
@@ -148,10 +147,62 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
+  windows:
+    name: Windows (OpenCPN 32 bits)
+    runs-on: windows-2022
+    env:
+      WX_VERSION: 3.2.6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pré-version
+        id: ver
+        shell: bash
+        run: |
+          pre="dev.${GITHUB_RUN_NUMBER}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"; pre=""; [[ "$v" == *-* ]] && pre="${v#*-}"
+          fi
+          echo "pre=$pre" >> "$GITHUB_OUTPUT"
+      - name: Cache wxWidgets
+        id: wxcache
+        uses: actions/cache@v4
+        with:
+          path: C:\wx
+          key: wx-${{ env.WX_VERSION }}-msvc-x86-v1
+      - name: wxWidgets (binaires officiels MSVC 32 bits)
+        if: steps.wxcache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $base = "https://github.com/wxWidgets/wxWidgets/releases/download/v$env:WX_VERSION"
+          Invoke-WebRequest "$base/wxWidgets-$env:WX_VERSION-headers.7z" -OutFile headers.7z
+          Invoke-WebRequest "$base/wxMSW-$($env:WX_VERSION)_vc14x_Dev.7z" -OutFile dev.7z
+          7z x headers.7z -oC:\wx -y | Out-Null
+          7z x dev.7z -oC:\wx -y | Out-Null
+          Get-ChildItem C:\wx\lib
+      - name: Compilation, tests, paquet
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A Win32 -DPD_WITH_GDAL=OFF -Wno-dev `
+            -DwxWidgets_ROOT_DIR=C:\wx -DwxWidgets_LIB_DIR=C:\wx\lib\vc14x_dll `
+            "-DPD_PRE=${{ steps.ver.outputs.pre }}"
+          if ($LASTEXITCODE) { exit 1 }
+          cmake --build build --config Release
+          if ($LASTEXITCODE) { exit 1 }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE) { exit 1 }
+          cmake --build build --config Release --target pd-package
+          if ($LASTEXITCODE) { exit 1 }
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msvc-wx32
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
   release:
     name: Brouillon de release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, macos]
+    needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4

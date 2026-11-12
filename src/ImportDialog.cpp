@@ -21,6 +21,7 @@
 #include "WaterLevelDialog.h"
 #include "core/WaterLevel.h"
 
+#include <wx/collpane.h>
 #include <wx/display.h>
 
 #include <cmath>
@@ -72,14 +73,30 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
     m_prefsKnown = ApplyImportPrefs(m_srcs[0].params, m_init);
   }
   m_initPrefs = SerializeImportPrefs(m_init);
-  // contenu défilant (petits écrans) ; boutons toujours visibles en bas
-  auto* sc = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+  // Disposition : fichiers et réglages courants toujours visibles ; systèmes
+  // de coordonnées, référence verticale, hauteurs d'eau et options avancées
+  // dans des sections repliées dont le titre résume le réglage. Contenu
+  // défilant pour les petits écrans ; boutons toujours visibles en bas.
+  m_sc = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+  wxScrolledWindow* sc = m_sc;
   sc->SetScrollRate(0, FromDIP(12));
   auto* col = new wxBoxSizer(wxVERTICAL);
   col->Add(BuildFiles(sc), 1, wxEXPAND | wxALL, 6);
-  col->Add(BuildReading(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildCrs(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
-  col->Add(BuildVref(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+  col->Add(BuildMain(sc), 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  auto pane = [&](wxCollapsiblePane*& cp, wxSizer* (ImportDialog::*build)(wxWindow*)) {
+    cp = new wxCollapsiblePane(sc, wxID_ANY, "-", wxDefaultPosition, wxDefaultSize,
+                               wxCP_DEFAULT_STYLE | wxCP_NO_TLW_RESIZE);
+    wxWindow* in = cp->GetPane();
+    auto* ps = new wxBoxSizer(wxVERTICAL);
+    ps->Add((this->*build)(in), 0, wxEXPAND | wxLEFT | wxBOTTOM, FromDIP(14));
+    in->SetSizer(ps);
+    col->Add(cp, 0, wxEXPAND | wxLEFT | wxRIGHT, 6);
+    cp->Bind(wxEVT_COLLAPSIBLEPANE_CHANGED, [this](wxCollapsiblePaneEvent&) { FitToContent(); });
+  };
+  pane(m_paneCrs, &ImportDialog::BuildCrs);
+  pane(m_paneVref, &ImportDialog::BuildVref);
+  pane(m_paneWater, &ImportDialog::BuildWater);
+  pane(m_paneAdv, &ImportDialog::BuildAdvanced);
 
   // Date du levé : déduite du nom de fichier (AAAAMMJJ) ou de la date du
   // fichier, ou imposée
@@ -99,11 +116,9 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
   m_datePick->Enable(m_dateOn->GetValue());
   m_dateOn->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { m_datePick->Enable(m_dateOn->GetValue()); });
   dr->Add(m_dateOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
-  dr->Add(m_datePick, 0);
-  col->Add(dr, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  dr->Add(m_datePick, 0, wxRIGHT, 16);
 
-  // Classement dans la base
-  auto* cr = new wxBoxSizer(wxHORIZONTAL);
+  // Classement dans la base (même ligne que la date)
   m_class = new wxComboBox(sc, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, nullptr,
                            wxCB_DROPDOWN);
   std::set<std::string> seen;
@@ -111,9 +126,9 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
     if (seen.insert(d.group).second) m_class->Append(W8(d.group.c_str()));
   m_class->SetHint(m_edit ? U8("vide : classe actuelle de chaque source")
                           : U8("vide : déduite du nom de chaque fichier (LITTO3D, PFE…)"));
-  cr->Add(new wxStaticText(sc, wxID_ANY, U8("Classe")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
-  cr->Add(m_class, 1);
-  col->Add(cr, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  dr->Add(new wxStaticText(sc, wxID_ANY, U8("Classe")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  dr->Add(m_class, 1, wxALIGN_CENTER_VERTICAL);
+  col->Add(dr, 0, wxEXPAND | wxALL, 10);
   sc->SetSizer(col);
 
   auto* top = new wxBoxSizer(wxVERTICAL);
@@ -125,20 +140,96 @@ ImportDialog::ImportDialog(wxWindow* parent, PersonalDepth_pi* pi,
   btns->Realize();
   top->Add(btns, 0, wxEXPAND | wxALL, 8);
   ok->Bind(wxEVT_BUTTON, &ImportDialog::OnOk, this);
-
-  // taille : tout le contenu si l'écran le permet, sinon 90 % de sa hauteur
-  // avec barre de défilement
   SetSizer(top);
-  const wxSize want = col->GetMinSize();
-  const wxRect area = wxDisplay(wxDisplay::GetFromWindow(parent) == wxNOT_FOUND
-                                    ? 0u : (unsigned)wxDisplay::GetFromWindow(parent)).GetClientArea();
-  const int btnH = btns->GetMinSize().y + FromDIP(16);
-  const int h = std::min(want.y + btnH + FromDIP(40), area.height * 9 / 10);
-  const int w = std::min(std::max(FromDIP(560), want.x + FromDIP(30)), area.width * 9 / 10);
-  sc->SetMinSize(wxSize(-1, FromDIP(200)));
-  SetSize(w, h);
+  m_btnH = btns->GetMinSize().y + FromDIP(16);
+
+  // une section dont le réglage n'est pas celui par défaut s'ouvre d'office
+  UpdatePaneLabels();
+  if (m_waterOn->GetValue()) m_paneWater->Expand();
+  // titres des sections tenus à jour (réglages changés dans les sections ou
+  // dans les fenêtres « Format… »)
+  Bind(wxEVT_IDLE, [this](wxIdleEvent& e) { UpdatePaneLabels(); e.Skip(); });
+  FitToContent();
   UpdateSummary();
   CentreOnParent();
+}
+
+// Taille : tout le contenu si l'écran le permet (sections ouvertes comprises),
+// sinon 90 % de sa hauteur avec barre de défilement
+void ImportDialog::FitToContent() {
+  if (!m_sc || !m_sc->GetSizer() || !m_paneAdv) return;  // fenêtre en construction
+  m_sc->Layout();
+  m_sc->FitInside();
+  const wxSize want = m_sc->GetSizer()->GetMinSize();
+  const int disp = wxDisplay::GetFromWindow(this);
+  const wxRect area = wxDisplay(disp == wxNOT_FOUND ? 0u : (unsigned)disp).GetClientArea();
+  const int h = std::min(want.y + m_btnH + FromDIP(40), area.height * 9 / 10);
+  const int w = std::max(GetSize().x, std::min(std::max(FromDIP(600), want.x + FromDIP(30)),
+                                               area.width * 9 / 10));
+  m_sc->SetMinSize(wxSize(-1, FromDIP(200)));
+  SetSize(w, h);
+  Layout();
+}
+
+// Titre des sections repliables : nom et résumé du réglage (raccourci)
+static wxString PaneTitle(const wxString& name, const wxString& summary) {
+  wxString t = name + W8(" : ") + summary;
+  if (t.length() > 90) t = t.Left(88) + W8("…");
+  return t;
+}
+
+void ImportDialog::UpdatePaneLabels() {
+  if (!m_paneAdv) return;
+  // coordonnées
+  wxString crs;
+  {
+    const auto& cat = CrsCatalog();
+    const int sel = m_crs->GetSelection();
+    if (sel == (int)cat.size()) {
+      crs = m_crsCustom->GetValue().Trim().Trim(false);
+      if (crs.empty()) crs = U8("code EPSG ou chaîne PROJ à saisir");
+    } else if (sel >= 0) {
+      crs = CrsLabel(cat[sel]);
+      if (cat[sel].zoneMin > 0)
+        crs += wxString::Format(W8(", %d %s"), m_zone->GetValue(),
+                                m_hemi->GetSelection() == 1 ? U8("Sud") : U8("Nord"));
+    }
+    if (m_prj->GetValue()) crs += U8(" (.prj prioritaire)");
+  }
+  // référence verticale
+  static const char* vshort[] = {"zéro hydrographique, sans transformation", "IGN69 / IGN78C → ZH",
+                                 "hauteurs ellipsoïdales → ZH", "autre référence → ZH (surfaces)",
+                                 "grille d'écart → ZH"};
+  const wxString vref = U8(vshort[std::max(0, std::min(4, m_vref->GetSelection()))]);
+  // hauteurs d'eau
+  wxString water = U8("aucune");
+  if (m_waterOn->GetValue()) {
+    const wxString w = m_water->GetValue().Trim().Trim(false);
+    water = w.empty() ? U8("fichier ou dossier à choisir") : wxFileName(w).GetFullName();
+  }
+  // options avancées : seulement les réglages actifs
+  wxArrayString adv;
+  const wxString u = m_unitF == 1.0 ? "m" : "ft";
+  if (std::fabs(m_offset->GetValue()) > 1e-9)
+    adv.Add(wxString::Format(U8("décalage %+.2f "), m_offset->GetValue()) + u);
+  if (m_nodataOn->GetValue()) adv.Add(W8("NODATA ") + m_nodata->GetValue());
+  if (m_boundsOn->GetValue())
+    adv.Add(wxString::Format(U8("bornes %.1f … %.1f "), m_boundMin->GetValue(), m_boundMax->GetValue()) + u);
+  if (m_resOn->GetValue()) adv.Add(wxString::Format(U8("résolution %.2f m"), m_res->GetValue()));
+  if (m_cache->GetValue()) adv.Add(U8("cache .pdpc"));
+  wxString advs = adv.empty() ? U8("aucune") : wxJoin(adv, ';', 0);
+  advs.Replace(";", "; ");
+  const wxString labels[4] = {PaneTitle(U8("Coordonnées"), crs), PaneTitle(U8("Référence verticale"), vref),
+                              PaneTitle(U8("Hauteurs d'eau observées"), water),
+                              PaneTitle(U8("Avancé"), advs)};
+  wxCollapsiblePane* panes[4] = {m_paneCrs, m_paneVref, m_paneWater, m_paneAdv};
+  bool changed = false;
+  for (int k = 0; k < 4; ++k)
+    if (panes[k]->GetLabel() != labels[k]) {
+      panes[k]->SetLabel(labels[k]);
+      changed = true;
+    }
+  if (changed) m_sc->Layout();
 }
 
 // ---------------------------------------------------------------- fichiers
@@ -239,30 +330,50 @@ void ImportDialog::UpdateSummary() {
 }
 
 // ----------------------------------------------------------------- lecture
-wxSizer* ImportDialog::BuildReading(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Lecture des valeurs"));
-  wxWindow* sb = box->GetStaticBox();
+// Type de données (liste unique) <-> type d'instrument + nature enregistrés
+// 0 auto, 1 grille, 2 monofaisceau, 3 nuage dense (multifaisceau, lidar),
+// 4 sondes de carte, 5 plomb, 6 nuage de points (autre)
+static int DataTypeIndex(int instrument, int nature) {
+  if (nature == 1) return 1;
+  switch (instrument) {
+    case 1: return 2;
+    case 2: case 3: return 3;
+    case 4: return 4;
+    case 5: return 5;
+    default: return nature == 2 ? 6 : 0;
+  }
+}
+static void DataTypeToPrefs(int idx, int& instrument, int& nature) {
+  static const int instr[] = {0, 0, 1, 2, 4, 5, 0};
+  static const int nat[] = {0, 1, 2, 2, 2, 2, 2};
+  idx = std::max(0, std::min(6, idx));
+  instrument = instr[idx];
+  nature = nat[idx];
+}
+
+// Réglages courants : colonnes, sens et unité de Z, type de données, interpolation
+wxSizer* ImportDialog::BuildMain(wxWindow* p) {
   const DisplaySettings& st = m_init;
   wxString orders[] = {U8("X Y Z (lon lat z / Est Nord z)"), U8("Y X Z (lat lon z / Nord Est z)"),
                        U8("Format personnalisé (colonnes choisies)")};
   wxString signs[] = {U8("Automatique (majorité négative = altitudes)"),
                       U8("Profondeurs positives vers le bas"),
                       U8("Altitudes (fond négatif, Z positif vers le haut)")};
-  m_order = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, orders);
-  m_sign = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, signs);
+  m_order = new wxChoice(p, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, orders);
+  m_sign = new wxChoice(p, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, signs);
   m_fmt.deserialize(st.importFormat);
   m_order->SetSelection(m_fmt.custom ? 2 : std::max(0, std::min(1, st.importOrder)));
   m_order->SetToolTip(U8("Fichiers texte (.xyz .txt .csv .dat) : les trois premiers nombres de chaque "
                          "ligne, ou un format personnalisé (lignes d'entête, séparateurs, colonnes X, "
                          "Y, Z, date et heure) réglé avec « Format… »."));
-  m_fmtBtn = new wxButton(sb, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  m_fmtInfo = new wxStaticText(sb, wxID_ANY, TextFormatDialog::Describe(m_fmt));
+  m_fmtBtn = new wxButton(p, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_fmtInfo = new wxStaticText(p, wxID_ANY, m_fmt.custom ? TextFormatDialog::Describe(m_fmt) : wxString());
   m_fmtInfo->SetForegroundColour(wxColour(90, 90, 90));
   m_fmtBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnFormat(); });
   m_order->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
     if (m_order->GetSelection() == 2 && !m_fmt.custom) OnFormat();
     m_fmtInfo->SetLabel(m_order->GetSelection() == 2 ? TextFormatDialog::Describe(m_fmt) : wxString());
-    Layout();
+    FitToContent();
   });
   m_sign->SetSelection(std::max(0, std::min(2, st.importSign)));
   m_sign->SetToolTip(U8("Sens des valeurs Z du fichier. Les rasters (.asc, .tif) suivent la même règle."));
@@ -270,21 +381,62 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
   // dans cette unité, la base reste en mètres
   m_unitF = st.importZFeet ? 0.3048 : 1.0;
   wxString units[] = {U8("Mètres"), U8("Pieds")};
-  m_zUnit = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, units);
+  m_zUnit = new wxChoice(p, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, units);
   m_zUnit->SetSelection(st.importZFeet ? 1 : 0);
   m_zUnit->SetToolTip(U8("Unité des valeurs Z du fichier. Les profondeurs sont converties en "
                          "mètres dans la base ; l'affichage suit ensuite l'unité de profondeur "
                          "choisie dans OpenCPN (Options › Affichage › Unités)."));
-  m_offset = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                  wxSP_ARROW_KEYS, -400, 400, st.importOffset / m_unitF, 0.01);
-  m_offset->SetDigits(2);
-  m_offset->SetToolTip(U8("Décalage constant ajouté aux profondeurs (dans l'unité de Z), "
-                          "en plus de la transformation verticale ci-dessous"));
-  m_cache = new wxCheckBox(sb, wxID_ANY, U8("Cache binaire (.pdpc) à côté des fichiers (réimport rapide)"));
-  m_cache->SetValue(st.importCache);
-  auto* g = new wxFlexGridSizer(2, 4, 8);
+  m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
+
+  // type de données : grille (déjà traitée) ou nuage de points, et instrument
+  m_dtype = new wxChoice(p, wxID_ANY);
+  for (const char* t : {"automatique (d'après les données)", "grille (pas régulier, déjà traitée)",
+                        "sondeur monofaisceau (routes, profils)",
+                        "nuage dense (multifaisceau, lidar)", "sondes de carte (sélection)",
+                        "sondes au plomb (levés anciens)", "nuage de points (autre)"})
+    m_dtype->Append(U8(t));
+  m_dtype->SetSelection(DataTypeIndex(st.importInstrument, st.importNature));
+  m_dtype->SetToolTip(U8("Grille : nœuds réguliers, déjà traitée, stockée à son pas sans "
+                         "interpolation. Les autres types sont des nuages de points : la surface est "
+                         "interpolée entre les sondes, sans franchir un vide plus large que la "
+                         "distance maximale. Automatique : grille ou nuage reconnu d'après les "
+                         "données, levé en lignes reconnu à l'écart entre les routes. Monofaisceau : "
+                         "lignes. Nuage dense : trois fois l'espacement des sondes. Sondes de carte "
+                         "et plomb : au moins les grands écarts courants entre sondes, plafond de "
+                         "1 000 m / 500 m."));
+  m_interp = new wxCheckBox(p, wxID_ANY, U8("Interpoler entre les sondes"));
+  m_interp->SetValue(st.importInterp);
+  m_interp->SetToolTip(U8("Surface triangulée entre les sondes, sans franchir un vide plus large "
+                          "que la distance maximale. Marquée « interpolée » dans la base : une sonde "
+                          "mesurée l'emporte toujours, et l'affichage peut la masquer ou "
+                          "l'éclaircir."));
+  m_imethod = new wxChoice(p, wxID_ANY);
+  for (const char* t : {"méthode automatique", "TIN (linéaire)", "voisin naturel (Sibson)",
+                        "IDW (inverse de la distance)"})
+    m_imethod->Append(U8(t));
+  m_imethod->SetSelection(std::max(0, std::min(3, st.importInterpMethod)));
+  m_imethod->SetToolTip(U8("Méthode de calcul des valeurs interpolées. La zone remplie est la même "
+                           "pour toutes (triangles dont aucun côté ne dépasse la distance maximale). "
+                           "Automatique : voisin naturel pour un levé en lignes, sinon TIN. "
+                           "TIN : plan dans chaque triangle, le plus rapide. Voisin naturel : surface "
+                           "plus douce, sans arêtes de triangles. IDW : moyenne des sondes les plus "
+                           "proches dans chaque quart autour du point, pondérée par l'inverse du carré "
+                           "de la distance, peut former des « cuvettes » autour des sondes isolées."));
+  m_dmaxOn = new wxCheckBox(p, wxID_ANY, U8("Distance max"));
+  m_dmaxOn->SetValue(st.importInterpD > 0);
+  m_dmax = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                wxSP_ARROW_KEYS, 0.1, 100000, st.importInterpD > 0 ? st.importInterpD : 200.0, 10);
+  m_dmax->SetDigits(1);
+  const wxString dt = U8("Distance maximale d'interpolation : la surface n'est jamais tendue entre "
+                         "deux sondes plus éloignées que cette distance (vides plus larges laissés "
+                         "vides). Décoché : déduite de l'analyse du levé et du type de levé. "
+                         "La valeur utilisée s'affiche dans Gestion des données.");
+  m_dmaxOn->SetToolTip(dt);
+  m_dmax->SetToolTip(dt);
+
+  auto L = [&](const char* t) { return new wxStaticText(p, wxID_ANY, U8(t)); };
+  auto* g = new wxFlexGridSizer(2, 6, 8);
   g->AddGrowableCol(1);
-  auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
   {
     auto* orow = new wxBoxSizer(wxHORIZONTAL);
     orow->Add(m_order, 1, wxEXPAND | wxRIGHT, 4);
@@ -294,139 +446,49 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
     ocol->Add(m_fmtInfo, 0, wxTOP, 2);
     g->Add(L("Colonnes"), 0, wxALIGN_CENTER_VERTICAL); g->Add(ocol, 0, wxEXPAND);
   }
-  g->Add(L("Sens de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_sign, 0, wxEXPAND);
-  g->Add(L("Unité de Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_zUnit, 0);
-  m_offsetL = L("Décalage (m)");
-  g->Add(m_offsetL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_offset, 0);
-  // valeurs absentes : NODATA de l'utilisateur (Z brut du fichier)
-  wxString nds[] = {"-9999", "9999", "-99999", "99999", "-9999 9999", "-99999 99999",
-                    "-9999 9999 -99999 99999", "999 -999"};
-  m_nodataOn = new wxCheckBox(sb, wxID_ANY, U8("NODATA"));
-  m_nodataOn->SetValue(st.importNodataOn);
-  m_nodata = new wxComboBox(sb, wxID_ANY, W8(st.importNodata.c_str()), wxDefaultPosition,
-                            wxDefaultSize, 8, nds, wxCB_DROPDOWN);
-  const wxString nt = U8("Valeurs Z du fichier à traiter comme absentes, séparées par des "
-                         "espaces ou des « ; » (ex. -9999 9999 -99999 99999). Elles s'ajoutent "
-                         "au NODATA déclaré dans l'entête des grilles ASC / GeoTIFF. Comparées "
-                         "aux valeurs brutes, avant changement de signe et transformation.");
-  m_nodataOn->SetToolTip(nt);
-  m_nodata->SetToolTip(nt);
-  g->Add(m_nodataOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_nodata, 0, wxEXPAND);
+  {
+    auto* zr = new wxBoxSizer(wxHORIZONTAL);
+    zr->Add(m_sign, 1, wxRIGHT, 6);
+    zr->Add(m_zUnit, 0);
+    g->Add(L("Valeurs Z"), 0, wxALIGN_CENTER_VERTICAL); g->Add(zr, 0, wxEXPAND);
+  }
+  g->Add(L("Type de données"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_dtype, 0, wxEXPAND);
+  {
+    auto* ir = new wxBoxSizer(wxHORIZONTAL);
+    ir->Add(m_imethod, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+    ir->Add(m_dmaxOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+    ir->Add(m_dmax, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+    ir->Add(L("m"), 0, wxALIGN_CENTER_VERTICAL);
+    g->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL); g->Add(ir, 0, wxEXPAND);
+  }
+  auto sync = [this]() {
+    const bool grid = m_dtype->GetSelection() == 1;  // grille : jamais interpolée
+    m_interp->Enable(!grid);
+    const bool on = m_interp->GetValue() && !grid;
+    m_imethod->Enable(on);
+    m_dmaxOn->Enable(on);
+    m_dmax->Enable(on && m_dmaxOn->GetValue());
+  };
+  m_dtype->Bind(wxEVT_CHOICE, [sync](wxCommandEvent&) { sync(); });
+  m_interp->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  m_dmaxOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  sync();
+  return g;
+}
 
-  // bornes d'import : profondeur ZH finale (mêmes bornes que « Nettoyer »)
-  m_boundsOn = new wxCheckBox(sb, wxID_ANY, U8("Bornes de Z"));
-  m_boundsOn->SetValue(st.importBoundsOn);
-  m_boundMin = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMin / m_unitF, 1);
-  m_boundMax = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMax / m_unitF, 1);
-  m_boundMin->SetDigits(1);
-  m_boundMax->SetDigits(1);
-  const wxString bt = U8("Seules les sondes dont la profondeur finale (ZH, positive vers le "
-                         "bas, après signe, décalage et transformation verticale ; dans "
-                         "l'unité de Z choisie) est comprise "
-                         "entre Z1 et Z2 sont importées. Exemple : -200 à 200 m garde l'estran "
-                         "jusqu'à 200 m d'altitude et écarte les remplissages. Ce sont les mêmes "
-                         "bornes que le bouton « Nettoyer » de la base. Au-delà de ±12 km, une "
-                         "valeur est toujours ignorée.");
-  m_boundsOn->SetToolTip(bt);
-  m_boundMin->SetToolTip(bt);
-  m_boundMax->SetToolTip(bt);
-  auto* rr = new wxBoxSizer(wxHORIZONTAL);
-  rr->Add(L("de"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  rr->Add(m_boundMin, 0, wxRIGHT, 4);
-  rr->Add(L("à"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  rr->Add(m_boundMax, 0, wxRIGHT, 4);
-  m_boundsU = L("m (profondeur ZH)");
-  rr->Add(m_boundsU, 0, wxALIGN_CENTER_VERTICAL);
-  g->Add(m_boundsOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(rr, 0);
-
-  // résolution de stockage (pas horizontal des tuiles) : estimée ou imposée
-  m_resOn = new wxCheckBox(sb, wxID_ANY, U8("Résolution imposée"));
-  m_resOn->SetValue(st.importRes > 0);
-  m_res = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                               wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
-  m_res->SetDigits(2);
-  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé par "
-                         "l'analyse du levé : pas de la grille, ou espacement des sondes le long "
-                         "des routes (levé en lignes), ou espacement typique des sondes. Dans "
-                         "chaque case, la sonde la plus faible est gardée.");
-  m_resOn->SetToolTip(rt);
-  m_res->SetToolTip(rt);
-  auto* resr = new wxBoxSizer(wxHORIZONTAL);
-  resr->Add(m_res, 0, wxRIGHT, 4);
-  resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
-  g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
-
-  // nature du levé et surface interpolée entre les sondes
-  m_instr = new wxChoice(sb, wxID_ANY);
-  for (const char* t : {"automatique (d'après les données)", "sondeur classique (un faisceau, routes ou profils)",
-                        "sondeur multifaisceaux (large fauchée)", "lidar bathymétrique",
-                        "sondes de carte (sélection)", "sondes au plomb (levés anciens)"})
-    m_instr->Append(U8(t));
-  m_instr->SetSelection(std::max(0, std::min(5, st.importInstrument)));
-  m_instr->SetToolTip(U8("Règle la distance maximale d'interpolation entre les sondes. "
-                         "Automatique : levé en lignes reconnu à l'écart entre les routes, sinon "
-                         "deux fois l'espacement des sondes. Multifaisceaux et lidar : trois fois. "
-                         "Sondes de carte et plomb : au moins les grands écarts courants entre sondes, plafond de 1 000 m / 500 m."));
-  m_dmaxOn = new wxCheckBox(sb, wxID_ANY, U8("Distance max"));
-  m_dmaxOn->SetValue(st.importInterpD > 0);
-  m_dmax = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                                wxSP_ARROW_KEYS, 0.1, 100000, st.importInterpD > 0 ? st.importInterpD : 200.0, 10);
-  m_dmax->SetDigits(1);
-  const wxString dt = U8("Distance maximale d'interpolation : la surface n'est jamais tendue entre "
-                         "deux sondes plus éloignées que cette distance (vides plus larges laissés "
-                         "vides). Décoché : déduite de l'analyse du levé et du type de levé. "
-                         "La valeur utilisée s'affiche dans Gestion des données.");
-  m_dmaxOn->SetToolTip(dt);
-  m_dmax->SetToolTip(dt);
-  auto* ir = new wxBoxSizer(wxHORIZONTAL);
-  ir->Add(m_instr, 0, wxRIGHT, 12);
-  ir->Add(m_dmaxOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  ir->Add(m_dmax, 0, wxRIGHT, 4);
-  ir->Add(L("m"), 0, wxALIGN_CENTER_VERTICAL);
-  g->Add(L("Type de levé"), 0, wxALIGN_CENTER_VERTICAL); g->Add(ir, 0);
-  m_nature = new wxChoice(sb, wxID_ANY);
-  for (const char* t : {"automatique", "grille (pas régulier)", "nuage de points"}) m_nature->Append(U8(t));
-  m_nature->SetSelection(std::max(0, std::min(2, st.importNature)));
-  m_nature->SetToolTip(U8("Grille : nœuds réguliers, déjà traitée, stockée à son pas sans "
-                          "interpolation. Nuage : sondes sans pas défini, surface interpolée entre "
-                          "elles. Automatique : réseau régulier cherché dans le système du fichier, "
-                          "en lon/lat et en UTM."));
-  m_interp = new wxCheckBox(sb, wxID_ANY, U8("Interpoler entre les sondes (nuages de points)"));
-  m_interp->SetValue(st.importInterp);
-  m_interp->SetToolTip(U8("Surface triangulée entre les sondes, sans franchir un vide plus large "
-                          "que la distance maximale. Marquée « interpolée » dans la base : une sonde "
-                          "mesurée l'emporte toujours, et l'affichage peut la masquer ou "
-                          "l'éclaircir."));
-  m_imethod = new wxChoice(sb, wxID_ANY);
-  for (const char* t : {"méthode automatique", "TIN (linéaire)", "voisin naturel (Sibson)",
-                        "IDW (inverse de la distance)"})
-    m_imethod->Append(U8(t));
-  m_imethod->SetSelection(std::max(0, std::min(3, st.importInterpMethod)));
-  m_imethod->SetToolTip(U8("Méthode de calcul des valeurs interpolées. La zone remplie est la même "
-                           "pour toutes (triangles dont aucun côté ne dépasse la distance maximale). "
-                           "Automatique : voisin naturel pour un levé en lignes, sinon TIN. "
-                           "TIN : plan dans chaque triangle, le plus rapide. Voisin naturel : surface "
-                           "plus douce, sans arêtes de triangles. IDW : moyenne des 12 sondes les plus "
-                           "proches pondérée par l'inverse du carré de la distance, peut former des "
-                           "« cuvettes » autour des sondes isolées."));
-  auto* nr = new wxBoxSizer(wxHORIZONTAL);
-  nr->Add(m_nature, 0, wxRIGHT, 12);
-  nr->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-  nr->Add(m_imethod, 0, wxALIGN_CENTER_VERTICAL);
-  g->Add(L("Nature"), 0, wxALIGN_CENTER_VERTICAL); g->Add(nr, 0);
-
-  // hauteurs d'eau observées (échelle, marégraphe) : sondes horodatées corrigées
-  m_waterOn = new wxCheckBox(sb, wxID_ANY, U8("Hauteurs d'eau observées"));
+// Hauteurs d'eau observées (échelle, marégraphe) : sondes horodatées corrigées
+wxSizer* ImportDialog::BuildWater(wxWindow* p) {
+  const DisplaySettings& st = m_init;
+  m_waterOn = new wxCheckBox(p, wxID_ANY, U8("Corriger les sondes par des hauteurs d'eau observées"));
   m_waterOn->SetValue(st.importWaterOn);
-  m_water = new wxTextCtrl(sb, wxID_ANY, W8(st.importWater.c_str()), wxDefaultPosition,
+  m_water = new wxTextCtrl(p, wxID_ANY, W8(st.importWater.c_str()), wxDefaultPosition,
                            wxSize(FromDIP(230), -1));
-  m_waterFile = new wxButton(sb, wxID_ANY, U8("Fichier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  m_waterDir = new wxButton(sb, wxID_ANY, U8("Dossier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  m_waterCurve = new wxButton(sb, wxID_ANY, U8("Courbe…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  m_waterFmtBtn = new wxButton(sb, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  m_waterInfo = new wxStaticText(sb, wxID_ANY, "");
+  m_waterFile = new wxButton(p, wxID_ANY, U8("Fichier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterDir = new wxButton(p, wxID_ANY, U8("Dossier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterCurve = new wxButton(p, wxID_ANY, U8("Courbe…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterFmtBtn = new wxButton(p, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterInfo = new wxStaticText(p, wxID_ANY, "");
+  m_waterInfo->SetForegroundColour(wxColour(90, 90, 90));
   m_waterFmt.deserialize(st.importWaterFormat);
   m_waterSignV = std::max(0, std::min(1, st.importWaterSign));
   m_waterFeet = st.importWaterFeet;
@@ -437,14 +499,16 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
                          "hauteur interpolée à son heure ; sans colonne date, la hauteur du jour "
                          "du levé est prise.");
   for (wxWindow* w : std::initializer_list<wxWindow*>{m_waterOn, m_water}) w->SetToolTip(wt);
+  auto* col = new wxBoxSizer(wxVERTICAL);
+  col->Add(m_waterOn, 0, wxBOTTOM, 4);
   auto* wr = new wxBoxSizer(wxHORIZONTAL);
   wr->Add(m_water, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   wr->Add(m_waterFile, 0, wxRIGHT, 2);
   wr->Add(m_waterDir, 0, wxRIGHT, 2);
   wr->Add(m_waterFmtBtn, 0, wxRIGHT, 2);
   wr->Add(m_waterCurve, 0);
-  g->Add(m_waterOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(wr, 0, wxEXPAND);
-  g->AddSpacer(0); g->Add(m_waterInfo, 0, wxEXPAND);
+  col->Add(wr, 0, wxEXPAND);
+  col->Add(m_waterInfo, 0, wxEXPAND | wxTOP, 2);
   UpdateWaterInfo();
   m_waterFile->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     wxFileDialog fd(this, U8("Fichier de hauteurs d'eau"), "", "",
@@ -477,24 +541,99 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
     d.ShowModal();
   });
   auto sync = [this]() {
-    m_nodata->Enable(m_nodataOn->GetValue());
-    m_boundMin->Enable(m_boundsOn->GetValue());
-    m_boundMax->Enable(m_boundsOn->GetValue());
-    m_res->Enable(m_resOn->GetValue());
-    m_dmax->Enable(m_dmaxOn->GetValue() && m_interp->GetValue());
-    m_dmaxOn->Enable(m_interp->GetValue());
-    m_imethod->Enable(m_interp->GetValue());
     const bool w = m_waterOn->GetValue();
     for (wxWindow* c : std::initializer_list<wxWindow*>{m_water, m_waterFile, m_waterDir, m_waterCurve,
                                                         m_waterFmtBtn, m_waterInfo})
       c->Enable(w);
   };
   m_waterOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
+  sync();
+  return col;
+}
+
+// Options avancées : décalage, NODATA, bornes de Z, résolution imposée, cache
+wxSizer* ImportDialog::BuildAdvanced(wxWindow* p) {
+  const DisplaySettings& st = m_init;
+  auto L = [&](const char* t) { return new wxStaticText(p, wxID_ANY, U8(t)); };
+  m_offset = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                  wxSP_ARROW_KEYS, -400, 400, st.importOffset / m_unitF, 0.01);
+  m_offset->SetDigits(2);
+  m_offset->SetToolTip(U8("Décalage constant ajouté aux profondeurs (dans l'unité de Z), "
+                          "en plus de la transformation verticale"));
+  m_cache = new wxCheckBox(p, wxID_ANY, U8("Cache binaire (.pdpc) à côté des fichiers (réimport rapide)"));
+  m_cache->SetValue(st.importCache);
+  auto* g = new wxFlexGridSizer(2, 4, 8);
+  g->AddGrowableCol(1);
+  m_offsetL = L("Décalage (m)");
+  g->Add(m_offsetL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_offset, 0);
+  // valeurs absentes : NODATA de l'utilisateur (Z brut du fichier)
+  wxString nds[] = {"-9999", "9999", "-99999", "99999", "-9999 9999", "-99999 99999",
+                    "-9999 9999 -99999 99999", "999 -999"};
+  m_nodataOn = new wxCheckBox(p, wxID_ANY, U8("NODATA"));
+  m_nodataOn->SetValue(st.importNodataOn);
+  m_nodata = new wxComboBox(p, wxID_ANY, W8(st.importNodata.c_str()), wxDefaultPosition,
+                            wxDefaultSize, 8, nds, wxCB_DROPDOWN);
+  const wxString nt = U8("Valeurs Z du fichier à traiter comme absentes, séparées par des "
+                         "espaces ou des « ; » (ex. -9999 9999 -99999 99999). Elles s'ajoutent "
+                         "au NODATA déclaré dans l'entête des grilles ASC / GeoTIFF. Comparées "
+                         "aux valeurs brutes, avant changement de signe et transformation.");
+  m_nodataOn->SetToolTip(nt);
+  m_nodata->SetToolTip(nt);
+  g->Add(m_nodataOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_nodata, 0, wxEXPAND);
+
+  // bornes d'import : profondeur ZH finale (mêmes bornes que « Nettoyer »)
+  m_boundsOn = new wxCheckBox(p, wxID_ANY, U8("Bornes de Z"));
+  m_boundsOn->SetValue(st.importBoundsOn);
+  m_boundMin = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMin / m_unitF, 1);
+  m_boundMax = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                    wxSP_ARROW_KEYS, -40000, 40000, st.boundMax / m_unitF, 1);
+  m_boundMin->SetDigits(1);
+  m_boundMax->SetDigits(1);
+  const wxString bt = U8("Seules les sondes dont la profondeur finale (ZH, positive vers le "
+                         "bas, après signe, décalage et transformation verticale ; dans "
+                         "l'unité de Z choisie) est comprise "
+                         "entre Z1 et Z2 sont importées. Exemple : -200 à 200 m garde l'estran "
+                         "jusqu'à 200 m d'altitude et écarte les remplissages. Ce sont les mêmes "
+                         "bornes que le bouton « Nettoyer » de la base. Au-delà de ±12 km, une "
+                         "valeur est toujours ignorée.");
+  m_boundsOn->SetToolTip(bt);
+  m_boundMin->SetToolTip(bt);
+  m_boundMax->SetToolTip(bt);
+  auto* rr = new wxBoxSizer(wxHORIZONTAL);
+  rr->Add(L("de"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  rr->Add(m_boundMin, 0, wxRIGHT, 4);
+  rr->Add(L("à"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  rr->Add(m_boundMax, 0, wxRIGHT, 4);
+  m_boundsU = L("m (profondeur ZH)");
+  rr->Add(m_boundsU, 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(m_boundsOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(rr, 0);
+
+  // résolution de stockage (pas horizontal des tuiles) : estimée ou imposée
+  m_resOn = new wxCheckBox(p, wxID_ANY, U8("Résolution imposée"));
+  m_resOn->SetValue(st.importRes > 0);
+  m_res = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                               wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
+  m_res->SetDigits(2);
+  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé par "
+                         "l'analyse du levé : pas de la grille, ou espacement des sondes le long "
+                         "des routes (levé en lignes), ou espacement typique des sondes. Dans "
+                         "chaque case, la sonde la plus faible est gardée.");
+  m_resOn->SetToolTip(rt);
+  m_res->SetToolTip(rt);
+  auto* resr = new wxBoxSizer(wxHORIZONTAL);
+  resr->Add(m_res, 0, wxRIGHT, 4);
+  resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
+
+  auto sync = [this]() {
+    m_nodata->Enable(m_nodataOn->GetValue());
+    m_boundMin->Enable(m_boundsOn->GetValue());
+    m_boundMax->Enable(m_boundsOn->GetValue());
+    m_res->Enable(m_resOn->GetValue());
+  };
   m_resOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
-  m_dmaxOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
-  m_interp->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
-  m_zUnit->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnZUnit(); });
   m_boundsOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   sync();
   {  // libellés d'unité
@@ -502,15 +641,16 @@ wxSizer* ImportDialog::BuildReading(wxWindow* p) {
     m_offsetL->SetLabel(U8("Décalage (") + u + ")");
     m_boundsU->SetLabel(u + U8(" (profondeur ZH)"));
   }
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
-  box->Add(m_cache, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
-  return box;
+  auto* col = new wxBoxSizer(wxVERTICAL);
+  col->Add(g, 0, wxEXPAND);
+  col->Add(m_cache, 0, wxTOP, 6);
+  return col;
 }
 
 // ------------------------------------------------------------- coordonnées
 wxSizer* ImportDialog::BuildCrs(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Système de coordonnées (X, Y)"));
-  wxWindow* sb = box->GetStaticBox();
+  auto* box = new wxBoxSizer(wxVERTICAL);
+  wxWindow* sb = p;
   const DisplaySettings& st = m_init;
   m_crs = new wxChoice(sb, wxID_ANY);
   {  // ajout en un seul appel : 300 systèmes, insertion une à une lente sous Windows
@@ -530,14 +670,25 @@ wxSizer* ImportDialog::BuildCrs(wxWindow* p) {
   auto* zoneRow = new wxBoxSizer(wxHORIZONTAL);
   zoneRow->Add(m_zone, 0, wxRIGHT, 6);
   zoneRow->Add(m_hemi, 0);
-  auto* g = new wxFlexGridSizer(2, 4, 8);
-  g->AddGrowableCol(1);
-  auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
-  g->Add(L("Système"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_crs, 0, wxEXPAND);
-  g->Add(L("Fuseau UTM"), 0, wxALIGN_CENTER_VERTICAL); g->Add(zoneRow, 0);
-  g->Add(L("EPSG / PROJ"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_crsCustom, 0, wxEXPAND);
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
-  box->Add(m_prj, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
+  // une ligne par réglage ; fuseau et EPSG / PROJ affichés seulement s'ils servent
+  const int lw = FromDIP(110);
+  auto row = [&](const char* label, wxSizer* content, int prop) {
+    auto* r = new wxBoxSizer(wxHORIZONTAL);
+    auto* t = new wxStaticText(sb, wxID_ANY, U8(label));
+    t->SetMinSize(wxSize(lw, -1));
+    r->Add(t, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    r->Add(content, prop, wxALIGN_CENTER_VERTICAL);
+    box->Add(r, 0, wxEXPAND | wxBOTTOM, 4);
+    return r;
+  };
+  auto* crsR = new wxBoxSizer(wxHORIZONTAL);
+  crsR->Add(m_crs, 1);
+  row("Système", crsR, 1);
+  m_zoneRow = row("Fuseau UTM", zoneRow, 0);
+  auto* custR = new wxBoxSizer(wxHORIZONTAL);
+  custR->Add(m_crsCustom, 1);
+  m_customRow = row("EPSG / PROJ", custR, 1);
+  box->Add(m_prj, 0, wxTOP, 2);
 
   int sel = 0;
   const auto& cat = CrsCatalog();
@@ -563,6 +714,9 @@ void ImportDialog::UpdateCrsControls() {
   m_hemi->Enable(zoned);
   m_crsCustom->Enable(custom);
   if (zoned) m_zone->SetRange(cat[sel].zoneMin, cat[sel].zoneMax);
+  if (m_zoneRow) m_zoneRow->ShowItems(zoned);
+  if (m_customRow) m_customRow->ShowItems(custom);
+  if (m_sc) FitToContent();
 }
 
 void ImportDialog::OnCrsChoice(wxCommandEvent&) {
@@ -611,8 +765,8 @@ bool ImportDialog::CurrentCrs(std::string& def, std::string& name) {
 
 // ----------------------------------------------------- référence verticale
 wxSizer* ImportDialog::BuildVref(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale des Z et transformation vers le ZH"));
-  wxWindow* sb = box->GetStaticBox();
+  auto* box = new wxBoxSizer(wxVERTICAL);
+  wxWindow* sb = p;
   const DisplaySettings& st = m_init;
   wxString vrefs[] = {
       U8("Zéro hydrographique — aucune transformation"),
@@ -642,16 +796,26 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   m_vrGeoid->SetHint(U8("géoïde(s) de la référence : .tac .mnt .gtx .asc (séparer par ;, par priorité)"));
   m_vrDirect->SetHint(U8("altitude du ZH dans la référence : .asc .gtx .tac .xyz"));
   m_vrHelp = new wxStaticText(sb, wxID_ANY, "");
-  auto* g = new wxFlexGridSizer(2, 4, 8);
-  g->AddGrowableCol(1);
-  auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
-  g->Add(L("Z du fichier"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_vref, 0, wxEXPAND);
-  g->Add(L("Dossier France"), 0, wxALIGN_CENTER_VERTICAL); g->Add(rFr, 0, wxEXPAND);
-  g->Add(L("Surface(s) ZH"), 0, wxALIGN_CENTER_VERTICAL); g->Add(rZh, 0, wxEXPAND);
-  g->Add(L("Géoïde(s)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(rGe, 0, wxEXPAND);
-  g->Add(L("Grille d'écart"), 0, wxALIGN_CENTER_VERTICAL); g->Add(rDi, 0, wxEXPAND);
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
-  box->Add(m_vrHelp, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+  m_vrHelp->SetForegroundColour(wxColour(90, 90, 90));
+  // une ligne par réglage ; seules celles du mode choisi sont affichées
+  const int lw = FromDIP(110);
+  auto row = [&](const char* label, wxSizer* content) {
+    auto* r = new wxBoxSizer(wxHORIZONTAL);
+    auto* t = new wxStaticText(sb, wxID_ANY, U8(label));
+    t->SetMinSize(wxSize(lw, -1));
+    r->Add(t, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    r->Add(content, 1, wxALIGN_CENTER_VERTICAL);
+    box->Add(r, 0, wxEXPAND | wxBOTTOM, 4);
+    return r;
+  };
+  auto* vr = new wxBoxSizer(wxHORIZONTAL);
+  vr->Add(m_vref, 1);
+  row("Z du fichier", vr);
+  m_vrRows[0] = row("Dossier France", rFr);
+  m_vrRows[1] = row("Surface(s) ZH", rZh);
+  m_vrRows[2] = row("Géoïde(s)", rGe);
+  m_vrRows[3] = row("Grille d'écart", rDi);
+  box->Add(m_vrHelp, 0, wxEXPAND | wxTOP, 2);
 
   m_vref->SetSelection(std::max(0, std::min(4, st.vrefMode)));
   m_vrFrance->SetValue(W8(st.vrefFranceDir.c_str()));
@@ -706,7 +870,13 @@ void ImportDialog::UpdateVrefControls() {
       "Grille donnant directement l'altitude du ZH dans la référence du fichier."};
   m_vrHelp->SetLabel(U8(help[std::max(0, std::min(4, m))]));
   m_vrHelp->Wrap(FromDIP(520));
-  Layout();
+  if (m_vrRows[0]) {
+    m_vrRows[0]->ShowItems(fr);
+    m_vrRows[1]->ShowItems(m == 3);
+    m_vrRows[2]->ShowItems(m == 3);
+    m_vrRows[3]->ShowItems(m == 4);
+  }
+  if (m_sc) FitToContent();
 }
 
 // Paramètres de conversion verticale choisis ; false (avec message) si incomplets
@@ -833,8 +1003,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importOffset = toM(m_offset->GetValue(), s.importOffset, 100.0);
   s.importCache = m_cache->GetValue();
   s.importRes = m_resOn->GetValue() ? (float)m_res->GetValue() : 0.f;
-  s.importInstrument = m_instr->GetSelection();
-  s.importNature = m_nature->GetSelection();
+  DataTypeToPrefs(m_dtype->GetSelection(), s.importInstrument, s.importNature);
   s.importInterp = m_interp->GetValue();
   s.importInterpD = m_dmaxOn->GetValue() ? (float)m_dmax->GetValue() : 0.f;
   s.importInterpMethod = m_imethod->GetSelection();
@@ -995,8 +1164,8 @@ void ImportDialog::UpdateWaterInfo() {
   t += W8(" ; ") + (m_waterSignV == 1 ? U8("profondeur = sonde + hauteur")
                                       : U8("profondeur = sonde − hauteur"));
   m_waterInfo->SetLabel(t);
-  m_waterInfo->Wrap(FromDIP(420));
-  Layout();
+  m_waterInfo->Wrap(FromDIP(480));
+  if (m_sc) FitToContent();
 }
 
 // Format personnalisé des fichiers texte (aperçu sur le premier fichier texte de la liste)
@@ -1017,5 +1186,5 @@ void ImportDialog::OnFormat(const wxString& preview) {
     m_order->SetSelection(0);
   }
   m_fmtInfo->SetLabel(m_order->GetSelection() == 2 ? TextFormatDialog::Describe(m_fmt) : wxString());
-  Layout();
+  if (m_sc) FitToContent();
 }

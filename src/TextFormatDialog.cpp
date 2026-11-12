@@ -15,6 +15,8 @@
 
 #include "TextFormatDialog.h"
 
+#include <cmath>
+
 #include <wx/filedlg.h>
 #include <wx/grid.h>
 #include <wx/listctrl.h>
@@ -445,6 +447,16 @@ void TextFormatDialog::RefreshPreview() {
         if (m_zSignV != 0) {  // profondeur stockée (avant transformation verticale)
           const double dz = (m_zSignV == 2 ? -z : z) * (m_zFeetV ? 0.3048 : 1.0);
           sample += wxString::Format(U8(" → profondeur %.3f m"), dz);
+        }
+        // coordonnées en degrés : position en clair (X longitude, Y latitude),
+        // pour voir une inversion des colonnes ; alerte si la latitude est
+        // polaire alors que l'inversion donnerait une position ordinaire
+        if (std::fabs(x) <= 180 && std::fabs(y) <= 90) {
+          sample += wxString::Format(U8("\nPosition : %.4f° %s, %.4f° %s"), std::fabs(y),
+                                     y >= 0 ? U8("N") : U8("S"), std::fabs(x), x >= 0 ? U8("E") : U8("O"));
+          if (std::fabs(y) > 75 && std::fabs(x) <= 75)
+            sample += U8("\n⚠ Latitude très élevée : les colonnes X (longitude) et Y (latitude) "
+                         "sont peut-être inversées.");
         }
         if (f.colDate && t) {
           const time_t tt = (time_t)t;

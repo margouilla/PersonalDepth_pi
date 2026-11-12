@@ -22,6 +22,7 @@
 #include <wx/combobox.h>
 #include <wx/spinctrl.h>
 #include <wx/datectrl.h>
+#include <wx/collpane.h>
 
 #include <string>
 #include <vector>
@@ -47,7 +48,11 @@ class ImportDialog : public wxDialog {
 
  private:
   wxSizer* BuildFiles(wxWindow* p);
-  wxSizer* BuildReading(wxWindow* p);
+  wxSizer* BuildMain(wxWindow* p);
+  wxSizer* BuildWater(wxWindow* p);
+  wxSizer* BuildAdvanced(wxWindow* p);
+  void UpdatePaneLabels();  // titres des sections repliables (résumé du réglage)
+  void FitToContent();      // taille de la fenêtre selon les sections ouvertes
   wxSizer* BuildCrs(wxWindow* p);
   wxSizer* BuildVref(wxWindow* p);
   void AddPaths(const wxArrayString& paths);
@@ -91,8 +96,7 @@ class ImportDialog : public wxDialog {
   wxCheckBox* m_dmaxOn = nullptr;         // distance maximale d'interpolation imposée
   wxSpinCtrlDouble* m_dmax = nullptr;
   wxChoice* m_imethod = nullptr;          // méthode d'interpolation
-  wxChoice* m_instr = nullptr;            // type de levé
-  wxChoice* m_nature = nullptr;           // grille / nuage
+  wxChoice* m_dtype = nullptr;            // type de données (grille / nuage, instrument)
   wxCheckBox* m_interp = nullptr;         // surface interpolée entre les sondes
   wxCheckBox* m_waterOn = nullptr;        // hauteurs d'eau observées
   wxTextCtrl* m_water = nullptr;
@@ -123,4 +127,11 @@ class ImportDialog : public wxDialog {
   wxStaticText* m_vrHelp = nullptr;
   // Classement
   wxComboBox* m_class = nullptr;
+  // Disposition : contenu défilant, sections repliables, lignes masquables
+  wxScrolledWindow* m_sc = nullptr;
+  int m_btnH = 0;
+  wxCollapsiblePane *m_paneCrs = nullptr, *m_paneVref = nullptr, *m_paneWater = nullptr,
+                    *m_paneAdv = nullptr;
+  wxSizer *m_zoneRow = nullptr, *m_customRow = nullptr;
+  wxSizer* m_vrRows[4] = {nullptr, nullptr, nullptr, nullptr};
 };

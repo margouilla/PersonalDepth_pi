@@ -146,30 +146,38 @@ compare with the official chart.
 
 *Bathymetry database* › **Data management…** › **Import…**
 
-![Import window (top)](images/en/04-import_1.png)
-![Import window (bottom)](images/en/04-import_2.png)
+<!-- capture à venir : ![Import window](images/en/04-import.png) -->
+
+The window always shows the files and the everyday settings; less frequent
+settings are in **collapsible sections** whose title sums up the current
+setting (e.g. *▸ Coordinates: World — WGS84 — longitude / latitude*). Click a
+title to open the section. Rows that do not apply to the chosen setting (UTM
+zone, vertical reference files…) are hidden.
 
 **Files** — *Add files…* or *Add a folder…* (all bathymetry files of the
 folder and its sub-folders). Supported: XYZ text (`.xyz .txt .csv .dat`, any
 separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 (`.xml`); GeoTIFF / BAG on builds with GDAL.
 
-**Reading values**
+**Everyday settings** (always shown)
 
 | Setting | Meaning |
 |---|---|
 | Columns | `X Y Z` (lon lat z / East North z), `Y X Z`, or **Custom format** (see below) |
-| Z direction | *Automatic*, *Depths positive down*, or *Heights* (bottom negative, e.g. Litto3D) |
-| Z unit | Metres or Feet. The database always stores metres |
-| Offset | Constant added to the depths, in the Z unit |
-| NODATA | Values to ignore (e.g. `-9999 9999`), in addition to the NODATA of the grid header |
-| Z bounds | Keep only depths between Z1 and Z2 (e.g. −200 to 200 m removes fill values) |
-| Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below) |
-| Survey type | *Automatic*, single-beam echosounder, multibeam, bathymetric lidar, chart soundings, lead-line soundings. Sets the maximum interpolation distance (see below). *Max distance*: sets it by hand, in metres |
-| Nature | *Automatic*, **grid** (regular step) or **point cloud**: forces the result of the survey analysis |
-| Interpolate between soundings | Point clouds only: surface computed between the soundings at import, with the method chosen next to it: *automatic method* (natural neighbour for a line survey, otherwise TIN), *TIN (linear)*, *natural neighbour (Sibson)* or *IDW (inverse distance)* (see below) |
-| Fixed resolution | Horizontal step of the database for this survey. Unticked: given by the survey analysis (grid step, spacing along the tracks of a line survey, typical spacing of the soundings) |
-| Binary cache | `.pdpc` file next to the source for a faster re-import |
+| Z values | Direction: *Automatic*, *Depths positive down*, or *Heights* (bottom negative, e.g. Litto3D); unit: metres or feet (the database always stores metres) |
+| Data type | *Automatic*, **grid** (regular step, already processed: never interpolated), *single-beam echosounder* (tracks, profiles), *dense cloud* (multibeam, lidar), *chart soundings*, *lead-line soundings*, *point cloud (other)*. Forces the result of the survey analysis and sets the maximum interpolation distance (see below) |
+| Interpolate between soundings | Point clouds only: surface computed between the soundings at import, with the method chosen next to it: *automatic method* (natural neighbour for a line survey, otherwise TIN), *TIN (linear)*, *natural neighbour (Sibson)* or *IDW (inverse distance)* (see below). *Max distance*: sets D by hand, in metres |
+
+**Collapsible sections**
+
+| Section | Content |
+|---|---|
+| Coordinates | Coordinate system of X, Y (catalogue, UTM zone, EPSG code or PROJ string), neighbouring `.prj` file taking priority (see below) |
+| Vertical reference | Reference of the Z values and transformation to chart datum (see below) |
+| Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below); opens by itself when the correction is on |
+| Advanced | *Offset* (constant added to the depths, in the Z unit); *NODATA* (values to ignore, e.g. `-9999 9999`, in addition to the grid header NODATA); *Z bounds* (keep only depths between Z1 and Z2, e.g. −200 to 200 m removes fill values); *Fixed resolution* (horizontal step of the database for this survey; unticked: given by the survey analysis); *Binary cache* (`.pdpc` next to the source for a faster re-import) |
+
+At the bottom: *Fixed survey date* and *Class*.
 
 **Grid or point cloud** — each file is analysed at import (the result is
 shown in *Data management*, line *Analysis*, with the distance D used and
@@ -193,7 +201,7 @@ usual large gaps between soundings, capped at 1,000 m / 500 m). Interpolated
 cells are marked as such in the database: a **measured** cell always wins,
 whatever the source and the priority rule; the *Display* panel can hide or
 lighten them (§ 7); soundings are never taken from them and the cursor shows
-*(interpolated)*. Set *Survey type* to the real kind of survey if the
+*(interpolated)*. Set *Data type* to the real kind of survey if the
 automatic result is not right (e.g. old lead-line survey), or set *Max
 distance*: a larger value fills more gaps, never fewer.
 
@@ -234,7 +242,11 @@ added (files or folder), with a preview of the first added file, and shows the f
   semicolon, tab), *Decimal mark* (period or comma);
 - the column holding **X** (longitude / East), **Y** (latitude / North),
   **Z** (depth), and optionally the **date** (or date and time) and the
-  **time**; *Date order* for dates like 03/04/2021; under the date, the
+  **time**. Below the preview, the position of the first sounding is written
+  out (e.g. *53.7532° N, 81.3522° E*): when latitude and longitude are both
+  below 90° (common, e.g. a Garmin Quickdraw export in "latitude, longitude"),
+  the order cannot be guessed; check this position, and a warning flags a
+  polar latitude that betrays swapped columns; *Date order* for dates like 03/04/2021; under the date, the
   **time zone** of the file (fixed offset from UTC, e.g. UTC+08:00, no
   daylight saving change; dates are converted to UTC);
 - optional **patterns** under the columns, as in hydrographic software:

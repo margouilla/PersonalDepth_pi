@@ -4,6 +4,26 @@
 
 ## English
 
+### 0.1.0-beta.10 (unreleased)
+
+- **Import window reorganised**: files and everyday settings always shown;
+  coordinates, vertical reference, observed water levels and advanced
+  options (offset, NODATA, Z bounds, fixed resolution, cache) in collapsible
+  sections whose title sums up the current setting; rows that do not apply
+  are hidden. No more scrolling on usual screens. Suggested by Baikal.
+- *Survey type* and *Nature* merged into one *Data type* list (grid,
+  single-beam, dense cloud — multibeam and lidar, which were handled the
+  same —, chart soundings, lead line, other point cloud).
+- Custom text format: the position of the first sounding is written out,
+  with a warning when the latitude is polar (latitude / longitude columns
+  probably swapped, as in Garmin Quickdraw exports).
+- Continuous integration: the Windows package (OpenCPN 32 bits) is now built
+  and tested by GitHub Actions like the others and attached to the release;
+  tests also run on Raspberry Pi armhf (light version under emulation); a
+  hang now fails the test after 20 minutes. New triangulation test: two real
+  cases that froze the old version, and 20,000 random grids, part of them
+  checked for the exact Delaunay property.
+
 ### 0.1.0-beta.9 (2026-11-12)
 
 - **Interpolation simplified**: the surface between soundings is computed
@@ -191,6 +211,29 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.10 (à venir)
+
+- **Fenêtre d'import réorganisée** : fichiers et réglages courants toujours
+  visibles ; coordonnées, référence verticale, hauteurs d'eau observées et
+  options avancées (décalage, NODATA, bornes de Z, résolution imposée, cache)
+  dans des sections repliables dont le titre résume le réglage ; lignes
+  inutiles masquées. Plus de défilement sur un écran courant. Suggestion de
+  Baikal.
+- *Type de levé* et *Nature* réunis en une seule liste *Type de données*
+  (grille, monofaisceau, nuage dense — multifaisceau et lidar, traités de la
+  même façon —, sondes de carte, plomb, autre nuage de points).
+- Format texte personnalisé : position de la première sonde écrite en
+  clair, avec un avertissement si la latitude est polaire (colonnes latitude
+  / longitude sans doute inversées, comme dans les exports Garmin
+  Quickdraw).
+- Intégration continue : le paquet Windows (OpenCPN 32 bits) est désormais
+  compilé et testé par les Actions GitHub comme les autres, et joint à la
+  release ; les tests tournent aussi sur Raspberry Pi armhf (version allégée
+  sous émulation) ; un blocage fait échouer le test au bout de 20 minutes.
+  Nouveau test de la triangulation : deux cas réels qui bloquaient
+  l'ancienne version, et 20 000 grilles aléatoires dont une partie vérifiée
+  pour la propriété de Delaunay exacte.
 
 ### 0.1.0-beta.9 (2026-11-12)
 

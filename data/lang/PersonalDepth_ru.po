@@ -3014,3 +3014,131 @@ msgstr "Минимальное расстояние между двумя пок
 msgid "Size of the soundings and of the depth contour values."
 msgstr "Размер отметок и значений изобат."
 
+#. fr: code EPSG ou chaîne PROJ à saisir
+msgid "EPSG code or PROJ string to enter"
+msgstr "введите код EPSG или строку PROJ"
+
+#. fr:  (.prj prioritaire)
+msgid " (.prj takes priority)"
+msgstr " (.prj имеет приоритет)"
+
+#. fr: zéro hydrographique, sans transformation
+msgid "chart datum, no transformation"
+msgstr "нуль глубин, без пересчёта"
+
+#. fr: IGN69 / IGN78C → ZH
+msgid "IGN69 / IGN78C → chart datum"
+msgstr "IGN69 / IGN78C → нуль глубин"
+
+#. fr: hauteurs ellipsoïdales → ZH
+msgid "ellipsoidal heights → chart datum"
+msgstr "эллипсоидальные высоты → нуль глубин"
+
+#. fr: autre référence → ZH (surfaces)
+msgid "other reference → chart datum (surfaces)"
+msgstr "другая система → нуль глубин (поверхности)"
+
+#. fr: grille d'écart → ZH
+msgid "separation grid → chart datum"
+msgstr "сетка разности → нуль глубин"
+
+#. fr: aucune
+msgid "none"
+msgstr "нет"
+
+#. fr: fichier ou dossier à choisir
+msgid "file or folder to choose"
+msgstr "выберите файл или папку"
+
+#. fr: décalage %+.2f 
+msgid "offset %+.2f "
+msgstr "поправка %+.2f "
+
+#. fr: bornes %.1f … %.1f 
+msgid "bounds %.1f … %.1f "
+msgstr "границы %.1f … %.1f "
+
+#. fr: résolution %.2f m
+msgid "resolution %.2f m"
+msgstr "разрешение %.2f м"
+
+#. fr: cache .pdpc
+msgid "cache .pdpc"
+msgstr "кэш .pdpc"
+
+#. fr: Coordonnées
+msgid "Coordinates"
+msgstr "Координаты"
+
+#. fr: Référence verticale
+msgid "Vertical reference"
+msgstr "Высотная система"
+
+#. fr: Avancé
+msgid "Advanced"
+msgstr "Дополнительно"
+
+#. fr: grille (pas régulier, déjà traitée)
+msgid "grid (regular step, already processed)"
+msgstr "сетка (регулярный шаг, уже обработана)"
+
+#. fr: sondeur monofaisceau (routes, profils)
+msgid "single-beam echosounder (tracks, profiles)"
+msgstr "однолучевой эхолот (галсы, профили)"
+
+#. fr: nuage dense (multifaisceau, lidar)
+msgid "dense cloud (multibeam, lidar)"
+msgstr "плотное облако (многолучевой эхолот, лидар)"
+
+#. fr: nuage de points (autre)
+msgid "point cloud (other)"
+msgstr "облако точек (другое)"
+
+#. fr: Grille : nœuds réguliers, déjà traitée, stockée à son pas sans interpolation. Les autres types sont des nuages de points : la surface est interpolée entre les sondes, sans franchir un vide plus large que la distance maximale. Automatique : grille ou nuage reconnu d'après les données, levé en lignes reconnu à l'écart entre les routes. Monofaisceau : lignes. Nuage dense : trois fois l'espacement des sondes. Sondes de carte et plomb : au moins les grands écarts courants entre sondes, plafond de 1 000 m / 500 m.
+msgid "Grid: regular nodes, already processed, stored at its step without interpolation. The other types are point clouds: a surface is interpolated between the soundings, never across a gap wider than the maximum distance. Automatic: grid or cloud recognised from the data, line survey recognised from the spacing between tracks. Single-beam: lines. Dense cloud: three times the sounding spacing. Chart soundings and lead line: at least the usual large gaps between soundings, capped at 1,000 m / 500 m."
+msgstr "Сетка: регулярные узлы, уже обработана, хранится со своим шагом без интерполяции. Остальные типы — облака точек: поверхность интерполируется между отметками, никогда не через промежуток шире максимального расстояния. Авто: сетка или облако определяется по данным, съёмка галсами — по расстоянию между галсами. Однолучевой эхолот: галсы. Плотное облако: три расстояния между отметками. Отметки с карт и промеры лотом: не меньше обычных больших промежутков между отметками, предел 1 000 м / 500 м."
+
+#. fr: Interpoler entre les sondes
+msgid "Interpolate between soundings"
+msgstr "Интерполировать между отметками"
+
+#. fr: Méthode de calcul des valeurs interpolées. La zone remplie est la même pour toutes (triangles dont aucun côté ne dépasse la distance maximale). Automatique : voisin naturel pour un levé en lignes, sinon TIN. TIN : plan dans chaque triangle, le plus rapide. Voisin naturel : surface plus douce, sans arêtes de triangles. IDW : moyenne des sondes les plus proches dans chaque quart autour du point, pondérée par l'inverse du carré de la distance, peut former des « cuvettes » autour des sondes isolées.
+msgid "How interpolated values are computed. The filled area is the same for all methods (triangles with no side longer than the maximum distance). Automatic: natural neighbour for a line survey, otherwise TIN. TIN: a plane in each triangle, the fastest. Natural neighbour: a smoother surface, without triangle edges. IDW: mean of the nearest soundings in each quarter around the point, weighted by the inverse squared distance; may form \"dimples\" around isolated soundings."
+msgstr "Способ вычисления интерполированных значений. Заполняемая область одинакова для всех методов (треугольники, ни одна сторона которых не длиннее максимального расстояния). Авто: естественный сосед для съёмки галсами, иначе TIN. TIN: плоскость в каждом треугольнике, самый быстрый. Естественный сосед: более гладкая поверхность без рёбер треугольников. IDW: среднее ближайших отметок в каждой четверти вокруг точки, взвешенное обратным квадратом расстояния; может образовывать «ямки» вокруг одиночных отметок."
+
+#. fr: Valeurs Z
+msgid "Z values"
+msgstr "Значения Z"
+
+#. fr: Type de données
+msgid "Data type"
+msgstr "Тип данных"
+
+#. fr: Corriger les sondes par des hauteurs d'eau observées
+msgid "Correct soundings with observed water levels"
+msgstr "Исправлять отметки по наблюдённым уровням воды"
+
+#. fr: Décalage constant ajouté aux profondeurs (dans l'unité de Z), en plus de la transformation verticale
+msgid "Constant offset added to depths (in the Z unit), in addition to the vertical transformation"
+msgstr "Постоянная поправка к глубинам (в единице Z) в дополнение к вертикальному пересчёту"
+
+#. fr: \nPosition : %.4f° %s, %.4f° %s
+msgid "\nPosition: %.4f° %s, %.4f° %s"
+msgstr "\nПоложение: %.4f° %s, %.4f° %s"
+
+#. fr: \n⚠ Latitude très élevée : les colonnes X (longitude) et Y (latitude) sont peut-être inversées.
+msgid "\n⚠ Very high latitude: the X (longitude) and Y (latitude) columns may be swapped."
+msgstr "\n⚠ Очень высокая широта: возможно, столбцы X (долгота) и Y (широта) перепутаны."
+
+#. fr: N
+msgid "N"
+msgstr "С"
+
+#. fr: S
+msgid "S"
+msgstr "Ю"
+
+#. fr: E
+msgid "E"
+msgstr "В"
+

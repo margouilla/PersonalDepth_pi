@@ -153,8 +153,14 @@ comparer avec la carte officielle.
 
 *Base de bathymétrie* › **Gestion des données…** › **Importer…**
 
-![Fenêtre d'import (haut)](images/fr/04-import_1.png)
-![Fenêtre d'import (bas)](images/fr/04-import_2.png)
+<!-- capture à venir : ![Fenêtre d'import](images/fr/04-import.png) -->
+
+La fenêtre montre toujours les fichiers et les réglages courants ; les
+réglages moins fréquents sont rangés dans des **sections repliables** dont
+le titre résume le réglage en cours (ex. *▸ Coordonnées : Monde — WGS84 —
+longitude / latitude*). Cliquer sur le titre pour ouvrir une section. Les
+lignes qui ne servent pas au réglage choisi (fuseau UTM, fichiers de la
+référence verticale…) sont masquées.
 
 **Fichiers** — *Ajouter des fichiers…* ou *Ajouter un dossier…* (tous les
 fichiers de bathymétrie du dossier et de ses sous-dossiers). Formats : XYZ
@@ -162,22 +168,25 @@ texte (`.xyz .txt .csv .dat`, tout séparateur, entêtes ignorés), grilles ESRI
 ASCII (`.asc`), TIN LandXML (`.xml`) ; GeoTIFF / BAG si le plugin est compilé
 avec GDAL.
 
-**Lecture des valeurs**
+**Réglages courants** (toujours visibles)
 
 | Réglage | Signification |
 |---|---|
 | Colonnes | `X Y Z` (lon lat z / Est Nord z), `Y X Z`, ou **Format personnalisé** (voir plus bas) |
-| Sens de Z | *Automatique*, *Profondeurs positives vers le bas*, ou *Altitudes* (fond négatif, ex. Litto3D) |
-| Unité de Z | Mètres ou Pieds. La base est toujours en mètres |
-| Décalage | Constante ajoutée aux profondeurs, dans l'unité de Z |
-| NODATA | Valeurs à ignorer (ex. `-9999 9999`), en plus du NODATA de l'entête des grilles |
-| Bornes de Z | Ne garder que les profondeurs entre Z1 et Z2 (ex. −200 à 200 m écarte les remplissages) |
-| Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) |
-| Type de levé | *Automatique*, sondeur classique (un faisceau), multifaisceaux, lidar bathymétrique, sondes de carte, sondes au plomb. Règle la distance maximale d'interpolation (voir plus bas). *Distance max* : la fixe à la main, en mètres |
-| Nature | *Automatique*, **grille** (pas régulier) ou **nuage de points** : impose le résultat de l'analyse du levé |
-| Interpoler entre les sondes | Nuages de points seulement : surface calculée entre les sondes à l'import, avec la méthode choisie à côté : *méthode automatique* (voisin naturel pour un levé en lignes, sinon TIN), *TIN (linéaire)*, *voisin naturel (Sibson)* ou *IDW (inverse de la distance)* (voir plus bas) |
-| Résolution imposée | Pas horizontal de la base pour ce levé. Décoché : donné par l'analyse du levé (pas de la grille, espacement le long des routes d'un levé en lignes, espacement typique des sondes) |
-| Cache binaire | Fichier `.pdpc` à côté de la source pour un réimport rapide |
+| Valeurs Z | Sens : *Automatique*, *Profondeurs positives vers le bas*, ou *Altitudes* (fond négatif, ex. Litto3D) ; unité : mètres ou pieds (la base est toujours en mètres) |
+| Type de données | *Automatique*, **grille** (pas régulier, déjà traitée : jamais interpolée), *sondeur monofaisceau* (routes, profils), *nuage dense* (multifaisceau, lidar), *sondes de carte*, *sondes au plomb*, *nuage de points (autre)*. Impose le résultat de l'analyse du levé et règle la distance maximale d'interpolation (voir plus bas) |
+| Interpoler entre les sondes | Nuages de points seulement : surface calculée entre les sondes à l'import, avec la méthode choisie à côté : *méthode automatique* (voisin naturel pour un levé en lignes, sinon TIN), *TIN (linéaire)*, *voisin naturel (Sibson)* ou *IDW (inverse de la distance)* (voir plus bas). *Distance max* : fixe D à la main, en mètres |
+
+**Sections repliables**
+
+| Section | Contenu |
+|---|---|
+| Coordonnées | Système de coordonnées des X, Y (catalogue, fuseau UTM, code EPSG ou chaîne PROJ), fichier `.prj` voisin prioritaire (voir plus bas) |
+| Référence verticale | Référence des Z et transformation vers le zéro hydrographique (voir plus bas) |
+| Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) ; s'ouvre d'office si la correction est active |
+| Avancé | *Décalage* (constante ajoutée aux profondeurs, dans l'unité de Z) ; *NODATA* (valeurs à ignorer, ex. `-9999 9999`, en plus du NODATA de l'entête des grilles) ; *Bornes de Z* (ne garder que les profondeurs entre Z1 et Z2, ex. −200 à 200 m écarte les remplissages) ; *Résolution imposée* (pas horizontal de la base pour ce levé ; décoché : donné par l'analyse du levé) ; *Cache binaire* (`.pdpc` à côté de la source pour un réimport rapide) |
+
+En bas : *Date du levé imposée* et *Classe*.
 
 **Grille ou nuage de points** — chaque fichier est analysé à l'import (le
 résultat s'affiche dans *Gestion des données*, ligne *Analyse*, avec la
@@ -202,7 +211,7 @@ plomb, au moins les grands écarts courants entre sondes, plafond 1 000 m /
 case **mesurée** l'emporte toujours, quelles que soient la source et la
 règle de priorité ; le panneau *Affichage* peut les masquer ou les
 éclaircir (§ 7) ; les sondes affichées n'en viennent jamais et le curseur
-indique *(interpolé)*. Choisir le *Type de levé* réel si le résultat
+indique *(interpolé)*. Choisir le *Type de données* réel si le résultat
 automatique ne convient pas (ex. ancien levé au plomb), ou fixer la
 *Distance max* : une valeur plus grande comble plus de vides, jamais moins.
 
@@ -246,7 +255,12 @@ avec l'aperçu du premier fichier ajouté, et montre les premières lignes du fi
   ou virgule) ;
 - la colonne de **X** (longitude / Est), de **Y** (latitude / Nord), de
   **Z** (profondeur), et au besoin de la **date** (ou date et heure) et de
-  l'**heure** ; *Ordre des dates* pour les dates comme 03/04/2021 ; sous la
+  l'**heure**. Sous l'aperçu, la position de la première sonde est écrite en
+  clair (ex. *53,7532° N, 81,3522° E*) : quand latitude et longitude sont
+  toutes deux inférieures à 90° (cas fréquent, ex. export Garmin Quickdraw en
+  « latitude, longitude »), l'ordre ne peut pas être deviné ; vérifier cette
+  position, et un avertissement signale une latitude polaire qui trahit des
+  colonnes inversées ; *Ordre des dates* pour les dates comme 03/04/2021 ; sous la
   date, le **fuseau horaire** du fichier (décalage fixe sur UTC, ex.
   UTC+08:00, sans passage à l'heure d'été ; les dates sont ramenées en UTC) ;
 - des **gabarits** facultatifs sous les colonnes, comme dans les logiciels

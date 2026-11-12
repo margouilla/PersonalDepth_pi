@@ -118,6 +118,10 @@ if(PD_BUILD_TESTS)
   add_executable(test_core tests/test_core.cpp)
   target_link_libraries(test_core PRIVATE pd_core)
   add_test(NAME core COMMAND test_core 400000)
+  # un blocage (ex. boucle sans fin de la triangulation) fait échouer le test
+  # au lieu de tenir la compilation des heures ; PD_TEST_LIGHT=1 : version
+  # allégée (émulation armhf)
+  set_tests_properties(core PROPERTIES TIMEOUT 1200)
 endif()
 
 # --------------------------------------------------------------- plugin

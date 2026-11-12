@@ -79,8 +79,9 @@ and safety contour change instantly.
 Surveys are merged in a local database
 by priority; tide from OpenCPN
 stations or FES2022.
-Beta test version, English or French
-interface.
+Beta test version, English, French
+or Russian interface (other
+languages via .po files).
   </description>
   <target>msvc-wx32</target>
   <target-version>10</target-version>
