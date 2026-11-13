@@ -519,10 +519,14 @@ void DataDialog::UpdateDetails() {
         << wxString::Format(U8("   rang %d (règle : %s)"), d.rank + 1,
                             U8(prioNames[std::max(0, std::min(3, m_pi->Settings().dbPriority))]))
         << "\n";
-      t << wxString::Format(U8("Résolution  : %.2f m (niveau de tuiles %d)   %lld sondes   Z %.2f … %.2f %s (ZH)\n"),
-                            d.res, d.level, d.count, d.zmin * dk, d.zmax * dk, du);
+      t << wxString::Format(U8("Résolution  : %.2f m (niveau de tuiles %d)   %lld sondes   Z %.2f … %.2f %s"),
+                            d.res, d.level, d.count, d.zmin * dk, d.zmax * dk, du)
+        << (d.datum == (int)pd::Datum::Legacy ? U8(" (ZH)")
+            : d.datum == (int)pd::Datum::Free ? U8(" (non rattachée)") : U8(" (sous le niveau moyen)"))
+        << "\n";
       if (!d.info.empty()) t << U8("Analyse     : ") << W8(d.info.c_str()) << "\n";
-      t << U8("Coordonnées : ") << U8(d.crs.c_str()) << U8("   Réf. verticale : ") << U8(d.vref.c_str()) << "\n";
+      t << U8("Coordonnées : ") << U8(d.crs.c_str()) << U8("   Réf. verticale : ") << U8(d.vref.c_str())
+        << (d.datum == (int)pd::Datum::Legacy ? U8(" (base à migrer)") : wxString()) << "\n";
       t << wxString::Format(U8("Emprise     : lon %.5f … %.5f   lat %.5f … %.5f\n"), d.lonMin, d.lonMax,
                             d.latMin, d.latMax);
       t << U8("Surface couverte : ") << AreaText(CoveredArea(d)) << "\n";
@@ -599,7 +603,8 @@ void DataDialog::RefreshDb() {
     m_tree->SetItemText(it, 4, wxString::Format("%d", d.rank + 1));
     m_tree->SetItemText(it, 5, wxString::Format("%.2f %s", d.zmin * dk, du));
     m_tree->SetItemText(it, 6, wxString::Format("%.2f %s", d.zmax * dk, du));
-    m_tree->SetItemText(it, 7, U8(d.vref.c_str()));
+    m_tree->SetItemText(it, 7, U8(d.vref.c_str()) +
+                                   (d.datum == (int)pd::Datum::Legacy ? U8(" (à migrer)") : wxString()));
     m_tree->SetItemText(it, 8, U8(d.crs.c_str()));
     {  // unité verticale du fichier d'origine (réglages d'import gardés avec la source)
       wxString u = "?";

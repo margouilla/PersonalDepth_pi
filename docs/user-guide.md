@@ -174,7 +174,7 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Section | Content |
 |---|---|
 | Coordinates | Coordinate system of X, Y (catalogue, UTM zone, EPSG code or PROJ string), neighbouring `.prj` file taking priority (see below) |
-| Vertical reference | Reference of the Z values and transformation to chart datum (see below) |
+| Vertical reference | Datum of the file's Z values: chart datum, mean sea level, LAT, ellipsoid, IGN69… (see below) |
 | Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below); opens by itself when the correction is on |
 | Advanced | *Offset* (constant added to the depths, in the Z unit); *NODATA* (values to ignore, e.g. `-9999 9999`, in addition to the grid header NODATA); *Z bounds* (keep only depths between Z1 and Z2, e.g. −200 to 200 m removes fill values); *Binary cache* (`.pdpc` next to the source for a faster re-import) |
 
@@ -322,13 +322,20 @@ takes priority when the file has one (ESRI State Plane `.prj` files are
 recognised). Projected coordinates (UTM, Mercator…) cannot be identified
 from the numbers alone: without a `.prj` file, choose the system.
 
-**Vertical reference of Z and transformation to chart datum** — depths must
-end up at **chart datum** (CD, the reference of nautical charts):
-- *Chart datum — no transformation*: data already at CD (charts, Shom surveys);
-- *IGN69 / IGN78C → CD*: French land heights (e.g. Litto3D), needs the
-  BathyElli + RAF20 / RAC23 folder;
-- *Ellipsoidal heights → CD*: GNSS survey without geoid, needs BathyElli;
-- *Other land reference* or *separation grid*: your own grids.
+**Vertical reference of Z** — state which datum the depths of the file refer
+to. The database then stores them below **mean sea level** (see
+[Vertical datum of the database](#vertical-datum-of-the-database)):
+
+| Choice | For | Files needed |
+|---|---|---|
+| *Local chart datum* | Charts, Shom surveys, echo sounder corrected for the tide (ZH in France, Chart Datum elsewhere) | None (BathyElli in France, FES2022 elsewhere, to link it to mean sea level) |
+| *Mean sea level (MSL)* | GEBCO, ocean models | None |
+| *Lowest astronomical tide (LAT)* | EMODnet | FES2022 atlas (*Tide* tab) |
+| *Ellipsoidal heights* | GNSS / RTK / PPK survey without geoid | BathyElli NM in France, otherwise the MSS (`.pdgrid`) |
+| *IGN69 / IGN78C → CD* | French land heights (e.g. Litto3D) | BathyElli + RAF20 / RAC23 folder |
+| *Other land datum* or *offset grid* | Your own grids | Your files |
+| *Not tied* | Lake, reservoir, non-tidal water | None: depths kept as they are |
+
 See [external-data.md](external-data.md) to get these files.
 
 **Fixed survey date** — otherwise the date is read from the file name
@@ -372,6 +379,71 @@ in km² and NM²; for several sources, the sum).
 > 🧪 **Testers — check:** changing the priority rule changes the display
 > where two surveys overlap; *Edit…* of the date or class is immediate.
 
+### Vertical datum of the database
+
+Every source keeps its original datum, but the database stores all depths
+**below mean sea level** (MSL). It links them to the other datums with
+surfaces computed once and kept in the database folder
+(`PersonalDepth_datum.sqlite`):
+
+| Datum | Surface used |
+|---|---|
+| Local chart datum | France: Shom ZH (BathyElli v2.1 NM − ZH); elsewhere: FES2022 lowest astronomical tide (LAT); without these files: "undefined", zero offset |
+| LAT | FES2022 lowest astronomical tide over 19 years |
+| WGS84 ellipsoid | France: BathyElli v2.1 NM; elsewhere: mean sea surface (MSS CNES_CLS 2025) |
+
+In the **Database** tab, *Vertical datum* box:
+
+- **Depths**: datum of the depths shown (colours, soundings, contours,
+  cursor). Default: *local chart datum*, so values match the charts (ENC,
+  RNC) and a source imported at chart datum shows exactly its original
+  values. With the tide, the display is always the actual water depth (chart
+  datum + tide).
+- **MSS**: mean sea surface file (`.pdgrid`), for GNSS heights and the
+  display at the ellipsoid outside France.
+- The information line gives the datum shown, the surface used (e.g. *CD
+  BathyElli v2.1*, *LAT FES2022b*, *undefined*) and the reference files
+  found.
+- **Update surfaces**: after adding or changing BathyElli, the FES2022 atlas
+  or the MSS, recomputes the surfaces and corrects the sources concerned. The
+  chart-datum display of a source imported at chart datum does not change.
+- **Migrate database…** (databases created before version 0.1.0-beta.10, at
+  chart datum): when such a database is opened, PersonalDepth offers to
+  convert it to mean sea level. The `.pdb` files are first copied to
+  `backup_before_MSL` (in the database folder). Without migration the
+  database is still displayed as it is, but import is blocked. A migrated
+  database must no longer be opened with an earlier version of the plugin.
+
+**Clean** (Z1 – Z2 bounds) compares depths at local chart datum, like the
+charts.
+
+> 🧪 **Testers — check:** after migration, depths at chart datum are the same
+> as before; *Mean sea level* increases them by the height of MSL above chart
+> datum (about 4 m at Brest); a GEBCO file imported at *mean sea level* is
+> shown at chart datum.
+
+### Coastline
+
+Between two sounding lines, the interpolated surface may bridge an island or
+a headland. The *Coastline* box of the **Database** tab prevents it:
+
+- **Folder**: folder of the basemaps downloaded by OpenCPN's chart
+  downloader, **OSMSHP** (OpenStreetMap land polygons, `basemap_*.shp`,
+  recommended: accurate to a few metres) or **GSHHG** (`poly-*-1.dat`,
+  coarser: coastline sometimes offset by a hundred metres, small islands
+  missing). A folder holding both is fine: OSMSHP is preferred, in its best
+  quality present (`full`, then `high`…).
+- **No interpolated surface on land**: at import, interpolated pixels on land
+  are removed. Measured soundings are always kept (intertidal surveys,
+  Litto3D).
+- **Apply to sources**: removes the interpolation on land from the sources
+  already imported. To get it back, re-import the source.
+
+See [external-data.md](external-data.md) to download these basemaps.
+
+> 🧪 **Testers — check:** a line survey around an island no longer covers it;
+> soundings measured on the foreshore are still shown.
+
 ## 6. Palette and depth thresholds
 
 ![Palette tab](images/en/06-palette.png)
@@ -405,7 +477,7 @@ in km² and NM²; for several sources, the sum).
 - **Danger zone if depth < X**: overlay of the areas shallower than your
   draught plus a margin; the red safety contour follows it.
 
-Depths are positive downwards; negative values are above chart datum
+Depths are positive downwards; negative values are above the datum shown
 (drying areas, land).
 
 > 🧪 **Testers — check:** every palette change is instant on the chart
@@ -457,8 +529,9 @@ values).
 
 ![Tide slider ±12 h](images/gif/g4-tide.gif)
 
-By default the displayed depths are at chart datum. The *Tide* section adds
-the water height of a given moment, pixel by pixel:
+Without tide, depths are shown in the chosen datum (*Database* tab, local
+chart datum by default). The *Tide* section adds the water height of a given
+moment above chart datum, pixel by pixel:
 
 - **Source**: *OpenCPN tide stations* (single height from the nearest
   station; OpenCPN tide data must be enabled) or *Gridded FES2022* (height

@@ -4,8 +4,39 @@
 
 ## English
 
-### 0.1.0-beta.10 (unreleased)
+### 0.1.0-beta.10 (2026-11-13)
 
+- **Common vertical datum**: the database now stores depths below **mean sea
+  level** and links every datum to it with surfaces computed once and kept in
+  the database folder (`PersonalDepth_datum.sqlite`): chart datum (Shom ZH
+  from BathyElli v2.1 in France, FES2022 lowest astronomical tide elsewhere),
+  LAT (FES2022b, 19 years), WGS84 ellipsoid (BathyElli NM in France, mean
+  sea surface CNES_CLS 2025 elsewhere).
+  - Import: new vertical references *mean sea level* (GEBCO), *LAT*
+    (EMODnet), *ellipsoidal heights* worldwide, *not tied* (lakes,
+    reservoirs: never converted).
+  - Display (*Database* tab, *Vertical datum*): depths at local chart datum
+    (default: same values as the charts), LAT, mean sea level or ellipsoid;
+    the cursor shows the datum. With the tide: actual water depth.
+  - *Update surfaces* recomputes the surfaces after a reference file is
+    added or changed and corrects the sources concerned; without reference
+    files, chart datum is "undefined" (zero offset) and values are shown as
+    imported.
+  - **Databases created by earlier versions** (depths at chart datum):
+    migration offered when opened, after a copy of the `.pdb` files to
+    `backup_before_MSL`; the display at chart datum is unchanged. Import is
+    blocked until migration. A migrated database must not be opened with an
+    earlier version.
+  - New tool `tools/pdgrid_convert.py`: converts the AVISO mean sea surface
+    (`mss_cnes_cls_2025.nc`, 1.7 GB) to a compact `.pdgrid` file (124 MB)
+    read by tiles (see `docs/external-data.md`).
+  - *Clean* bounds are compared at local chart datum.
+- **Coastline**: interpolated surfaces no longer cover islands and the coast.
+  The land polygons of OpenCPN's basemaps are read directly, OSMSHP
+  (OpenStreetMap, `basemap_*.shp`, recommended) or GSHHG (`poly-*-1.dat`),
+  best quality present (*Database* tab, *Coastline*). Interpolated pixels on
+  land are removed at import; *Apply to sources* does it for sources already
+  imported. Measured soundings are always kept. Suggested by ian5142.
 - **Import window reorganised**: files and everyday settings always shown;
   coordinates, vertical reference, observed water levels and advanced
   options (offset, NODATA, Z bounds, cache) in collapsible
@@ -220,8 +251,42 @@ crash of OpenCPN when opening the plugin panel.
 
 ## Français
 
-### 0.1.0-beta.10 (à venir)
+### 0.1.0-beta.10 (2026-11-13)
 
+- **Référence verticale commune** : la base range désormais les profondeurs
+  sous le **niveau moyen** et y relie chaque référence par des surfaces
+  calculées une fois et gardées dans le dossier de la base
+  (`PersonalDepth_datum.sqlite`) : zéro des cartes (ZH du Shom par BathyElli
+  v2.1 en France, plus basse mer astronomique FES2022 ailleurs), LAT
+  (FES2022b, 19 ans), ellipsoïde WGS84 (BathyElli NM en France, surface
+  moyenne océanique CNES_CLS 2025 ailleurs).
+  - Import : nouvelles références *niveau moyen* (GEBCO), *LAT* (EMODnet),
+    *hauteurs ellipsoïdales* partout, *non rattachée* (lacs, retenues :
+    jamais converties).
+  - Affichage (onglet *Base*, *Référence verticale*) : profondeurs au zéro
+    des cartes local (par défaut : mêmes valeurs que les cartes), au LAT, au
+    niveau moyen ou à l'ellipsoïde ; le curseur indique la référence. Avec la
+    marée : hauteur d'eau réelle.
+  - *Mettre à jour les surfaces* recalcule les surfaces après l'ajout ou le
+    changement d'un fichier de référence et corrige les sources concernées ;
+    sans fichiers de référence, le zéro des cartes est « non défini » (écart
+    nul) et les valeurs s'affichent telles qu'importées.
+  - **Bases créées par les versions antérieures** (profondeurs au zéro des
+    cartes) : migration proposée à l'ouverture, après copie des fichiers
+    `.pdb` dans `backup_before_MSL` ; l'affichage au zéro des cartes est
+    inchangé. L'import est bloqué tant que la base n'est pas migrée. Une base
+    migrée ne doit plus être ouverte avec une version antérieure.
+  - Nouvel outil `tools/pdgrid_convert.py` : convertit la surface moyenne
+    océanique d'AVISO (`mss_cnes_cls_2025.nc`, 1,7 Go) en un fichier `.pdgrid`
+    compact (124 Mo), lu par tuiles (voir `docs/external-data.md`).
+  - Les bornes de *Nettoyer* sont comparées au zéro des cartes local.
+- **Trait de côte** : les surfaces interpolées ne couvrent plus les îles ni la
+  côte. Les polygones de terre des fonds de carte d'OpenCPN sont lus
+  directement, OSMSHP (OpenStreetMap, `basemap_*.shp`, conseillé) ou GSHHG
+  (`poly-*-1.dat`), dans la meilleure qualité présente (onglet *Base*, *Trait
+  de côte*). Les pixels interpolés sur la terre sont retirés à l'import ;
+  *Appliquer aux sources* le fait pour les sources déjà importées. Les sondes
+  mesurées sont toujours gardées. Suggéré par ian5142.
 - **Fenêtre d'import réorganisée** : fichiers et réglages courants toujours
   visibles ; coordonnées, référence verticale, hauteurs d'eau observées et
   options avancées (décalage, NODATA, bornes de Z, cache)

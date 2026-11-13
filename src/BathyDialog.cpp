@@ -87,6 +87,7 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
     CallAfter([this] {
       if (m_tideInfo && !m_tideRaw.empty()) SetWrapped(m_tideInfo, m_tideRaw);
       if (m_dbStatus && !m_dbRaw.empty()) SetWrapped(m_dbStatus, m_dbRaw);
+      if (m_datumInfo && !m_datumRaw.empty()) SetWrapped(m_datumInfo, m_datumRaw);
     });
   });
   m_tabs->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& e) {
@@ -277,7 +278,11 @@ wxString CellBytes(long long b) {
 }  // namespace
 
 wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
+  auto* col = new wxBoxSizer(wxVERTICAL);
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Base de bathymétrie"));
+  col->Add(box, 0, wxEXPAND | wxBOTTOM, 6);
+  col->Add(BuildDatumBox(p), 0, wxEXPAND | wxBOTTOM, 6);
+  col->Add(BuildLandBox(p), 0, wxEXPAND);
   wxWindow* sb = box->GetStaticBox();
   auto* r1 = new wxBoxSizer(wxHORIZONTAL);
   m_dbFolder = new wxTextCtrl(sb, wxID_ANY, W8(m_pi->Settings().dbFolder.c_str()), wxDefaultPosition,
@@ -371,7 +376,170 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
     m_pi->DbSetCellsVisible(names, on);
     RefreshCells();
   });
+  return col;
+}
+
+// ------------------------------------------------------ référence verticale
+wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale"));
+  wxWindow* sb = box->GetStaticBox();
+  const DisplaySettings& s = m_pi->Settings();
+  wxString refs[] = {U8("Zéro des cartes local (ZH en France), comme les cartes"),
+                     U8("Plus basse mer astronomique (LAT)"), U8("Niveau moyen (NM)"),
+                     U8("Ellipsoïde WGS84 (hauteur du fond)")};
+  m_dispDatum = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 4, refs);
+  m_dispDatum->SetSelection(std::max(0, std::min(3, s.dispDatum)));
+  m_dispDatum->SetToolTip(U8("Référence des profondeurs affichées (couleurs, sondes, isobathes). "
+                             "La base range les profondeurs sous le niveau moyen ; chaque source est "
+                             "ramenée à la référence choisie. Avec la marée : hauteur d'eau réelle "
+                             "(zéro des cartes + marée)."));
+  auto* r1 = new wxBoxSizer(wxHORIZONTAL);
+  r1->Add(new wxStaticText(sb, wxID_ANY, U8("Profondeurs")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r1->Add(m_dispDatum, 1);
+  box->Add(r1, 0, wxEXPAND | wxALL, 4);
+  auto* r2 = new wxBoxSizer(wxHORIZONTAL);
+  m_mss = new wxTextCtrl(sb, wxID_ANY, W8(s.mssGrid.c_str()), wxDefaultPosition, wxDefaultSize,
+                         wxTE_PROCESS_ENTER);
+  m_mss->SetHint(U8("surface moyenne océanique : MSS_CNES_CLS_2025.pdgrid"));
+  m_mss->SetToolTip(U8("Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage "
+                       "à l'ellipsoïde). Fichier converti par tools/pdgrid_convert.py depuis la MSS "
+                       "CNES_CLS d'AVISO (voir docs/external-data.md)."));
+  m_mssBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
+  r2->Add(new wxStaticText(sb, wxID_ANY, U8("MSS")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_mss, 1, wxRIGHT, 2);
+  r2->Add(m_mssBtn, 0);
+  box->Add(r2, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  m_datumInfo = new wxStaticText(sb, wxID_ANY, "");
+  box->Add(m_datumInfo, 0, wxEXPAND | wxALL, 4);
+  auto* r3 = new wxBoxSizer(wxHORIZONTAL);
+  m_datumUpdate = new wxButton(sb, wxID_ANY, U8("Mettre à jour les surfaces"));
+  m_datumUpdate->SetToolTip(U8("Recalcule les surfaces de référence de la base avec les fichiers "
+                               "actuels (BathyElli, FES2022, MSS) et corrige les sources concernées. "
+                               "À lancer après avoir ajouté ou changé un de ces fichiers."));
+  m_datumMigrate = new wxButton(sb, wxID_ANY, U8("Migrer la base…"));
+  m_datumMigrate->SetToolTip(U8("Base d'une version antérieure : profondeurs ramenées au niveau moyen "
+                                "(copie de sauvegarde d'abord)."));
+  r3->Add(m_datumUpdate, 0, wxRIGHT, 8);
+  r3->Add(m_datumMigrate, 0);
+  box->Add(r3, 0, wxALL, 4);
+
+  m_dispDatum->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    m_pi->Settings().dispDatum = m_dispDatum->GetSelection();
+    m_pi->DatumChanged();
+    RefreshDatum();
+  });
+  auto setMss = [this]() {
+    const std::string f = m_mss->GetValue().Trim().Trim(false).ToUTF8().data();
+    if (f == m_pi->Settings().mssGrid) return;
+    m_pi->Settings().mssGrid = f;
+    m_pi->DatumChanged();
+    RefreshDatum();
+  };
+  m_mss->Bind(wxEVT_TEXT_ENTER, [setMss](wxCommandEvent&) { setMss(); });
+  m_mss->Bind(wxEVT_KILL_FOCUS, [setMss](wxFocusEvent& e) { setMss(); e.Skip(); });
+  m_mssBtn->Bind(wxEVT_BUTTON, [this, setMss](wxCommandEvent&) {
+    wxFileDialog fd(this, U8("Surface moyenne océanique (MSS)"), "", m_mss->GetValue(),
+                    U8("Grille PersonalDepth (*.pdgrid)|*.pdgrid|Tous|*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (fd.ShowModal() != wxID_OK) return;
+    m_mss->SetValue(fd.GetPath());
+    setMss();
+  });
+  m_datumUpdate->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    m_pi->DbUpdateDatum();
+    RefreshDb();
+  });
+  m_datumMigrate->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    m_pi->DbMigrate(true);
+    RefreshDb();
+  });
   return box;
+}
+
+// ------------------------------------------------------------ trait de côte
+wxSizer* BathyDialog::BuildLandBox(wxWindow* p) {
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Trait de côte"));
+  wxWindow* sb = box->GetStaticBox();
+  const DisplaySettings& s = m_pi->Settings();
+  m_landOn = new wxCheckBox(sb, wxID_ANY, U8("Pas de surface interpolée sur la terre (îles, côte)"));
+  m_landOn->SetValue(s.landMaskOn);
+  m_landOn->SetToolTip(U8("À l'import, les pixels interpolés situés sur la terre sont retirés ; les "
+                          "sondes mesurées sont toujours gardées."));
+  box->Add(m_landOn, 0, wxALL, 4);
+  auto* r = new wxBoxSizer(wxHORIZONTAL);
+  m_land = new wxTextCtrl(sb, wxID_ANY, W8(s.landMask.c_str()), wxDefaultPosition, wxDefaultSize,
+                          wxTE_PROCESS_ENTER);
+  m_land->SetHint(U8("dossier des fonds de carte OSMSHP ou GSHHG d'OpenCPN"));
+  m_land->SetToolTip(U8("Polygones de terre téléchargés par le gestionnaire de cartes d'OpenCPN : "
+                        "OSMSHP (basemap_*.shp, OpenStreetMap, conseillé) ou GSHHG (poly-*-1.dat, "
+                        "plus grossier). La meilleure qualité présente est prise."));
+  m_landBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
+  r->Add(new wxStaticText(sb, wxID_ANY, U8("Dossier")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r->Add(m_land, 1, wxRIGHT, 2);
+  r->Add(m_landBtn, 0);
+  box->Add(r, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  auto* r2 = new wxBoxSizer(wxHORIZONTAL);
+  m_landInfo = new wxStaticText(sb, wxID_ANY, "");
+  m_landApply = new wxButton(sb, wxID_ANY, U8("Appliquer aux sources"));
+  m_landApply->SetToolTip(U8("Retire des sources déjà importées les pixels interpolés situés sur la "
+                             "terre. Pour revenir en arrière : réimporter la source."));
+  r2->Add(m_landInfo, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_landApply, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(r2, 0, wxEXPAND | wxALL, 4);
+  auto setPath = [this]() {
+    const std::string f = m_land->GetValue().Trim().Trim(false).ToUTF8().data();
+    if (f == m_pi->Settings().landMask) return;
+    m_pi->Settings().landMask = f;
+    m_pi->SaveConfig();
+    RefreshLand();
+  };
+  m_land->Bind(wxEVT_TEXT_ENTER, [setPath](wxCommandEvent&) { setPath(); });
+  m_land->Bind(wxEVT_KILL_FOCUS, [setPath](wxFocusEvent& e) { setPath(); e.Skip(); });
+  m_landBtn->Bind(wxEVT_BUTTON, [this, setPath](wxCommandEvent&) {
+    wxDirDialog dd(this, U8("Dossier des fonds de carte OSMSHP ou GSHHG"), m_land->GetValue());
+    if (dd.ShowModal() != wxID_OK) return;
+    m_land->SetValue(dd.GetPath());
+    setPath();
+  });
+  m_landOn->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    m_pi->Settings().landMaskOn = m_landOn->GetValue();
+    m_pi->SaveConfig();
+    RefreshLand();
+  });
+  m_landApply->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    if (wxMessageBox(U8("Retirer de toutes les sources les pixels interpolés situés sur la terre ?\n"
+                        "Les sondes mesurées sont gardées. Pour retrouver l'interpolation retirée, "
+                        "il faudra réimporter la source."),
+                     "PersonalDepth", wxYES_NO | wxICON_QUESTION, this) != wxYES)
+      return;
+    m_pi->DbApplyLandMask();
+    RefreshDb();
+  });
+  return box;
+}
+
+void BathyDialog::RefreshLand() {
+  if (!m_landInfo) return;
+  std::string name;
+  const std::string file = m_pi->LandMaskFile(&name);
+  const bool busy = m_pi->DbBusy();
+  m_landInfo->SetLabel(!m_pi->Settings().landMaskOn ? U8("désactivé")
+                       : file.empty() ? (m_pi->Settings().landMask.empty() ? U8("aucun dossier choisi")
+                                                                           : U8("aucun trait de côte reconnu"))
+                                      : U8("utilisé : ") + W8(name.c_str()));
+  m_landApply->Enable(!busy && !file.empty() && !m_pi->DbSources().empty() && !m_pi->DbNeedsMigration());
+  m_land->Enable(!busy);
+  m_landBtn->Enable(!busy);
+}
+
+void BathyDialog::RefreshDatum() {
+  if (!m_datumInfo) return;
+  const bool busy = m_pi->DbBusy(), legacy = m_pi->DbNeedsMigration();
+  const bool has = !m_pi->DbSources().empty();
+  m_datumUpdate->Enable(!busy && has && !legacy);
+  m_datumMigrate->Show(legacy);
+  m_datumMigrate->Enable(!busy);
+  const wxString t = m_pi->DatumInfo();
+  if (t != m_datumRaw) { m_datumRaw = t; SetWrapped(m_datumInfo, t); }
 }
 
 std::vector<std::string> BathyDialog::SelectedCells() const {
@@ -411,6 +579,8 @@ void BathyDialog::RefreshCells() {
 
 void BathyDialog::RefreshDb() {
   RefreshCells();
+  RefreshDatum();
+  RefreshLand();
   SetDbStatus(m_pi->DbStatus());
   if (m_data) m_data->RefreshDb();
 }

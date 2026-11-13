@@ -183,7 +183,7 @@ avec GDAL.
 | Section | Contenu |
 |---|---|
 | Coordonnées | Système de coordonnées des X, Y (catalogue, fuseau UTM, code EPSG ou chaîne PROJ), fichier `.prj` voisin prioritaire (voir plus bas) |
-| Référence verticale | Référence des Z et transformation vers le zéro hydrographique (voir plus bas) |
+| Référence verticale | Référence des Z du fichier : zéro des cartes, niveau moyen, LAT, ellipsoïde, IGN69… (voir plus bas) |
 | Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) ; s'ouvre d'office si la correction est active |
 | Avancé | *Décalage* (constante ajoutée aux profondeurs, dans l'unité de Z) ; *NODATA* (valeurs à ignorer, ex. `-9999 9999`, en plus du NODATA de l'entête des grilles) ; *Bornes de Z* (ne garder que les profondeurs entre Z1 et Z2, ex. −200 à 200 m écarte les remplissages) ; *Cache binaire* (`.pdpc` à côté de la source pour un réimport rapide) |
 
@@ -338,15 +338,20 @@ ESRI State Plane sont reconnus). Des coordonnées projetées (UTM, Mercator…)
 ne se reconnaissent pas à leurs seules valeurs : sans fichier `.prj`, choisir
 le système.
 
-**Référence verticale des Z et transformation vers le ZH** — les profondeurs
-doivent être rapportées au **zéro hydrographique** (ZH, la référence des
-cartes marines) :
-- *Zéro hydrographique — aucune transformation* : données déjà au ZH (cartes,
-  levés Shom) ;
-- *IGN69 / IGN78C → ZH* : altitudes NGF (ex. Litto3D), nécessite le dossier
-  BathyElli + RAF20 / RAC23 ;
-- *Hauteurs ellipsoïdales → ZH* : levé GNSS sans géoïde, nécessite BathyElli ;
-- *Autre référence terrestre* ou *grille d'écart* : vos propres grilles.
+**Référence verticale des Z** — indiquer à quelle référence les profondeurs
+du fichier sont rapportées. La base les range ensuite sous le **niveau moyen**
+(voir [Référence verticale de la base](#référence-verticale-de-la-base)) :
+
+| Choix | Pour | Fichiers nécessaires |
+|---|---|---|
+| *Zéro des cartes local* | Cartes, levés Shom, sondeur corrigé de la marée (ZH en France, *Chart Datum* ailleurs) | Aucun (BathyElli en France, FES2022 ailleurs, pour relier au niveau moyen) |
+| *Niveau moyen (MSL)* | GEBCO, modèles océaniques | Aucun |
+| *Plus basse mer astronomique (LAT)* | EMODnet | Atlas FES2022 (onglet *Marée*) |
+| *Hauteurs ellipsoïdales* | Levé GNSS / RTK / PPK sans géoïde | BathyElli NM en France, sinon la MSS (`.pdgrid`) |
+| *IGN69 / IGN78C → ZH* | Altitudes NGF (ex. Litto3D) | Dossier BathyElli + RAF20 / RAC23 |
+| *Autre référence terrestre* ou *grille d'écart* | Vos propres grilles | Vos fichiers |
+| *Non rattachée* | Lac, retenue, plan d'eau sans marée | Aucun : profondeurs gardées telles quelles |
+
 Voir [external-data.md](external-data.md#français) pour obtenir ces fichiers.
 
 **Date du levé imposée** — sinon la date est lue dans le nom du fichier
@@ -391,6 +396,72 @@ NM² ; pour plusieurs sources, la somme).
 > l'affichage là où deux levés se recouvrent ; *Modifier…* de la date ou de la
 > classe est immédiat.
 
+### Référence verticale de la base
+
+Chaque source garde sa référence d'origine, mais la base range toutes les
+profondeurs **sous le niveau moyen** (NM). Elle les relie aux autres
+références par des surfaces calculées une fois et gardées dans le dossier de
+la base (`PersonalDepth_datum.sqlite`) :
+
+| Référence | Surface utilisée |
+|---|---|
+| Zéro des cartes local | France : ZH du Shom (BathyElli v2.1 NM − ZH) ; ailleurs : plus basse mer astronomique FES2022 (LAT) ; sans ces fichiers : « non défini », écart nul |
+| LAT | Plus basse mer astronomique FES2022, sur 19 ans |
+| Ellipsoïde WGS84 | France : BathyElli v2.1 NM ; ailleurs : surface moyenne océanique (MSS CNES_CLS 2025) |
+
+Dans l'onglet **Base**, cadre *Référence verticale* :
+
+- **Profondeurs** : référence des profondeurs affichées (couleurs, sondes,
+  isobathes, curseur). Par défaut le *zéro des cartes local* : les valeurs
+  sont celles des cartes (ENC, RNC) et une source importée au zéro des cartes
+  s'affiche exactement avec ses valeurs d'origine. Avec la marée, l'affichage
+  est toujours la hauteur d'eau réelle (zéro des cartes + marée).
+- **MSS** : fichier de la surface moyenne océanique (`.pdgrid`), pour les
+  hauteurs GNSS et l'affichage à l'ellipsoïde hors de France.
+- La ligne d'information indique la référence affichée, la surface utilisée
+  (ex. *ZH BathyElli v2.1*, *LAT FES2022b*, *non défini*) et les fichiers de
+  référence trouvés.
+- **Mettre à jour les surfaces** : après avoir ajouté ou changé BathyElli,
+  l'atlas FES2022 ou la MSS, recalcule les surfaces et corrige les sources
+  concernées. L'affichage au zéro des cartes d'une source importée au zéro
+  des cartes ne change pas.
+- **Migrer la base…** (bases créées avant la version 0.1.0-beta.10, au ZH) :
+  à l'ouverture, PersonalDepth propose de ramener ces bases au niveau moyen.
+  Les fichiers `.pdb` sont d'abord copiés dans `backup_before_MSL` (dans le
+  dossier de la base). Sans migration, la base reste affichée telle quelle,
+  mais l'import est bloqué. Une base migrée ne doit plus être ouverte avec
+  une version antérieure du plugin.
+
+Le **Nettoyage** (bornes Z1 – Z2) compare les profondeurs au zéro des cartes
+local, comme les cartes.
+
+> 🧪 **Testeurs — à vérifier :** après migration, les profondeurs au zéro des
+> cartes sont identiques à celles d'avant ; *Niveau moyen* les augmente de la
+> hauteur du NM au-dessus du ZH (environ 4 m à Brest) ; un fichier GEBCO
+> importé au *niveau moyen* s'affiche au zéro des cartes.
+
+### Trait de côte
+
+Entre deux lignes de sondes, la surface interpolée peut enjamber une île ou
+une pointe. Le cadre *Trait de côte* de l'onglet **Base** l'évite :
+
+- **Dossier** : dossier des fonds de carte téléchargés par le gestionnaire de
+  cartes d'OpenCPN, **OSMSHP** (polygones de terre d'OpenStreetMap,
+  `basemap_*.shp`, conseillé : précis à quelques mètres) ou **GSHHG**
+  (`poly-*-1.dat`, plus grossier : trait parfois décalé d'une centaine de
+  mètres, petites îles absentes). Le dossier qui contient les deux convient :
+  OSMSHP est préféré, dans sa meilleure qualité présente (`full`, puis `high`…).
+- **Pas de surface interpolée sur la terre** : à l'import, les pixels
+  interpolés situés sur la terre sont retirés. Les sondes mesurées sont
+  toujours gardées (levés d'estran, Litto3D).
+- **Appliquer aux sources** : retire l'interpolation sur la terre des sources
+  déjà importées. Pour la retrouver, réimporter la source.
+
+Voir [external-data.md](external-data.md#français) pour télécharger ces fonds.
+
+> 🧪 **Testeurs — à vérifier :** un levé en lignes autour d'une île ne la
+> couvre plus ; les sondes mesurées sur l'estran restent affichées.
+
 ## 6. Palette et seuils de profondeur
 
 ![Onglet Palette](images/fr/06-palette.png)
@@ -428,7 +499,7 @@ NM² ; pour plusieurs sources, la somme).
   votre tirant d'eau plus une marge ; l'isobathe de sécurité rouge la suit.
 
 Les profondeurs sont positives vers le bas ; les valeurs négatives sont
-au-dessus du ZH (estran, terre).
+au-dessus de la référence affichée (estran, terre).
 
 > 🧪 **Testeurs — à vérifier :** chaque changement de palette est immédiat
 > sur la carte (sans rechargement) ; la zone dangereuse correspond à la
@@ -480,8 +551,9 @@ faible par case d'écran), jamais prises dans les zones interpolées ;
 
 ![Curseur de marée ±12 h](images/gif/g4-tide.gif)
 
-Par défaut, les profondeurs affichées sont au ZH. Le cadre *Marée* ajoute la
-hauteur d'eau d'un moment donné, pixel par pixel :
+Sans marée, les profondeurs sont affichées dans la référence choisie (onglet
+*Base*, par défaut le zéro des cartes local). Le cadre *Marée* ajoute la
+hauteur d'eau d'un moment donné au zéro des cartes, pixel par pixel :
 
 - **Source** : *Stations de marée OpenCPN* (hauteur unique de la station la
   plus proche ; les données de marée d'OpenCPN doivent être activées) ou

@@ -3146,3 +3146,359 @@ msgstr "В"
 msgid "Horizontal step at which soundings and the interpolated surface are stored in the database. Unticked: given by the survey analysis (grid step, sounding spacing along tracks, or the fine step of a point cloud's interpolated surface). In each cell the shallowest sounding is kept. A resolution coarser than the sounding spacing merges several soundings per cell and gives a blocky look."
 msgstr "Горизонтальный шаг хранения отметок и интерполированной поверхности в базе. Флажок снят: определяется анализом съёмки (шаг сетки, расстояние между отметками вдоль галсов или мелкий шаг интерполированной поверхности облака). В каждой ячейке сохраняется наименьшая глубина. Разрешение грубее расстояния между отметками объединяет несколько отметок в ячейке и даёт ступенчатый вид."
 
+#. fr: zéro des cartes (base à migrer)
+msgid "chart datum (database to migrate)"
+msgstr "нуль глубин (базу нужно перенести)"
+
+#. fr: zéro des cartes local
+msgid "local chart datum"
+msgstr "местный нуль глубин"
+
+#. fr: plus basse mer astronomique (LAT)
+msgid "lowest astronomical tide (LAT)"
+msgstr "наинизший астрономический уровень (LAT)"
+
+#. fr: ellipsoïde WGS84
+msgid "WGS84 ellipsoid"
+msgstr "эллипсоид WGS84"
+
+#. fr: niveau moyen
+msgid "mean sea level"
+msgstr "средний уровень моря"
+
+#. fr: non rattachée
+msgid "not tied"
+msgstr "без привязки"
+
+#. fr: ZH BathyElli v2.1
+msgid "CD BathyElli v2.1"
+msgstr "НГ BathyElli v2.1"
+
+#. fr: LAT FES2022b
+msgid "LAT FES2022b"
+msgstr "LAT FES2022b"
+
+#. fr: non défini
+msgid "undefined"
+msgstr "не определён"
+
+#. fr: Atlas de marée FES2022 illisible
+msgid "FES2022 tide atlas cannot be read"
+msgstr "Не удаётся прочитать атлас приливов FES2022"
+
+#. fr: Référence verticale sans surface
+msgid "Vertical datum without surface"
+msgstr "Высотная система без поверхности"
+
+#. fr: Fichier MSS illisible : 
+msgid "MSS file cannot be read: "
+msgstr "Не удаётся прочитать файл MSS: "
+
+#. fr: Base non ouverte
+msgid "Database not open"
+msgstr "База не открыта"
+
+#. fr: Surface de référence incomplète
+msgid "Incomplete reference surface"
+msgstr "Неполная опорная поверхность"
+
+#. fr: Fichier de grille .pdgrid invalide : 
+msgid "Invalid .pdgrid grid file: "
+msgstr "Неверный файл сетки .pdgrid: "
+
+#. fr: Entête .pdgrid incohérent : 
+msgid "Inconsistent .pdgrid header: "
+msgstr "Несогласованный заголовок .pdgrid: "
+
+#. fr: Lecture de l'index .pdgrid impossible
+msgid "Cannot read the .pdgrid index"
+msgstr "Не удаётся прочитать индекс .pdgrid"
+
+#. fr: Tuile .pdgrid corrompue
+msgid "Corrupt .pdgrid tile"
+msgstr "Повреждённая плитка .pdgrid"
+
+#. fr: Lecture d'une tuile .pdgrid impossible
+msgid "Cannot read a .pdgrid tile"
+msgstr "Не удаётся прочитать плитку .pdgrid"
+
+#. fr: Grille .pdgrid non ouverte
+msgid ".pdgrid grid not open"
+msgstr "Сетка .pdgrid не открыта"
+
+#. fr: Zone hors de la grille .pdgrid
+msgid "Area outside the .pdgrid grid"
+msgstr "Область вне сетки .pdgrid"
+
+#. fr: Zone trop grande pour la grille .pdgrid
+msgid "Area too large for the .pdgrid grid"
+msgstr "Область слишком велика для сетки .pdgrid"
+
+#. fr: Base d'une version antérieure : la migrer vers le niveau moyen avant d'importer (Gestion des données)
+msgid "Database from an earlier version: migrate it to mean sea level before importing (Data management)"
+msgstr "База предыдущей версии: перед импортом перенесите её на средний уровень моря (Управление данными)"
+
+#. fr: Aucune sonde importée : levé hors de la couverture de la référence verticale
+msgid "No sounding imported: survey outside the coverage of the vertical datum"
+msgstr "Отметки не импортированы: съёмка вне зоны покрытия высотной системы"
+
+#. fr: Profondeurs au LAT : l'atlas de marée FES2022 (.pdtide) est nécessaire (réglages de la marée)
+msgid "Depths at LAT: the FES2022 tide atlas (.pdtide) is required (tide settings)"
+msgstr "Глубины от LAT: нужен атлас приливов FES2022 (.pdtide) (настройки прилива)"
+
+#. fr: Hauteurs ellipsoïdales hors France : la surface moyenne océanique (MSS, .pdgrid) est nécessaire
+msgid "Ellipsoidal heights outside France: the mean sea surface (MSS, .pdgrid) is required"
+msgstr "Эллипсоидальные высоты вне Франции: нужна средняя поверхность океана (MSS, .pdgrid)"
+
+#. fr: Surfaces de référence : 
+msgid "Reference surfaces: "
+msgstr "Опорные поверхности: "
+
+#. fr: Copie de sauvegarde
+msgid "Backup copy"
+msgstr "Резервная копия"
+
+#. fr: Copie de sauvegarde impossible : 
+msgid "Backup copy failed: "
+msgstr "Не удалось создать резервную копию: "
+
+#. fr: Surfaces de référence
+msgid "Reference surfaces"
+msgstr "Опорные поверхности"
+
+#. fr: Migration
+msgid "Migration"
+msgstr "Перенос"
+
+#. fr: Références verticales non configurées
+msgid "Vertical datums not configured"
+msgstr "Высотные системы не настроены"
+
+#. fr: Mise à jour
+msgid "Update"
+msgstr "Обновление"
+
+#. fr: Profondeurs : 
+msgid "Depths: "
+msgstr "Глубины: "
+
+#. fr:  (sans marée)
+msgid " (no tide)"
+msgstr " (без прилива)"
+
+#. fr: NM
+msgid "MSL"
+msgstr "СУМ"
+
+#. fr: ell.
+msgid "ell."
+msgstr "элл."
+
+#. fr: ZH
+msgid "CD"
+msgstr "НГ"
+
+#. fr: Base d'une version antérieure : profondeurs au zéro des cartes, à migrer vers le niveau moyen (bouton « Migrer la base… »).
+msgid "Database from an earlier version: depths at chart datum, to be migrated to mean sea level (\"Migrate database…\" button)."
+msgstr "База предыдущей версии: глубины от нуля глубин, нужно перенести на средний уровень моря (кнопка «Перенести базу…»)."
+
+#. fr: Profondeurs affichées : 
+msgid "Depths shown: "
+msgstr "Показанные глубины: "
+
+#. fr: , plus la marée
+msgid ", plus the tide"
+msgstr ", плюс прилив"
+
+#. fr: oui
+msgid "yes"
+msgstr "да"
+
+#. fr: non
+msgid "no"
+msgstr "нет"
+
+#. fr: Références : BathyElli 
+msgid "References: BathyElli "
+msgstr "Опорные данные: BathyElli "
+
+#. fr: , FES2022 
+msgid ", FES2022 "
+msgstr ", FES2022 "
+
+#. fr: , MSS 
+msgid ", MSS "
+msgstr ", MSS "
+
+#. fr: Cette base a été créée par une version antérieure de PersonalDepth : ses profondeurs sont au zéro des cartes.\n\nLes profondeurs sont désormais rangées sous le niveau moyen, pour relier toutes les références (zéro des cartes, LAT, ellipsoïde) et afficher chaque source dans la référence choisie. L'affichage au zéro des cartes reste identique.\n\nMigrer maintenant ? Les fichiers de la base (%.0f Mo) sont d'abord copiés dans :\n%s\n\nSans migration, la base reste affichée telle quelle, mais l'import est bloqué.
+msgid "This database was created by an earlier version of PersonalDepth: its depths are at chart datum.\n\nDepths are now stored below mean sea level, to link all datums (chart datum, LAT, ellipsoid) and show every source in the chosen datum. The display at chart datum stays the same.\n\nMigrate now? The database files (%.0f MB) are first copied to:\n%s\n\nWithout migration, the database is still displayed as it is, but import is blocked."
+msgstr "Эта база создана предыдущей версией PersonalDepth: её глубины отсчитаны от нуля глубин.\n\nТеперь глубины хранятся от среднего уровня моря, чтобы связать все системы (нуль глубин, LAT, эллипсоид) и показывать каждый источник в выбранной системе. Отображение от нуля глубин не меняется.\n\nПеренести сейчас? Файлы базы (%.0f МБ) сначала копируются в:\n%s\n\nБез переноса база отображается как есть, но импорт заблокирован."
+
+#. fr: Migration vers le niveau moyen
+msgid "Migration to mean sea level"
+msgstr "Перенос на средний уровень моря"
+
+#. fr: Mise à jour des références verticales
+msgid "Update of vertical datums"
+msgstr "Обновление высотных систем"
+
+#. fr:  source(s) corrigée(s)
+msgid " source(s) corrected"
+msgstr " источник(ов) исправлено"
+
+#. fr: Zéro des cartes local (ZH, CD…) — profondeurs des cartes, sondeur corrigé
+msgid "Local chart datum (CD) — chart depths, corrected echo sounder"
+msgstr "Местный нуль глубин — глубины карт, исправленный эхолот"
+
+#. fr: Niveau moyen (MSL) — ex. GEBCO
+msgid "Mean sea level (MSL) — e.g. GEBCO"
+msgstr "Средний уровень моря (MSL) — напр. GEBCO"
+
+#. fr: Plus basse mer astronomique (LAT) — ex. EMODnet
+msgid "Lowest astronomical tide (LAT) — e.g. EMODnet"
+msgstr "Наинизший астрономический уровень (LAT) — напр. EMODnet"
+
+#. fr: Hauteurs ellipsoïdales (WGS84 / RGF93, GNSS)
+msgid "Ellipsoidal heights (WGS84 / RGF93, GNSS)"
+msgstr "Эллипсоидальные высоты (WGS84 / RGF93, GNSS)"
+
+#. fr: Autre référence terrestre → zéro des cartes : surface ZH/ellipsoïde + géoïde (fichiers)
+msgid "Other land datum → chart datum: CD/ellipsoid surface + geoid (files)"
+msgstr "Другая наземная система → нуль глубин: поверхность НГ/эллипсоид + геоид (файлы)"
+
+#. fr: Autre → zéro des cartes : grille d'écart référence / ZH (fichier)
+msgid "Other → chart datum: datum / CD offset grid (file)"
+msgstr "Другая → нуль глубин: сетка разностей система / НГ (файл)"
+
+#. fr: Non rattachée (lac, retenue, plan d'eau sans marée)
+msgid "Not tied (lake, reservoir, non-tidal water)"
+msgstr "Без привязки (озеро, водохранилище, водоём без приливов)"
+
+#. fr: Profondeurs rapportées au zéro des cartes du lieu (ZH du Shom en France, Chart Datum…), comme les sondes des cartes. La base les range sous le niveau moyen grâce à la surface du zéro des cartes (BathyElli en France, sinon LAT FES2022) ; sans ces fichiers, l'écart est nul et la base garde les valeurs telles quelles.
+msgid "Depths referred to the local chart datum (Shom ZH in France, Chart Datum…), like chart soundings. The database stores them below mean sea level with the chart datum surface (BathyElli in France, otherwise LAT FES2022); without these files the offset is zero and the database keeps the values as they are."
+msgstr "Глубины от местного нуля глубин (ZH Shom во Франции, Chart Datum…), как отметки карт. База хранит их от среднего уровня моря по поверхности нуля глубин (BathyElli во Франции, иначе LAT FES2022); без этих файлов разность равна нулю и значения сохраняются как есть."
+
+#. fr: Profondeurs sous le niveau moyen (GEBCO, modèles océaniques) : rangées sans conversion.
+msgid "Depths below mean sea level (GEBCO, ocean models): stored without conversion."
+msgstr "Глубины от среднего уровня моря (GEBCO, модели океана): сохраняются без пересчёта."
+
+#. fr: Profondeurs sous la plus basse mer astronomique (EMODnet) : rangées sous le niveau moyen avec le LAT calculé par FES2022 (atlas .pdtide de l'onglet Marée requis).
+msgid "Depths below the lowest astronomical tide (EMODnet): stored below mean sea level with the LAT computed by FES2022 (.pdtide atlas of the Tide tab required)."
+msgstr "Глубины от наинизшего астрономического уровня (EMODnet): сохраняются от среднего уровня моря по LAT, рассчитанному FES2022 (нужен атлас .pdtide на вкладке «Прилив»)."
+
+#. fr: Hauteurs au-dessus de l'ellipsoïde (levé GNSS/RTK sans géoïde) : niveau moyen au-dessus de l'ellipsoïde par BathyElli NM en France, sinon par la surface moyenne océanique (MSS, .pdgrid).
+msgid "Heights above the ellipsoid (GNSS/RTK survey without geoid): mean sea level above the ellipsoid from BathyElli NM in France, otherwise from the mean sea surface (MSS, .pdgrid)."
+msgstr "Высоты над эллипсоидом (съёмка GNSS/RTK без геоида): средний уровень над эллипсоидом по BathyElli NM во Франции, иначе по средней поверхности океана (MSS, .pdgrid)."
+
+#. fr: Surface du zéro des cartes au-dessus de l'ellipsoïde et géoïde de la référence du fichier.
+msgid "Chart datum surface above the ellipsoid and geoid of the file's datum."
+msgstr "Поверхность нуля глубин над эллипсоидом и геоид системы файла."
+
+#. fr: Grille donnant directement l'altitude du zéro des cartes dans la référence du fichier.
+msgid "Grid giving the height of chart datum directly in the file's datum."
+msgstr "Сетка, прямо задающая высоту нуля глубин в системе файла."
+
+#. fr: Lac, retenue, plan d'eau sans marée : profondeurs gardées telles quelles, jamais converties.
+msgid "Lake, reservoir, non-tidal water: depths kept as they are, never converted."
+msgstr "Озеро, водохранилище, водоём без приливов: глубины сохраняются как есть, без пересчёта."
+
+#. fr: zéro des cartes
+msgid "chart datum"
+msgstr "нуль глубин"
+
+#. fr: hauteurs ellipsoïdales
+msgid "ellipsoidal heights"
+msgstr "эллипсоидальные высоты"
+
+#. fr: autre référence → zéro des cartes (surfaces)
+msgid "other datum → chart datum (surfaces)"
+msgstr "другая система → нуль глубин (поверхности)"
+
+#. fr: grille d'écart → zéro des cartes
+msgid "offset grid → chart datum"
+msgstr "сетка разностей → нуль глубин"
+
+#. fr: Résolution  : %.2f m (niveau de tuiles %d)   %lld sondes   Z %.2f … %.2f %s
+msgid "Resolution  : %.2f m (tile level %d)   %lld soundings   Z %.2f … %.2f %s"
+msgstr "Разрешение : %.2f м (уровень плиток %d)   %lld отметок   Z %.2f … %.2f %s"
+
+#. fr:  (ZH)
+msgid " (CD)"
+msgstr " (НГ)"
+
+#. fr:  (non rattachée)
+msgid " (not tied)"
+msgstr " (без привязки)"
+
+#. fr:  (sous le niveau moyen)
+msgid " (below mean sea level)"
+msgstr " (от среднего уровня моря)"
+
+#. fr:  (base à migrer)
+msgid " (database to migrate)"
+msgstr " (базу нужно перенести)"
+
+#. fr:  (à migrer)
+msgid " (to migrate)"
+msgstr " (перенести)"
+
+#. fr: Zéro des cartes local (ZH en France), comme les cartes
+msgid "Local chart datum (ZH in France), like charts"
+msgstr "Местный нуль глубин (ZH во Франции), как на картах"
+
+#. fr: Plus basse mer astronomique (LAT)
+msgid "Lowest astronomical tide (LAT)"
+msgstr "Наинизший астрономический уровень (LAT)"
+
+#. fr: Niveau moyen (NM)
+msgid "Mean sea level (MSL)"
+msgstr "Средний уровень моря (СУМ)"
+
+#. fr: Ellipsoïde WGS84 (hauteur du fond)
+msgid "WGS84 ellipsoid (seabed height)"
+msgstr "Эллипсоид WGS84 (высота дна)"
+
+#. fr: Référence des profondeurs affichées (couleurs, sondes, isobathes). La base range les profondeurs sous le niveau moyen ; chaque source est ramenée à la référence choisie. Avec la marée : hauteur d'eau réelle (zéro des cartes + marée).
+msgid "Datum of the depths shown (colours, soundings, contours). The database stores depths below mean sea level; every source is converted to the chosen datum. With the tide: actual water depth (chart datum + tide)."
+msgstr "Система отсчёта показанных глубин (цвета, отметки, изобаты). База хранит глубины от среднего уровня моря; каждый источник пересчитывается в выбранную систему. С приливом: фактическая глубина (нуль глубин + прилив)."
+
+#. fr: Profondeurs
+msgid "Depths"
+msgstr "Глубины"
+
+#. fr: surface moyenne océanique : MSS_CNES_CLS_2025.pdgrid
+msgid "mean sea surface: MSS_CNES_CLS_2025.pdgrid"
+msgstr "средняя поверхность океана: MSS_CNES_CLS_2025.pdgrid"
+
+#. fr: Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage à l'ellipsoïde). Fichier converti par tools/pdgrid_convert.py depuis la MSS CNES_CLS d'AVISO (voir docs/external-data.md).
+msgid "Mean sea level above the ellipsoid outside France (GNSS heights, display at the ellipsoid). File converted by tools/pdgrid_convert.py from the AVISO CNES_CLS MSS (see docs/external-data.md)."
+msgstr "Средний уровень над эллипсоидом вне Франции (высоты GNSS, отображение от эллипсоида). Файл преобразован tools/pdgrid_convert.py из MSS CNES_CLS AVISO (см. docs/external-data.md)."
+
+#. fr: MSS
+msgid "MSS"
+msgstr "MSS"
+
+#. fr: Mettre à jour les surfaces
+msgid "Update surfaces"
+msgstr "Обновить поверхности"
+
+#. fr: Recalcule les surfaces de référence de la base avec les fichiers actuels (BathyElli, FES2022, MSS) et corrige les sources concernées. À lancer après avoir ajouté ou changé un de ces fichiers.
+msgid "Recomputes the database reference surfaces with the current files (BathyElli, FES2022, MSS) and corrects the sources concerned. Run it after adding or changing one of these files."
+msgstr "Пересчитывает опорные поверхности базы по текущим файлам (BathyElli, FES2022, MSS) и исправляет затронутые источники. Запускайте после добавления или замены одного из этих файлов."
+
+#. fr: Migrer la base…
+msgid "Migrate database…"
+msgstr "Перенести базу…"
+
+#. fr: Base d'une version antérieure : profondeurs ramenées au niveau moyen (copie de sauvegarde d'abord).
+msgid "Database from an earlier version: depths converted to mean sea level (backup copy first)."
+msgstr "База предыдущей версии: глубины пересчитываются на средний уровень моря (сначала резервная копия)."
+
+#. fr: Surface moyenne océanique (MSS)
+msgid "Mean sea surface (MSS)"
+msgstr "Средняя поверхность океана (MSS)"
+
+#. fr: Grille PersonalDepth (*.pdgrid)|*.pdgrid|Tous|*
+msgid "PersonalDepth grid (*.pdgrid)|*.pdgrid|All|*"
+msgstr "Сетка PersonalDepth (*.pdgrid)|*.pdgrid|Все|*"
+

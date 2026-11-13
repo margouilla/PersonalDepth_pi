@@ -279,7 +279,7 @@ void RasterizePoints(const std::vector<GeoPoint>& all, Grid2D& g, double maxEdge
 }
 
 // Prolonge les valeurs aux nœuds vides voisins (au plus `passes` nœuds)
-void Extend(Grid2D& g, int passes) {
+void ExtendImpl(Grid2D& g, int passes) {
   std::vector<float> nv;
   for (int p = 0; p < passes; ++p) {
     nv = g.v;
@@ -328,7 +328,7 @@ bool SurfaceOnGrid(const std::vector<std::string>& files, Grid2D& target, std::s
       if (std::isnan(target.v[k])) target.v[k] = tin.v[k];
   }
   // au-delà de l'enveloppe des points (côte, estuaires) : prolongement ~20 km
-  Extend(target, (int)std::lround(0.2 / target.dlat));
+  ExtendImpl(target, (int)std::lround(0.2 / target.dlat));
   return true;
 }
 }  // namespace
@@ -336,6 +336,8 @@ bool SurfaceOnGrid(const std::vector<std::string>& files, Grid2D& target, std::s
 bool SampleSurfaces(const std::vector<std::string>& files, Grid2D& target, std::string& err) {
   return SurfaceOnGrid(files, target, err);
 }
+
+void ExtendGrid(Grid2D& g, int passes) { ExtendImpl(g, passes); }
 
 bool VerticalCorrection::build(const VerticalRefParams& p, double lonMin, double lonMax,
                                double latMin, double latMax, std::string& err) {
@@ -374,7 +376,7 @@ bool VerticalCorrection::build(const VerticalRefParams& p, double lonMin, double
         }
     }
     // géoïde lisse : prolongement limité (~10 km) au bord des grilles
-    Extend(N, (int)std::lround(0.1 / step));
+    ExtendImpl(N, (int)std::lround(0.1 / step));
     if (p.refGrid.empty()) std::fill(N.v.begin(), N.v.end(), 0.f);  // Z ellipsoïdaux
     size_t valid = 0;
     for (size_t k = 0; k < g.v.size(); ++k) {

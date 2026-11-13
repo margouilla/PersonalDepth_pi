@@ -48,6 +48,7 @@ class BathyDialog : public wxDialog {
   void SetCursorText(const wxString& t);
   void SetTideInfo(const wxString& t);
   void RefreshDb();                       // liste des sources de la base
+  void RefreshDatum();                    // référence verticale (texte, boutons)
   void SetDbStatus(const wxString& t);
 
  private:
@@ -61,6 +62,18 @@ class BathyDialog : public wxDialog {
   wxSizer* BuildContourBox(wxWindow* p);
   wxSizer* BuildTideBox(wxWindow* p);
   wxSizer* BuildDbBox(wxWindow* p);
+  wxSizer* BuildDatumBox(wxWindow* p);  // référence verticale de l'affichage
+  wxSizer* BuildLandBox(wxWindow* p);   // trait de côte (pas d'interpolation sur la terre)
+  void RefreshLand();
+  wxTextCtrl* m_land = nullptr;
+  wxButton *m_landBtn = nullptr, *m_landApply = nullptr;
+  wxCheckBox* m_landOn = nullptr;
+  wxStaticText* m_landInfo = nullptr;
+  wxChoice* m_dispDatum = nullptr;
+  wxTextCtrl* m_mss = nullptr;
+  wxButton *m_mssBtn = nullptr, *m_datumUpdate = nullptr, *m_datumMigrate = nullptr;
+  wxStaticText* m_datumInfo = nullptr;
+  wxString m_datumRaw;
   std::vector<std::string> SelectedCells() const;
   void RefreshCells();
   void UpdateDbButtons();

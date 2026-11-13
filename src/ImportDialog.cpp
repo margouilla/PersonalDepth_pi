@@ -198,10 +198,10 @@ void ImportDialog::UpdatePaneLabels() {
     if (m_prj->GetValue()) crs += U8(" (.prj prioritaire)");
   }
   // référence verticale
-  static const char* vshort[] = {"zéro hydrographique, sans transformation", "IGN69 / IGN78C → ZH",
-                                 "hauteurs ellipsoïdales → ZH", "autre référence → ZH (surfaces)",
-                                 "grille d'écart → ZH"};
-  const wxString vref = U8(vshort[std::max(0, std::min(4, m_vref->GetSelection()))]);
+  static const char* vshort[kVrefModes] = {
+      "zéro des cartes local", "niveau moyen", "LAT", "hauteurs ellipsoïdales", "IGN69 / IGN78C → ZH",
+      "autre référence → zéro des cartes (surfaces)", "grille d'écart → zéro des cartes", "non rattachée"};
+  const wxString vref = U8(vshort[std::max(0, std::min(kVrefModes - 1, m_vref->GetSelection()))]);
   // hauteurs d'eau
   wxString water = U8("aucune");
   if (m_waterOn->GetValue()) {
@@ -773,13 +773,17 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   auto* box = new wxBoxSizer(wxVERTICAL);
   wxWindow* sb = p;
   const DisplaySettings& st = m_init;
-  wxString vrefs[] = {
-      U8("Zéro hydrographique — aucune transformation"),
+  // ordre : DisplaySettings::vrefMode (VrefModeDatum)
+  wxString vrefs[kVrefModes] = {
+      U8("Zéro des cartes local (ZH, CD…) — profondeurs des cartes, sondeur corrigé"),
+      U8("Niveau moyen (MSL) — ex. GEBCO"),
+      U8("Plus basse mer astronomique (LAT) — ex. EMODnet"),
+      U8("Hauteurs ellipsoïdales (WGS84 / RGF93, GNSS)"),
       U8("IGN69 (continent) / IGN78C (Corse) → ZH : BathyElli v2.1 + RAF20 + RAC23"),
-      U8("Hauteurs ellipsoïdales (RGF93 / WGS84, GNSS) → ZH : BathyElli v2.1"),
-      U8("Autre référence terrestre → ZH : surface ZH/ellipsoïde + géoïde (fichiers)"),
-      U8("Autre → ZH : grille d'écart référence / ZH (fichier)")};
-  m_vref = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 5, vrefs);
+      U8("Autre référence terrestre → zéro des cartes : surface ZH/ellipsoïde + géoïde (fichiers)"),
+      U8("Autre → zéro des cartes : grille d'écart référence / ZH (fichier)"),
+      U8("Non rattachée (lac, retenue, plan d'eau sans marée)")};
+  m_vref = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, kVrefModes, vrefs);
   auto fileRow = [&](wxTextCtrl*& t, wxButton*& b) {
     auto* r = new wxBoxSizer(wxHORIZONTAL);
     t = new wxTextCtrl(sb, wxID_ANY);
@@ -822,7 +826,7 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   m_vrRows[3] = row("Grille d'écart", rDi);
   box->Add(m_vrHelp, 0, wxEXPAND | wxTOP, 2);
 
-  m_vref->SetSelection(std::max(0, std::min(4, st.vrefMode)));
+  m_vref->SetSelection(std::max(0, std::min(kVrefModes - 1, st.vrefMode)));
   m_vrFrance->SetValue(W8(st.vrefFranceDir.c_str()));
   m_vrZh->SetValue(W8(st.vrefZh.c_str()));
   m_vrGeoid->SetValue(W8(st.vrefGeoid.c_str()));
@@ -860,26 +864,33 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
 
 void ImportDialog::UpdateVrefControls() {
   const int m = m_vref->GetSelection();
-  const bool fr = m == 1 || m == 2;
+  const bool fr = m == 4;
   m_vrFrance->Enable(fr); m_vrFranceBtn->Enable(fr);
-  m_vrZh->Enable(m == 3); m_vrZhBtn->Enable(m == 3);
-  m_vrGeoid->Enable(m == 3); m_vrGeoidBtn->Enable(m == 3);
-  m_vrDirect->Enable(m == 4); m_vrDirectBtn->Enable(m == 4); m_vrInvert->Enable(m == 4);
-  static const char* help[] = {
-      "Les profondeurs sont déjà rapportées au zéro hydrographique (cartes, levés Shom).",
+  m_vrZh->Enable(m == 5); m_vrZhBtn->Enable(m == 5);
+  m_vrGeoid->Enable(m == 5); m_vrGeoidBtn->Enable(m == 5);
+  m_vrDirect->Enable(m == 6); m_vrDirectBtn->Enable(m == 6); m_vrInvert->Enable(m == 6);
+  static const char* help[kVrefModes] = {
+      "Profondeurs rapportées au zéro des cartes du lieu (ZH du Shom en France, Chart Datum…), "
+      "comme les sondes des cartes. La base les range sous le niveau moyen grâce à la surface du "
+      "zéro des cartes (BathyElli en France, sinon LAT FES2022) ; sans ces fichiers, l'écart est "
+      "nul et la base garde les valeurs telles quelles.",
+      "Profondeurs sous le niveau moyen (GEBCO, modèles océaniques) : rangées sans conversion.",
+      "Profondeurs sous la plus basse mer astronomique (EMODnet) : rangées sous le niveau moyen "
+      "avec le LAT calculé par FES2022 (atlas .pdtide de l'onglet Marée requis).",
+      "Hauteurs au-dessus de l'ellipsoïde (levé GNSS/RTK sans géoïde) : niveau moyen au-dessus de "
+      "l'ellipsoïde par BathyElli NM en France, sinon par la surface moyenne océanique (MSS, .pdgrid).",
       "Altitudes NGF (ex. Litto3D) : profondeur ZH = profondeur + altitude du ZH, calculée à "
       "chaque sonde (RAC23 en Corse, RAF20 ailleurs).",
-      "Hauteurs au-dessus de l'ellipsoïde (levé GNSS/RTK sans géoïde) : profondeur ZH = "
-      "profondeur + hauteur ellipsoïdale du ZH (BathyElli).",
-      "Hors France : surface du ZH au-dessus de l'ellipsoïde et géoïde de la référence du fichier.",
-      "Grille donnant directement l'altitude du ZH dans la référence du fichier."};
-  m_vrHelp->SetLabel(U8(help[std::max(0, std::min(4, m))]));
+      "Surface du zéro des cartes au-dessus de l'ellipsoïde et géoïde de la référence du fichier.",
+      "Grille donnant directement l'altitude du zéro des cartes dans la référence du fichier.",
+      "Lac, retenue, plan d'eau sans marée : profondeurs gardées telles quelles, jamais converties."};
+  m_vrHelp->SetLabel(U8(help[std::max(0, std::min(kVrefModes - 1, m))]));
   m_vrHelp->Wrap(FromDIP(520));
   if (m_vrRows[0]) {
     m_vrRows[0]->ShowItems(fr);
-    m_vrRows[1]->ShowItems(m == 3);
-    m_vrRows[2]->ShowItems(m == 3);
-    m_vrRows[3]->ShowItems(m == 4);
+    m_vrRows[1]->ShowItems(m == 5);
+    m_vrRows[2]->ShowItems(m == 5);
+    m_vrRows[3]->ShowItems(m == 6);
   }
   if (m_sc) FitToContent();
 }
@@ -894,8 +905,7 @@ bool ImportDialog::CurrentVref(VerticalRefParams& v) {
   auto exists = [](const wxString& f) { return wxFileExists(f); };
   const int m = m_vref->GetSelection();
   switch (m) {
-    case 1:    // IGN69 / IGN78C : BathyElli v2.1 « ZH/ell » + RAF20 (+ RAC23 en Corse)
-    case 2: {  // hauteurs ellipsoïdales : BathyElli seul
+    case 4: {  // IGN69 / IGN78C : BathyElli v2.1 « ZH/ell » + RAF20 (+ RAC23 en Corse)
       const wxString dir = m_vrFrance->GetValue().Trim().Trim(false);
       if (!wxDirExists(dir)) return fail(U8("Dossier BathyElli v2.1 introuvable :\n") + dir);
       wxArrayString zh, tac, rac;
@@ -903,10 +913,6 @@ bool ImportDialog::CurrentVref(VerticalRefParams& v) {
       if (zh.empty()) return fail(U8("Aucun fichier BathyElli « …ZH.glhi » dans ") + dir);
       v.mode = VerticalRefParams::Mode::Surfaces;
       for (auto& f : zh) v.zhFiles.push_back(f.ToUTF8().data());
-      if (m == 2) {
-        v.label = "Ellipsoïde (BathyElli v2.1)";
-        break;
-      }
       wxDir::GetAllFiles(dir, &tac, "RAF20*.tac");
       wxDir::GetAllFiles(dir, &rac, "RAC*.mnt");
       wxDir::GetAllFiles(dir, &rac, "RAC*.tac");
@@ -919,7 +925,7 @@ bool ImportDialog::CurrentVref(VerticalRefParams& v) {
                                   std::string(wxFileName(rac.Last()).GetName().ToUTF8().data()) + ")";
       break;
     }
-    case 3: {
+    case 5: {
       wxStringTokenizer tk(m_vrZh->GetValue(), ";");
       while (tk.HasMoreTokens()) {
         wxString f = tk.GetNextToken().Trim().Trim(false);
@@ -943,7 +949,7 @@ bool ImportDialog::CurrentVref(VerticalRefParams& v) {
       v.label = std::string("Réf. ") + names.ToUTF8().data();
       break;
     }
-    case 4: {
+    case 6: {
       const wxString f = m_vrDirect->GetValue().Trim().Trim(false);
       if (!exists(f)) return fail(U8("Grille d'écart introuvable :\n") + f);
       v.mode = VerticalRefParams::Mode::DirectGrid;
@@ -1115,6 +1121,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.crsName = crsName;
     p.readPrj = s.readPrj || s.crsCode == "AUTO";  // automatique : .prj toujours lu
     p.vref = vref;
+    p.datum = (int)VrefModeDatum(s.vrefMode);
     p.load.order = (LoadOptions::Order)s.importOrder;
     p.load.text.deserialize(s.importFormat);
     p.load.zsign = (LoadOptions::ZSign)s.importSign;

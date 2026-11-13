@@ -73,7 +73,7 @@ class DbCell {
         "CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, name TEXT, path TEXT, date TEXT,"
         " level INTEGER, res REAL, rank INTEGER, visible INTEGER, crs TEXT, vref TEXT, zmin REAL,"
         " zmax REAL, count INTEGER, lonmin REAL, lonmax REAL, latmin REAL, latmax REAL, imported TEXT,"
-        " grp TEXT, params TEXT, info TEXT);"
+        " grp TEXT, params TEXT, info TEXT, datum INTEGER);"
         "CREATE TABLE IF NOT EXISTS src_tiles(src INTEGER, z INTEGER, x INTEGER, y INTEGER,"
         " data BLOB, PRIMARY KEY(src, z, x, y));"
         "CREATE TABLE IF NOT EXISTS merged(z INTEGER, x INTEGER, y INTEGER, zmin REAL, zmax REAL,"
@@ -86,7 +86,7 @@ class DbCell {
       if (!exec(m, err)) return false;
     }
     // bases plus anciennes : colonne « classe » ajoutée
-    bool hasGrp = false, hasParams = false, hasInfo = false;
+    bool hasGrp = false, hasParams = false, hasInfo = false, hasDatum = false;
     sqlite3_stmt* q = nullptr;
     sqlite3_prepare_v2(db, "PRAGMA table_info(sources)", -1, &q, nullptr);
     while (q && sqlite3_step(q) == SQLITE_ROW) {
@@ -94,12 +94,16 @@ class DbCell {
       if (n && std::strcmp((const char*)n, "grp") == 0) hasGrp = true;
       if (n && std::strcmp((const char*)n, "params") == 0) hasParams = true;
       if (n && std::strcmp((const char*)n, "info") == 0) hasInfo = true;
+      if (n && std::strcmp((const char*)n, "datum") == 0) hasDatum = true;
     }
     sqlite3_finalize(q);
     // bases plus anciennes : paramètres d'import de chaque source (relecture)
     return (hasGrp || exec("ALTER TABLE sources ADD COLUMN grp TEXT", err)) &&
            (hasParams || exec("ALTER TABLE sources ADD COLUMN params TEXT", err)) &&
-           (hasInfo || exec("ALTER TABLE sources ADD COLUMN info TEXT", err));
+           (hasInfo || exec("ALTER TABLE sources ADD COLUMN info TEXT", err)) &&
+           // bases antérieures au niveau moyen : colonne vide = profondeurs au
+           // zéro des cartes, à migrer (Datum::Legacy)
+           (hasDatum || exec("ALTER TABLE sources ADD COLUMN datum INTEGER", err));
   }
   bool exec(const char* sql, std::string& err) {
     char* msg = nullptr;
@@ -288,6 +292,7 @@ bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
   cells_.clear();
   sources_.clear();
   folder_ = folder;
+  datum_.close();
   std::error_code ec;
   fs::create_directories(fs::u8path(folder), ec);
   if (!fs::is_directory(fs::u8path(folder), ec)) {
@@ -320,6 +325,7 @@ bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
       sqlite3_finalize(q);
     }
   }
+  if (!datum_.open(folder, err)) return false;
   return reloadSources(err);
 }
 
@@ -402,7 +408,7 @@ bool BathyDb::reloadSources(std::string& err) {
     sqlite3_stmt* s = nullptr;
     if (sqlite3_prepare_v2(c->db,
                            "SELECT id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,count,"
-                           "lonmin,lonmax,latmin,latmax,imported,grp,params,info FROM sources",
+                           "lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum FROM sources",
                            -1, &s, nullptr) != SQLITE_OK)
       continue;
     while (sqlite3_step(s) == SQLITE_ROW) {
@@ -427,6 +433,7 @@ bool BathyDb::reloadSources(std::string& err) {
       d.group = txt(18);
       d.params = txt(19);
       d.info = txt(20);
+      d.datum = sqlite3_column_type(s, 21) == SQLITE_NULL ? (int)Datum::Legacy : sqlite3_column_int(s, 21);
       if (d.group.empty()) d.group = GuessSourceGroup(d.name);  // bases antérieures aux classes
       m[d.id] = d;  // même ligne dans chaque fichier touché
     }
@@ -592,7 +599,8 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(c->db,
                        "INSERT OR REPLACE INTO sources (id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,"
-                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params,info) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
+                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
                        &s, nullptr);
     int k = 1;
     sqlite3_bind_int64(s, k++, d.id);
@@ -616,6 +624,8 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_bind_text(s, k++, d.group.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(s, k++, d.params.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(s, k++, d.info.c_str(), -1, SQLITE_TRANSIENT);
+    if (d.datum == (int)Datum::Legacy) sqlite3_bind_null(s, k++);
+    else sqlite3_bind_int(s, k++, d.datum);
     const int rc = sqlite3_step(s);
     sqlite3_finalize(s);
     if (rc != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); return false; }
@@ -784,6 +794,17 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
                               DbSource meta, bool gridded, DbPriority prio, std::string& err,
                               const DbProgress& progress, const std::atomic<bool>* cancel,
                               int64_t* newId) {
+  if (needsMigration()) {
+    err = pd::tr("Base d'une version antérieure : la migrer vers le niveau moyen avant d'importer "
+                 "(Gestion des données)");
+    return false;
+  }
+  // Référence d'origine : profondeurs ramenées au niveau moyen à la répartition
+  // (profondeur_NM = profondeur + S), surfaces calculées au besoin
+  if (meta.datum == (int)Datum::Legacy) meta.datum = (int)Datum::Cd;
+  const bool convert = DatumHasSurface((Datum)meta.datum);
+  DatumSampler vS(datum_, (Datum)meta.datum);
+  size_t noDatum = 0;
   // surface interpolée calculée au niveau des sondes : pixel d'au moins D / 128
   // (coût de l'interpolation borné, quel que soit le D choisi)
   if (!gridded && meta.interpD > 0) meta.res = std::max(meta.res, meta.interpD / 128.0);
@@ -856,6 +877,25 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     meta.latMin = std::min(meta.latMin, pc.latMin); meta.latMax = std::max(meta.latMax, pc.latMax);
   }
   const size_t n = pc.size();
+  if (convert && n &&
+      !ensureDatum((Datum)meta.datum, pc.lonMin - 0.01, pc.lonMax + 0.01, pc.latMin - 0.01,
+                   pc.latMax + 0.01, err, cancel))
+    return false;
+  // zéro des cartes local : référence d'affichage par défaut
+  if (n && meta.datum != (int)Datum::Free && meta.datum != (int)Datum::Cd &&
+      !ensureDatum(Datum::Cd, pc.lonMin - 0.01, pc.lonMax + 0.01, pc.latMin - 0.01, pc.latMax + 0.01, err,
+                   cancel))
+    return false;
+  // valeur rangée (mm) : profondeur + S au point ; NaN si la surface manque
+  auto stored = [&](size_t k) -> double {
+    double z = (double)pc.z[k];
+    if (convert) {
+      const double S = vS.at(pc.lon(k), pc.lat(k));
+      if (std::isnan(S)) { ++noDatum; return NAN; }
+      z += S;
+    }
+    return std::round(z * 1000.0);
+  };
   // dépôt d'une sonde (pixel ix, iy du niveau zs, valeur en mm) : la plus faible
   auto put = [&](long long ix, long long iy, int32_t v) -> bool {
     const TK key((int)(ix >> 8), (int)(iy >> 8));
@@ -886,7 +926,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
   };
   if (inMemory) {  // toutes les tuiles en mémoire : ordre du fichier
     for (size_t k = 0; k < n; ++k) {
-      const double mm = std::round((double)pc.z[k] * 1000.0);
+      const double mm = stored(k);
       if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
       double gx, gy;
       LonLatToPixel(zs, pc.lon(k), pc.lat(k), gx, gy);
@@ -907,7 +947,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
       sp.clear();
       sp.reserve(c1 - c0);
       for (size_t k = c0; k < c1; ++k) {
-        const double mm = std::round((double)pc.z[k] * 1000.0);
+        const double mm = stored(k);
         if (!DepthTile::plausible(mm)) { ++rejected; continue; }  // remplissage, NaN
         double gx, gy;
         LonLatToPixel(zs, pc.lon(k), pc.lat(k), gx, gy);
@@ -1147,6 +1187,9 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     if (!interpolate(
             zs, keysZs, tileAt,
             [&](const TK& T, DepthTile& out) {
+              long long gone = 0;  // pas de surface interpolée sur la terre
+              if (!maskLand(zs, T.first, T.second, out, gone, err)) return false;
+              nInterp -= gone;
               if (inMemory) { mem[T] = std::move(out); return true; }
               rcache.erase(T);
               return writeSrc(meta.id, zs, T.first, T.second, out, err);
@@ -1169,7 +1212,11 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     if (inMemory && !writeSrc(meta.id, zs, key.first, key.second, *t, err)) return false;
     touched.insert(Key(zs, key.first, key.second));
   }
-  if (!count) { err = pd::tr("Aucune sonde importée"); return false; }
+  if (!count) {
+    err = noDatum ? pd::tr("Aucune sonde importée : levé hors de la couverture de la référence verticale")
+                  : pd::tr("Aucune sonde importée");
+    return false;
+  }
   meta.count = count;
   meta.zmin = lo / 1000.f;
   meta.zmax = hi / 1000.f;
@@ -1382,7 +1429,7 @@ bool BathyDb::buildPyramid(int64_t id, int zs, std::set<std::pair<int, int>> chi
   return true;
 }
 
-// Retire des sources les sondes hors de [zMin, zMax] (m, ZH positif vers le
+// Retire des sources les sondes hors de [zMin, zMax] (m, zéro des cartes local, positif vers le
 // bas) et les valeurs de remplissage, puis reconstruit pyramides et fusion
 bool BathyDb::cleanSources(const std::vector<int64_t>& ids, float zMin, float zMax, DbPriority prio,
                            std::string& err, const DbProgress& progress,
@@ -1401,6 +1448,7 @@ bool BathyDb::cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, floa
   long long gone = 0;
   std::set<Key> keys;
   std::vector<DbCell*> cells = allCells(err);
+  DatumSampler cdS(datum_, Datum::Cd);
   for (size_t n = 0; n < ids.size(); ++n) {
     auto sit = std::find_if(sources_.begin(), sources_.end(),
                             [&](const DbSource& d) { return d.id == ids[n]; });
@@ -1436,9 +1484,24 @@ bool BathyDb::cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, floa
       DepthTile tile;
       if (!readSrc(d.id, d.level, t.first, t.second, tile)) continue;  // lecture : filtre ±12 km
       bool changed = false, any = false;
-      for (int32_t& v : tile.v) {
+      // bornes au zéro des cartes local (référence d'affichage par défaut) :
+      // valeur rangée sous le NM − S_cd au pixel
+      const bool toCd = d.datum != (int)Datum::Legacy && d.datum != (int)Datum::Free;
+      double lonW = 0, lonE = 0, latS = 0, latN = 0, la = 0;
+      if (toCd) TileBounds(d.level, t.first, t.second, lonW, lonE, latS, latN);
+      for (int k = 0; k < DepthTile::kN; ++k) {
+        if (toCd && (k & 255) == 0) {  // latitude de la ligne de pixels
+          double lo0;
+          PixelToLonLat(d.level, t.first * 256.0 + 0.5, t.second * 256.0 + (k >> 8) + 0.5, lo0, la);
+        }
+        int32_t& v = tile.v[k];
         if (v == DepthTile::kEmpty) continue;
-        if (v < lo || v > hi) { v = DepthTile::kEmpty; ++gone; changed = true; continue; }
+        int64_t c = v;
+        if (toCd) {
+          const double S = cdS.at(lonW + ((k & 255) + 0.5) * (lonE - lonW) / 256.0, la);
+          if (!std::isnan(S)) c -= std::llround(S * 1000.0);
+        }
+        if (c < lo || c > hi) { v = DepthTile::kEmpty; ++gone; changed = true; continue; }
         any = true; ++count;
         zlo = std::min(zlo, v); zhi = std::max(zhi, v);
       }
@@ -1478,6 +1541,427 @@ bool BathyDb::cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, floa
                   cancel))
     return false;
   return commitAll(err);
+}
+
+// ================================================================ référence verticale
+double DatumSampler::at(double lon, double lat, int* origin) {
+  if (lon >= 180.0) lon -= 360.0;
+  if (lon < -180.0) lon += 360.0;
+  int tx, ty;
+  DatumStore::TileOf(lon, lat, tx, ty);
+  auto it = tiles_.find({tx, ty});
+  if (it == tiles_.end()) {
+    if (tiles_.size() > 256) tiles_.clear();
+    DatumStore::Tile t;
+    if (!st_.get(k_, tx, ty, t)) t = DatumStore::Tile();
+    it = tiles_.emplace(std::make_pair(tx, ty), std::move(t)).first;
+  }
+  const DatumStore::Tile& t = it->second;
+  if (!t.ok()) return NAN;
+  if (origin) *origin |= t.origin;
+  double lonW, latS;
+  DatumStore::TileBox(tx, ty, lonW, latS);
+  const double fx = std::min<double>(kDatumTileNodes, std::max(0.0, (lon - lonW) * kDatumPerDeg));
+  const double fy = std::min<double>(kDatumTileNodes, std::max(0.0, (lat - latS) * kDatumPerDeg));
+  const int i = std::min(kDatumTileNodes - 1, (int)fx), j = std::min(kDatumTileNodes - 1, (int)fy);
+  const double ax = fx - i, ay = fy - j;
+  double sum = 0, w = 0;
+  for (int dj = 0; dj <= 1; ++dj)
+    for (int di = 0; di <= 1; ++di) {
+      const float v = t.v[(size_t)(j + dj) * kDatumTileN + i + di];
+      if (std::isnan(v)) continue;
+      const double ww = (di ? ax : 1 - ax) * (dj ? ay : 1 - ay);
+      sum += ww * v;
+      w += ww;
+    }
+  return w > 1e-9 ? sum / w : NAN;
+}
+
+bool BathyDb::maskLand(int z, int x, int y, DepthTile& t, long long& removed, std::string& err) {
+  removed = 0;
+  if (!land_ || !land_->isOpen() || t.interp.empty()) return true;
+  bool any = false;
+  for (int k = 0; k < DepthTile::kN && !any; ++k) any = t.interp[k] && t.v[k] != DepthTile::kEmpty;
+  if (!any) return true;
+  std::vector<uint8_t> land;
+  if (!land_->tile(z, x, y, land, err)) return false;
+  for (int k = 0; k < DepthTile::kN; ++k)
+    if (land[k] && t.isInterp(k) && t.v[k] != DepthTile::kEmpty) {
+      t.v[k] = DepthTile::kEmpty;
+      t.setInterp(k, false);
+      ++removed;
+    }
+  return true;
+}
+
+bool BathyDb::applyLandMask(const std::vector<int64_t>& ids, DbPriority prio, std::string& err,
+                            const DbProgress& progress, const std::atomic<bool>* cancel,
+                            long long* removed) {
+  if (removed) *removed = 0;
+  if (!land_ || !land_->isOpen()) { err = pd::tr("Trait de côte non choisi"); return false; }
+  // sources dont une tuile native a des pixels interpolés sur la terre
+  if (!flushWrites(err)) return false;
+  std::vector<int64_t> todo;
+  std::vector<DbCell*> cells = allCells(err);
+  for (size_t n = 0; n < ids.size(); ++n) {
+    const DbSource* d = source(ids[n]);
+    if (!d) continue;
+    if (progress) progress(0.f, pd::tr("Trait de côte : recherche des zones interpolées"));
+    std::set<Key> keys;
+    SourceKeys(cells, d->id, keys);
+    bool hit = false;
+    for (const Key& k : keys) {
+      if (std::get<0>(k) != d->level) continue;
+      if (cancel && *cancel) { err = "Annulé"; return false; }
+      DepthTile t;
+      if (!readSrc(d->id, d->level, std::get<1>(k), std::get<2>(k), t)) continue;
+      long long g = 0;
+      if (!maskLand(d->level, std::get<1>(k), std::get<2>(k), t, g, err)) return false;
+      if (g) { hit = true; break; }
+    }
+    if (hit) todo.push_back(d->id);
+  }
+  if (todo.empty()) return true;
+  long long total = 0;
+  auto fn = [&](const DbSource&, int z, int x, int y, DepthTile& t, std::string& e) {
+    long long g = 0;
+    if (!maskLand(z, x, y, t, g, e)) return false;
+    total += g;
+    return true;
+  };
+  if (!transformSources(todo, fn, prio, err, progress, cancel, pd::tr("Trait de côte"))) return false;
+  if (removed) *removed = total;
+  return true;
+}
+
+bool BathyDb::needsMigration() const {
+  for (const DbSource& d : sources_)
+    if (d.datum == (int)Datum::Legacy) return true;
+  return false;
+}
+
+// Tuiles de surface (0,25°) couvrant l'emprise
+static std::vector<std::pair<int, int>> DatumTilesFor(double lonMin, double lonMax, double latMin,
+                                                      double latMax) {
+  std::vector<std::pair<int, int>> v;
+  if (lonMin > lonMax || latMin > latMax) return v;
+  lonMin = std::max(-180.0, lonMin); lonMax = std::min(179.999999, lonMax);
+  latMin = std::max(-89.9, latMin); latMax = std::min(89.9, latMax);
+  int tx0, ty0, tx1, ty1;
+  DatumStore::TileOf(lonMin, latMin, tx0, ty0);
+  DatumStore::TileOf(lonMax, latMax, tx1, ty1);
+  for (int ty = ty0; ty <= ty1; ++ty)
+    for (int tx = tx0; tx <= tx1; ++tx) v.push_back({tx, ty});
+  return v;
+}
+
+// Calcule les tuiles `want` de la surface k (par blocs de 2° au plus) et
+// les range dans `out` (sans écrire)
+static bool ComputeDatumTiles(DatumProvider& prov, Datum k, const std::vector<std::pair<int, int>>& want,
+                              std::map<std::pair<int, int>, DatumStore::Tile>& out, std::string& err,
+                              const std::atomic<bool>* cancel) {
+  const int B = 8;  // tuiles de 0,25° par bloc
+  std::map<std::pair<int, int>, std::vector<std::pair<int, int>>> blocks;
+  for (const auto& t : want) {
+    const int bx = t.first >= 0 ? t.first / B : -((-t.first + B - 1) / B);
+    const int by = t.second >= 0 ? t.second / B : -((-t.second + B - 1) / B);
+    blocks[{bx, by}].push_back(t);
+  }
+  const std::string model = k == Datum::Ell ? prov.mssModel() : std::string();
+  for (const auto& bk : blocks) {
+    if (cancel && *cancel) { err = "Annulé"; return false; }
+    int tx0 = INT32_MAX, ty0 = INT32_MAX, tx1 = INT32_MIN, ty1 = INT32_MIN;
+    for (const auto& t : bk.second) {
+      tx0 = std::min(tx0, t.first); tx1 = std::max(tx1, t.first);
+      ty0 = std::min(ty0, t.second); ty1 = std::max(ty1, t.second);
+    }
+    double lonW, latS, lonE, latN;
+    DatumStore::TileBox(tx0, ty0, lonW, latS);
+    DatumStore::TileBox(tx1 + 1, ty1 + 1, lonE, latN);
+    Grid2D g;
+    std::vector<uint8_t> org;
+    if (!prov.compute(k, lonW, lonE, latS, latN, g, org, err, cancel)) return false;
+    for (const auto& t : bk.second) {
+      double tw, ts;
+      DatumStore::TileBox(t.first, t.second, tw, ts);
+      const int i0 = (int)std::lround((tw - g.lonW) * kDatumPerDeg);
+      const int jN = (int)std::lround((g.latN - ts) * kDatumPerDeg);  // ligne du bord sud
+      DatumStore::Tile T;
+      T.v.assign((size_t)kDatumTileN * kDatumTileN, NAN);
+      T.model = model;
+      bool any = false;
+      for (int r = 0; r < kDatumTileN; ++r)      // r = 0 : sud
+        for (int q = 0; q < kDatumTileN; ++q) {
+          const int i = i0 + q, j = jN - r;
+          if (i < 0 || j < 0 || i >= g.nx || j >= g.ny) continue;
+          const size_t s = (size_t)j * g.nx + i;
+          T.v[(size_t)r * kDatumTileN + q] = g.v[s];
+          T.origin |= org[s];
+          any = any || !std::isnan(g.v[s]);
+        }
+      if (any) out[t] = std::move(T);
+    }
+  }
+  return true;
+}
+
+bool BathyDb::ensureDatum(Datum k, double lonMin, double lonMax, double latMin, double latMax,
+                          std::string& err, const std::atomic<bool>* cancel) {
+  if (!DatumHasSurface(k)) return true;
+  std::vector<std::pair<int, int>> want;
+  for (const auto& t : DatumTilesFor(lonMin, lonMax, latMin, latMax))
+    if (!datum_.has(k, t.first, t.second)) want.push_back(t);
+  if (want.empty()) return true;
+  if (!provider_ || !provider_->available(k)) {
+    if (k == Datum::Cd) {  // sans référence : écart nul, « non défini »
+      DatumStore::Tile T;
+      T.v.assign((size_t)kDatumTileN * kDatumTileN, 0.f);
+      T.origin = kOrigNone;
+      if (!datum_.begin(err)) return false;
+      for (const auto& t : want)
+        if (!datum_.put(k, t.first, t.second, T, err)) { datum_.rollback(); return false; }
+      return datum_.commit(err);
+    }
+    err = k == Datum::Lat ? pd::tr("Profondeurs au LAT : l'atlas de marée FES2022 (.pdtide) est nécessaire "
+                                   "(réglages de la marée)")
+                          : pd::tr("Hauteurs ellipsoïdales hors France : la surface moyenne océanique "
+                                   "(MSS, .pdgrid) est nécessaire");
+    return false;
+  }
+  std::map<std::pair<int, int>, DatumStore::Tile> got;
+  if (!ComputeDatumTiles(*provider_, k, want, got, err, cancel)) return false;
+  if (!datum_.begin(err)) return false;
+  for (auto& kv : got)
+    if (!datum_.put(k, kv.first.first, kv.first.second, kv.second, err)) { datum_.rollback(); return false; }
+  return datum_.commit(err);
+}
+
+bool BathyDb::ensureDatumForSources(Datum k, std::string& err, const DbProgress& progress,
+                                    const std::atomic<bool>* cancel) {
+  for (size_t n = 0; n < sources_.size(); ++n) {
+    const DbSource& d = sources_[n];
+    if (progress) progress((float)n / sources_.size(), pd::tr("Surfaces de référence : ") + DatumName(k));
+    if (!ensureDatum(k, d.lonMin - 0.01, d.lonMax + 0.01, d.latMin - 0.01, d.latMax + 0.01, err, cancel))
+      return false;
+  }
+  return true;
+}
+
+bool BathyDb::transformSources(const std::vector<int64_t>& ids, const TileFn& fn, DbPriority prio,
+                               std::string& err, const DbProgress& progress,
+                               const std::atomic<bool>* cancel, const std::string& title) {
+  using TK = std::pair<int, int>;
+  std::set<Key> keys;
+  std::vector<DbCell*> cells = allCells(err);
+  for (size_t n = 0; n < ids.size(); ++n) {
+    auto sit = std::find_if(sources_.begin(), sources_.end(),
+                            [&](const DbSource& d) { return d.id == ids[n]; });
+    if (sit == sources_.end()) continue;
+    DbSource& d = *sit;
+    const std::string label = title + " " + std::to_string(n + 1) + "/" + std::to_string(ids.size());
+    auto prog = [&](float f, const std::string& what) {
+      if (progress) progress(0.85f * (n + f) / ids.size(), label + " : " + what);
+    };
+    if (!flushWrites(err)) return false;
+    std::set<Key> old;
+    SourceKeys(cells, d.id, old);
+    keys.insert(old.begin(), old.end());
+    std::vector<TK> native;
+    for (const Key& k : old)
+      if (std::get<0>(k) == d.level) native.push_back({std::get<1>(k), std::get<2>(k)});
+    for (DbCell* c : cells) {  // niveaux inférieurs : reconstruits depuis le niveau natif
+      if (!c->begin(err)) return false;
+      sqlite3_stmt* q = nullptr;
+      sqlite3_prepare_v2(c->db, "DELETE FROM src_tiles WHERE src=? AND z<?", -1, &q, nullptr);
+      sqlite3_bind_int64(q, 1, d.id);
+      sqlite3_bind_int(q, 2, d.level);
+      sqlite3_step(q);
+      sqlite3_finalize(q);
+    }
+    std::set<TK> kept;
+    long long count = 0;
+    int32_t zlo = INT32_MAX, zhi = INT32_MIN;
+    for (size_t k = 0; k < native.size(); ++k) {
+      if (cancel && *cancel) { err = "Annulé"; return false; }
+      const TK& t = native[k];
+      DepthTile tile;
+      if (!readSrc(d.id, d.level, t.first, t.second, tile)) continue;
+      if (!fn(d, d.level, t.first, t.second, tile, err)) return false;
+      bool any = false;
+      for (int32_t& v : tile.v) {
+        if (v == DepthTile::kEmpty) continue;
+        any = true; ++count;
+        zlo = std::min(zlo, v); zhi = std::max(zhi, v);
+      }
+      if (!any) continue;
+      if (!writeSrc(d.id, d.level, t.first, t.second, tile, err)) return false;
+      kept.insert(t);
+      if ((k & 31) == 0) prog(0.6f * k / std::max<size_t>(1, native.size()), pd::tr("tuiles natives"));
+    }
+    std::map<TK, DepthTile> none;
+    std::set<Key> touched;
+    if (!buildPyramid(d.id, d.level, kept, none, false, touched, err,
+                      [&](float f) { prog(0.6f + 0.4f * f, pd::tr("pyramide")); }, cancel))
+      return false;
+    keys.insert(touched.begin(), touched.end());
+    if (count) { d.count = count; d.zmin = zlo / 1000.f; d.zmax = zhi / 1000.f; }
+    if (!upsertSource(d, err)) return false;
+  }
+  if (!remergeSet(keys, prio, err,
+                  [&](float f, const std::string& m) { if (progress) progress(0.85f + 0.15f * f, m); },
+                  cancel))
+    return false;
+  return commitAll(err);
+}
+
+// Ajoute `delta(lon, lat)` (m, arrondi au mm) à chaque pixel de la tuile
+template <class F> static void ShiftTile(int z, int x, int y, DepthTile& t, F delta) {
+  double lonW, lonE, latS, latN;
+  TileBounds(z, x, y, lonW, lonE, latS, latN);
+  const double dl = (lonE - lonW) / 256.0;
+  for (int j = 0; j < 256; ++j) {
+    double lo, la;
+    PixelToLonLat(z, x * 256.0 + 0.5, y * 256.0 + j + 0.5, lo, la);
+    for (int i = 0; i < 256; ++i) {
+      int32_t& v = t.v[j * 256 + i];
+      if (v == DepthTile::kEmpty) continue;
+      const double d = delta(lonW + (i + 0.5) * dl, la);
+      if (std::isnan(d)) continue;
+      v = (int32_t)std::max<int64_t>(-DepthTile::kMaxAbs,
+                                     std::min<int64_t>(DepthTile::kMaxAbs, v + std::llround(d * 1000.0)));
+    }
+  }
+}
+
+bool BathyDb::migrate(const std::string& backupDir, DbPriority prio, std::string& err,
+                      const DbProgress& progress, const std::atomic<bool>* cancel) {
+  std::vector<int64_t> ids;
+  for (const DbSource& d : sources_)
+    if (d.datum == (int)Datum::Legacy) ids.push_back(d.id);
+  if (ids.empty()) return true;
+  if (!flushWrites(err)) return false;
+  // 1) copie de sauvegarde des fichiers de la base (journal vidé d'abord)
+  if (!backupDir.empty()) {
+    std::error_code ec;
+    fs::create_directories(fs::u8path(backupDir), ec);
+    std::vector<DbCell*> cells = allCells(err);
+    size_t n = 0;
+    for (DbCell* c : cells) {
+      if (cancel && *cancel) { err = "Annulé"; return false; }
+      if (progress) progress(0.1f * n++ / std::max<size_t>(1, cells.size()), pd::tr("Copie de sauvegarde"));
+      sqlite3_wal_checkpoint_v2(c->db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);
+      const fs::path src = fs::u8path(c->path);
+      fs::copy_file(src, fs::u8path(backupDir) / src.filename(), fs::copy_options::skip_existing, ec);
+      if (ec) { err = pd::tr("Copie de sauvegarde impossible : ") + ec.message(); return false; }
+    }
+  }
+  // 2) surfaces du zéro des cartes sur l'emprise de chaque source
+  for (size_t n = 0; n < ids.size(); ++n) {
+    const DbSource* d = source(ids[n]);
+    if (progress) progress(0.1f + 0.1f * n / ids.size(), pd::tr("Surfaces de référence"));
+    if (!ensureDatum(Datum::Cd, d->lonMin - 0.01, d->lonMax + 0.01, d->latMin - 0.01, d->latMax + 0.01,
+                     err, cancel))
+      return false;
+  }
+  // 3) profondeurs au niveau moyen : + S_cd au pixel
+  DatumSampler S(datum_, Datum::Cd);
+  for (DbSource& d : sources_)
+    if (d.datum == (int)Datum::Legacy) d.datum = (int)Datum::Cd;  // inscrit avec la source
+  auto fn = [&](const DbSource&, int z, int x, int y, DepthTile& t, std::string&) {
+    ShiftTile(z, x, y, t, [&](double lo, double la) { return S.at(lo, la); });
+    return true;
+  };
+  const bool ok = transformSources(
+      ids, fn, prio, err,
+      [&](float f, const std::string& m) { if (progress) progress(0.2f + 0.8f * f, m); }, cancel,
+      pd::tr("Migration"));
+  if (!ok) {
+    for (DbSource& d : sources_)
+      if (std::find(ids.begin(), ids.end(), d.id) != ids.end()) d.datum = (int)Datum::Legacy;
+  }
+  return ok;
+}
+
+bool BathyDb::updateDatum(DbPriority prio, std::string& err, const DbProgress& progress,
+                          const std::atomic<bool>* cancel, int* changed) {
+  if (changed) *changed = 0;
+  if (!provider_) { err = pd::tr("Références verticales non configurées"); return false; }
+  // anciennes et nouvelles surfaces, pour chaque référence utilisée
+  struct Change { std::map<std::pair<int, int>, DatumStore::Tile> oldT, newT; };
+  Change ch[kDatumSurfaces];
+  for (int k = 0; k < kDatumSurfaces; ++k) {
+    const Datum K = (Datum)k;
+    if (progress) progress(0.25f * k / kDatumSurfaces, pd::tr("Surfaces de référence : ") + DatumName(K));
+    std::vector<std::pair<int, int>> want = datum_.tiles(K);
+    if (want.empty() || !provider_->available(K)) continue;
+    std::map<std::pair<int, int>, DatumStore::Tile> got;
+    if (!ComputeDatumTiles(*provider_, K, want, got, err, cancel)) return false;
+    for (auto& kv : got) {
+      DatumStore::Tile o;
+      if (!datum_.get(K, kv.first.first, kv.first.second, o)) continue;
+      bool diff = o.origin != kv.second.origin;
+      for (size_t q = 0; q < o.v.size() && !diff; ++q) {
+        const float a = o.v[q], b = kv.second.v[q];
+        diff = std::isnan(a) != std::isnan(b) || (!std::isnan(a) && std::fabs(a - b) > 0.0005f);
+      }
+      if (!diff) continue;
+      ch[k].oldT[kv.first] = std::move(o);
+      ch[k].newT[kv.first] = std::move(kv.second);
+    }
+  }
+  // sources touchées par une surface modifiée
+  std::vector<int64_t> ids;
+  for (const DbSource& d : sources_) {
+    if (!DatumHasSurface((Datum)d.datum)) continue;
+    const auto& c = ch[d.datum];
+    if (c.newT.empty()) continue;
+    for (const auto& t : DatumTilesFor(d.lonMin, d.lonMax, d.latMin, d.latMax))
+      if (c.newT.count(t)) { ids.push_back(d.id); break; }
+  }
+  auto sampleT = [](const std::map<std::pair<int, int>, DatumStore::Tile>& m, double lon, double lat) -> double {
+    int tx, ty;
+    DatumStore::TileOf(lon, lat, tx, ty);
+    auto it = m.find({tx, ty});
+    if (it == m.end()) return NAN;
+    double lonW, latS;
+    DatumStore::TileBox(tx, ty, lonW, latS);
+    const double fx = std::min<double>(kDatumTileNodes, std::max(0.0, (lon - lonW) * kDatumPerDeg));
+    const double fy = std::min<double>(kDatumTileNodes, std::max(0.0, (lat - latS) * kDatumPerDeg));
+    const int i = std::min(kDatumTileNodes - 1, (int)fx), j = std::min(kDatumTileNodes - 1, (int)fy);
+    const double ax = fx - i, ay = fy - j;
+    double s = 0, w = 0;
+    for (int dj = 0; dj <= 1; ++dj)
+      for (int di = 0; di <= 1; ++di) {
+        const float v = it->second.v[(size_t)(j + dj) * kDatumTileN + i + di];
+        if (std::isnan(v)) continue;
+        const double ww = (di ? ax : 1 - ax) * (dj ? ay : 1 - ay);
+        s += ww * v; w += ww;
+      }
+    return w > 1e-9 ? s / w : NAN;
+  };
+  if (!ids.empty()) {
+    auto fn = [&](const DbSource& d, int z, int x, int y, DepthTile& t, std::string&) {
+      const Change& c = ch[d.datum];
+      ShiftTile(z, x, y, t, [&](double lo, double la) {
+        if (lo >= 180.0) lo -= 360.0;
+        const double a = sampleT(c.oldT, lo, la), b = sampleT(c.newT, lo, la);
+        return (std::isnan(a) || std::isnan(b)) ? 0.0 : b - a;
+      });
+      return true;
+    };
+    if (!transformSources(ids, fn, prio, err,
+                          [&](float f, const std::string& m) { if (progress) progress(0.25f + 0.7f * f, m); },
+                          cancel, pd::tr("Mise à jour")))
+      return false;
+  }
+  // nouvelles surfaces rangées une fois les sources corrigées
+  if (!datum_.begin(err)) return false;
+  for (int k = 0; k < kDatumSurfaces; ++k)
+    for (auto& kv : ch[k].newT)
+      if (!datum_.put((Datum)k, kv.first.first, kv.first.second, kv.second, err)) { datum_.rollback(); return false; }
+  if (!datum_.commit(err)) return false;
+  if (changed) *changed = (int)ids.size();
+  return true;
 }
 
 bool BathyDb::removeSources(const std::vector<int64_t>& ids, DbPriority prio, std::string& err,
@@ -1659,8 +2143,9 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
                         size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                         std::string& err, const std::atomic<bool>* cancel,
                         std::vector<int64_t>* srcIds, std::vector<uint8_t>* interp,
-                        bool skipInterp) {
+                        bool skipInterp, Datum display, int* originMask) {
   out.clear();
+  if (originMask) *originMask = 0;
   if (srcIds) srcIds->clear();
   if (interp) interp->clear();
   const int zmax = maxMergedLevel(lonMin, lonMax, latMin, latMax);
@@ -1730,8 +2215,11 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   };
   // Niveau propre de chaque source (celui de ses sondes et de sa surface
   // interpolée) : au-dessus, ses pixels ne sont que des agrégats de pyramide.
-  std::unordered_map<int64_t, int> srcLevel;
-  for (const DbSource& m : sources_) srcLevel[m.id] = m.level;
+  std::unordered_map<int64_t, int> srcLevel, srcDatum;
+  for (const DbSource& m : sources_) { srcLevel[m.id] = m.level; srcDatum[m.id] = m.datum; }
+  // Référence d'affichage : profondeur = valeur rangée (sous le NM) − S
+  const bool shift = DatumHasSurface(display);
+  DatumSampler dS(datum_, display);
   // Valeur d'un pixel : celle du niveau de la vue ; sinon (tuile absente ou
   // pixel vide) celle d'une source plus grossière, à son propre niveau
   // seulement. On ne remonte jamais aux agrégats d'une source plus fine : la
@@ -1767,6 +2255,17 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
       if (hiddenAt(lon, lat)) continue;  // fichier .pdb masqué
       if (!pixel(gxs[i], gys[j], v, src, ip)) continue;
       if (ip && skipInterp) continue;    // zones interpolées masquées
+      if (shift) {
+        auto it = srcDatum.find(src);
+        const int sd = it == srcDatum.end() ? (int)Datum::Msl : it->second;
+        if (sd != (int)Datum::Legacy && sd != (int)Datum::Free) {
+          int o = 0;
+          const double S = dS.at(lon, lat, &o);
+          if (std::isnan(S)) o = kOrigNone;
+          else v = (int32_t)(v - std::llround(S * 1000.0));
+          if (originMask) *originMask |= o;
+        }
+      }
       out.add(lon, lat, v / 1000.f);
       if (srcIds) srcIds->push_back(src);
       if (interp) interp->push_back(ip ? 1 : 0);

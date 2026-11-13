@@ -37,7 +37,8 @@ grids are never recomputed.
 | **Survey database** | SQLite files split into geographic cells (0.25° by default, re-splittable); per-pixel shoalest sounding kept to the millimetre; overlapping surveys merged pixel by pixel by priority (best resolution then newest, shoalest, newest, or manual rank — no averaging); classes, multi-selection, clean-up by depth range; import can be stopped safely (SQLite transaction rolled back); already-imported files detected (import only new ones or replace) |
 | **Compression** | JPEG-LS (MED) predictor + zig-zag + deflate, unit detection; ~0.9 byte per sounding at 50 cm resolution; tile encoding spread over all CPU cores |
 | **Coordinates** | 300 built-in systems (WGS84, all UTM zones, Lambert-93, CC42–CC50, NTF Lambert, French overseas, many European/American/Oceanian systems, all NAD83 State Plane zones in m / US ft, polar, Web Mercator), EPSG code or PROJ string, `.prj` file; custom text formats (column choice, header, separators, date and time); projections coded in the plugin, checked against proj4js to < 1 cm |
-| **Vertical datum** | Conversion to chart datum (ZH) on import: IGN69 / IGN78C (Corsica) → ZH with Shom BathyElli v2.1 + IGN RAF20 / RAC23, ellipsoidal heights → ZH, or any reference surface + geoid / difference grid |
+| **Vertical datum** | Depths stored below **mean sea level** and shown at local chart datum (default, like the charts), LAT, mean sea level or the WGS84 ellipsoid. Sources imported at chart datum, MSL (GEBCO), LAT (EMODnet), ellipsoidal heights, IGN69 / IGN78C (Corsica, with Shom BathyElli v2.1 + IGN RAF20 / RAC23), any reference surface + geoid / difference grid, or not tied (lakes). Links: BathyElli v2.1 in France, FES2022 LAT and the CNES_CLS 2025 mean sea surface elsewhere; databases of earlier versions migrated with a backup copy |
+| **Coastline** | Interpolated surfaces stop at the coast: land polygons of OpenCPN's OSMSHP (OpenStreetMap) or GSHHG basemaps, read directly; measured soundings kept |
 | **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by `tools/pdtide_convert.py`, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
 | **Palette** | Continuous or stepped, editable table, presets, GMT `.cpt` import/export, automatic mode (N rounded thresholds over all data or the current view, optional fixed min/max), safety depth overlay |
 | **Grid or point cloud** | Each survey is analysed at import: regular grids (even projected with rounding noise, or written in degrees) keep their cell; point clouds (sounding lines, scattered or chart soundings, multibeam, lidar) are **interpolated** by triangulation (TIN) up to a maximum distance worked out from the survey. Measured cells always win; interpolated areas can be hidden or lightened. Survey type in simple words (single-beam, multibeam, lidar, chart soundings, lead line) |
@@ -101,11 +102,14 @@ depths below chart datum) to try the rendering without importing anything:
 
 - **FES2022** tide atlas (AVISO): to be downloaded and converted with
   `tools/pdtide_convert.py` (Python + netCDF4).
-- **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN): needed only for the
-  French vertical datum conversions.
+- **MSS CNES_CLS 2025** mean sea surface (AVISO): to be downloaded and
+  converted with `tools/pdgrid_convert.py`; links mean sea level to the
+  ellipsoid outside France.
+- **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN): French vertical datum
+  conversions (chart datum and mean sea level in France).
 
-The plugin also works without them: OpenCPN tide stations, and data already
-referenced to chart datum.
+The plugin also works without them: OpenCPN tide stations, and data at chart
+datum shown as imported.
 **Where to get them and how to use them: [docs/external-data.md](docs/external-data.md).**
 
 ### Building from source
@@ -192,7 +196,8 @@ grilles de profondeur ne sont jamais recalculées.
 | Base de bathymétrie | Fichiers SQLite découpés en cellules géographiques (0,25° par défaut : `PD_N4815W00430.pdb` ; 1°, 0,5° ou 0,1° au choix, redécoupage possible ; anciennes bases en 1° lisibles), tuiles Web Mercator 256 × 256 (niveau natif d'après la résolution). Chaque pixel garde la plus faible sonde de la source (au mm) ; la surface fusionnée garde la valeur de la source prioritaire (pas de moyenne) : meilleure résolution puis plus récente (défaut), sonde la plus faible, plus récente, rang manuel. Classes, sélection multiple, nettoyage par bornes de profondeur, seules les tuiles touchées sont refusionnées. Import interruptible (transaction annulée pour le fichier en cours), fichiers déjà importés détectés (seulement les nouveaux, ou remplacement) |
 | Compression | Prédicteur JPEG-LS (MED) + zigzag + deflate, détection de l'unité ; ~0,9 octet par sonde pour un levé à 50 cm ; encodage réparti sur tous les cœurs |
 | Coordonnées | 300 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques dont toutes les zones NAD83 State Plane en m / pieds US, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin ; formats texte personnalisés (choix des colonnes, entête, séparateurs, date et heure). Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
-| Référence verticale | Conversion vers le ZH à l'import : IGN69 / IGN78C (Corse) → ZH par BathyElli v2.1 (Shom) + RAF20 / RAC23 (IGN), hauteurs ellipsoïdales → ZH, ou surface de référence + géoïde / grille d'écart au choix |
+| Référence verticale | Profondeurs rangées sous le **niveau moyen** et affichées au zéro des cartes local (par défaut, comme les cartes), au LAT, au niveau moyen ou à l'ellipsoïde WGS84. Sources importées au zéro des cartes, au niveau moyen (GEBCO), au LAT (EMODnet), en hauteurs ellipsoïdales, en IGN69 / IGN78C (Corse, par BathyElli v2.1 du Shom + RAF20 / RAC23 de l'IGN), par surface de référence + géoïde / grille d'écart, ou non rattachées (lacs). Liens : BathyElli v2.1 en France, LAT FES2022 et surface moyenne océanique CNES_CLS 2025 ailleurs ; bases des versions antérieures migrées avec copie de sauvegarde |
+| Trait de côte | Surfaces interpolées arrêtées à la côte : polygones de terre des fonds OSMSHP (OpenStreetMap) ou GSHHG d'OpenCPN, lus directement ; sondes mesurées gardées |
 | Marée | Stations de marée d'OpenCPN (hauteur unique, « maintenant » ou date choisie, curseur ±12 h), ou **FES2022 maillé** : atlas mondial converti (`tools/pdtide_convert.py`, 34 ondes), prédiction Schureman identique à pyfes (~1 cm), ondes mineures déduites ; Z0 = grille fournie, sinon BathyElli NM/ell − ZH/ell, sinon plus basse mer astronomique FES sur 19 ans. Profondeur affichée = sonde ZH + hauteur d'eau, pixel par pixel (shader), aussi pour les isobathes et les sondes |
 | Unités | Fichiers de levé importés en mètres ou en pieds ; la base est toujours en mètres. Sondes, isobathes, légende, seuils de la palette, zone dangereuse et hauteurs de marée suivent les unités d'OpenCPN (*Options › Affichage › Unités* : mètres ou pieds — les brasses sont affichées en pieds) |
 | Palette | Dégradé continu ou paliers ; seuils et couleurs éditables ; 5 préréglages ; import/export GMT `.cpt`. Mode automatique : N seuils (valeurs rondes ou répartis) entre le min et le max de toutes les données ou de la zone affichée, bornes min/max imposables |
@@ -275,11 +280,14 @@ importer :
 
 - Atlas de marée **FES2022** (AVISO) : à télécharger puis convertir avec
   `tools/pdtide_convert.py` (Python + netCDF4).
-- **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN) : utiles seulement pour
-  les conversions de référence verticale en France.
+- Surface moyenne océanique **MSS CNES_CLS 2025** (AVISO) : à télécharger
+  puis convertir avec `tools/pdgrid_convert.py` ; relie le niveau moyen à
+  l'ellipsoïde hors de France.
+- **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN) : conversions de
+  référence verticale en France (zéro hydrographique et niveau moyen).
 
-Le plugin fonctionne sans elles : stations de marée d'OpenCPN, et données déjà
-au zéro hydrographique.
+Le plugin fonctionne sans elles : stations de marée d'OpenCPN, et données au
+zéro des cartes affichées telles qu'importées.
 **Où les récupérer et comment les utiliser : [docs/external-data.md](docs/external-data.md#français).**
 
 ### Compilation

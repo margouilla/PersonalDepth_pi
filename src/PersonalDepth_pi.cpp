@@ -40,6 +40,7 @@
 #include "core/WebMerc.h"
 #include "core/SurveyShape.h"
 #include "core/Triangulate.h"
+#include "core/GeoGrid.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -456,6 +457,7 @@ wxString PersonalDepth_pi::DefaultReferenceDir() {
 void PersonalDepth_pi::TideChanged() {
   UpdateTide(true);
   SaveConfig();
+  if (m_dlg) m_dlg->RefreshDatum();  // avec la marée : zéro des cartes + hauteur d'eau
 }
 
 // Prépare en tâche de fond la marée maillée de la zone des couches : lecture
@@ -511,7 +513,8 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
     s.tide = f;
   };
   auto compute = [&]() -> wxString {
-    if (s.tideMode == 0) return U8("Profondeurs au zéro hydrographique (sans marée)");
+    if (s.tideMode == 0)
+      return U8("Profondeurs : ") + W8(DatumName(DisplayDatumOf(s.dispDatum)).c_str()) + U8(" (sans marée)");
     double la0 = 1e9, la1 = -1e9, lo0 = 1e9, lo1 = -1e9;
     for (auto& l : m_layers)
       if (l->visible && l->state() == BathyLayer::Ready) {
@@ -754,7 +757,8 @@ void PersonalDepth_pi::UpdateCursorText() {
     const float v = !std::isnan(sz) ? sz : gz;
     const float dk = m_set.depthK;
     const wxString du = m_set.depthUnit;
-    wxString base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") + wxString::Format("%.2f %s", v * dk, du);
+    wxString base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") + wxString::Format("%.2f %s ", v * dk, du) +
+                    DatumShort();
     if (m_set.tideOk && m_set.tide) {  // profondeur au ZH puis profondeur du moment
       const float th = m_set.tide->at(m_curLon, m_curLat);
       base = U8(!std::isnan(sz) ? "Sonde " : "Grille ") +
@@ -812,7 +816,11 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("CrsSouth", m_set.crsSouth);
   c->Write("CrsCustom", W8(m_set.crsCustom.c_str()));
   c->Write("ReadPrj", m_set.readPrj);
-  c->Write("VrefChoice", m_set.vrefMode);
+  c->Write("VrefChoice2", m_set.vrefMode);  // (« VrefChoice » : ancienne numérotation)
+  c->Write("DisplayDatum", m_set.dispDatum);
+  c->Write("MssGrid", W8(m_set.mssGrid.c_str()));
+  c->Write("LandMask", W8(m_set.landMask.c_str()));
+  c->Write("LandMaskOn", m_set.landMaskOn);
   c->Write("ImportOrder", m_set.importOrder);
   c->Write("ImportSign", m_set.importSign);
   c->Write("ImportOffset", (double)m_set.importOffset);
@@ -914,7 +922,16 @@ void PersonalDepth_pi::LoadConfig() {
   c->Read("CrsSouth", &m_set.crsSouth, m_set.crsSouth);
   if (c->Read("CrsCustom", &ws)) m_set.crsCustom = ws.ToUTF8().data();
   c->Read("ReadPrj", &m_set.readPrj, m_set.readPrj);
-  c->Read("VrefChoice", &m_set.vrefMode, m_set.vrefMode);
+  {  // référence verticale de l'import : nouvelle numérotation (niveau moyen, LAT…)
+    int old = 0;
+    if (!c->Read("VrefChoice2", &m_set.vrefMode) && c->Read("VrefChoice", &old)) m_set.vrefMode = OldVrefMode(old);
+    m_set.vrefMode = std::max(0, std::min(kVrefModes - 1, m_set.vrefMode));
+    c->Read("DisplayDatum", &m_set.dispDatum, m_set.dispDatum);
+    m_set.dispDatum = std::max(0, std::min(3, m_set.dispDatum));
+    if (c->Read("MssGrid", &ws)) m_set.mssGrid = ws.ToUTF8().data();
+    if (c->Read("LandMask", &ws)) m_set.landMask = ws.ToUTF8().data();
+    c->Read("LandMaskOn", &m_set.landMaskOn, m_set.landMaskOn);
+  }
   c->Read("ImportOrder", &m_set.importOrder, m_set.importOrder);
   c->Read("ImportSign", &m_set.importSign, m_set.importSign);
   {
@@ -1023,6 +1040,10 @@ void PersonalDepth_pi::DbOpen() {
   ++m_dbEpoch;
   // base antérieure au filtre des valeurs de remplissage : profondeurs
   // min/max des sources recalculées en tâche de fond (une seule fois)
+  if (opened && db.needsMigration() && !m_migrationAsked) {
+    m_migrationAsked = true;
+    m_events->CallAfter([this]() { DbMigrate(true); });
+  }
   if (opened && db.needsRepair())
     StartDbJob(U8("Mise à jour des statistiques des sources").ToStdString(wxConvUTF8),
                [](BathyDb& b, std::string& e, const DbProgress&) { return b.repairStats(e); });
@@ -1042,8 +1063,12 @@ void PersonalDepth_pi::StartDbJob(
   m_dbCancel = false;
   m_dbBusy = true;
   const std::string folder = m_set.dbFolder;
-  m_dbThread = std::thread([this, folder, job]() {
+  const DatumConfig dcfg = DatumCfg();
+  const Datum vk = ViewDatum();
+  m_dbThread = std::thread([this, folder, job, dcfg, vk]() {
     BathyDb db;
+    DatumProvider prov(dcfg);  // surfaces de référence calculées au besoin
+    db.setDatumProvider(&prov);
     std::string err;
     DbProgress prog = [this](float f, const std::string& step) {
       m_dbProgress = f;
@@ -1053,6 +1078,10 @@ void PersonalDepth_pi::StartDbJob(
     bool ok = db.open(folder, err) && job(db, err, prog);
     if (!ok && err.empty()) err = pd::tr("échec");
     std::string e2;
+    // référence d'affichage LAT / ellipsoïde : surfaces des nouvelles sources
+    if (ok && (vk == Datum::Lat || vk == Datum::Ell) && prov.available(vk) && !db.needsMigration())
+      db.ensureDatumForSources(vk, e2, prog, &m_dbCancel);
+    e2.clear();
     db.reloadSources(e2);
     {
       std::lock_guard<std::mutex> lk(m_dbMx);
@@ -1075,9 +1104,17 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                                 const std::vector<std::vector<int64_t>>& replace) {
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
+  const std::string landFile = LandMaskFile();
   StartDbJob(JobLabel("Import (%d fichier(s))", files.size()),
-             [files, prio, cancel, group, replace](BathyDb& db, std::string& err, const DbProgress& prog) {
+             [files, prio, cancel, group, replace, landFile](BathyDb& db, std::string& err, const DbProgress& prog) {
                std::string errors;
+               LandMask land;  // pas de surface interpolée sur la terre
+               if (!landFile.empty()) {
+                 std::string le;
+                 prog(0.f, pd::tr("Trait de côte"));
+                 if (land.open(landFile, le)) db.setLandMask(&land);
+                 else errors += le + "\n";
+               }
                size_t done = 0;
                auto stopped = [&]() {
                  err = U8("arrêté — ").ToStdString(wxConvUTF8) + std::to_string(done) + "/" +
@@ -1147,7 +1184,9 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  if (m.date.empty()) m.date = GuessSurveyDate(p.path);
                  m.params = p.importPrefs;
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
-                 m.vref = p.vref.active() ? (p.vref.label.empty() ? "converti" : p.vref.label) : "ZH";
+                 m.datum = p.datum;
+                 m.vref = p.vref.active() ? (p.vref.label.empty() ? "converti" : p.vref.label)
+                                          : DatumName((Datum)p.datum);
                  m.group = !p.group.empty() ? p.group : (group.empty() ? GuessSourceGroup(p.path) : group);
                  std::string e;
                  const bool rep = i < replace.size() && !replace[i].empty();
@@ -1311,6 +1350,174 @@ void PersonalDepth_pi::DbSetPriority(int prio) {
              });
 }
 
+// ================================================== référence verticale
+float PersonalDepth_pi::SourceDisplayOffset(const DbSource& d) {
+  const Datum vk = ViewDatum();
+  if (d.datum == (int)Datum::Legacy || d.datum == (int)Datum::Free || !DatumHasSurface(vk)) return 0.f;
+  if (m_srcOffsetEpoch != m_dbEpoch || m_srcOffsetDatum != (int)vk) {
+    m_srcOffset.clear();
+    m_srcOffsetEpoch = m_dbEpoch;
+    m_srcOffsetDatum = (int)vk;
+    DatumStore st;
+    std::string e;
+    if (!m_set.dbFolder.empty() && st.open(m_set.dbFolder, e))
+      for (const auto& s : m_dbSources) {
+        const double v = st.at(vk, 0.5 * (s.lonMin + s.lonMax), 0.5 * (s.latMin + s.latMax));
+        m_srcOffset[s.id] = std::isnan(v) ? 0.f : (float)v;
+      }
+  }
+  auto it = m_srcOffset.find(d.id);
+  return it == m_srcOffset.end() ? 0.f : it->second;
+}
+
+DatumConfig PersonalDepth_pi::DatumCfg() const {
+  DatumConfig c;
+  const wxString dir = W8(m_set.vrefFranceDir.c_str());
+  if (!dir.empty() && wxDirExists(dir)) {  // BathyElli v2.1 : NM/ell et ZH/ell
+    wxArrayString nm, zh;
+    wxDir::GetAllFiles(dir, &nm, "*NM*.glhi");
+    wxDir::GetAllFiles(dir, &zh, "*ZH*.glhi");
+    for (auto& f : nm) c.nmFiles.push_back(f.ToUTF8().data());
+    for (auto& f : zh) c.zhFiles.push_back(f.ToUTF8().data());
+  }
+  if (!m_set.tideAtlas.empty() && wxFileExists(W8(m_set.tideAtlas.c_str()))) c.fesAtlas = m_set.tideAtlas;
+  if (!m_set.mssGrid.empty() && wxFileExists(W8(m_set.mssGrid.c_str()))) c.mssGrid = m_set.mssGrid;
+  return c;
+}
+
+bool PersonalDepth_pi::DbNeedsMigration() const {
+  for (const auto& d : m_dbSources)
+    if (d.datum == (int)Datum::Legacy) return true;
+  return false;
+}
+
+Datum PersonalDepth_pi::ViewDatum() const {
+  // avec la marée : hauteur d'eau = profondeur au zéro des cartes + marée
+  return m_set.tideMode != 0 ? Datum::Cd : DisplayDatumOf(m_set.dispDatum);
+}
+
+wxString PersonalDepth_pi::DatumShort() const {
+  switch (ViewDatum()) {
+    case Datum::Lat: return "LAT";
+    case Datum::Msl: return U8("NM");
+    case Datum::Ell: return U8("ell.");
+    default: return U8("ZH");
+  }
+}
+
+wxString PersonalDepth_pi::DatumInfo() const {
+  if (DbNeedsMigration())
+    return U8("Base d'une version antérieure : profondeurs au zéro des cartes, à migrer vers le "
+              "niveau moyen (bouton « Migrer la base… »).");
+  const Datum vk = ViewDatum();
+  wxString t = U8("Profondeurs affichées : ") + W8(DatumName(vk).c_str());
+  if (DatumHasSurface(vk) && m_datumOrigin) {
+    const DatumConfig c = DatumCfg();
+    std::string model;
+    if (vk == Datum::Ell && !c.mssGrid.empty()) {
+      GeoGridFile g;
+      std::string e;
+      if (g.open(c.mssGrid, e)) model = g.model();
+    }
+    t += " (" + W8(DatumOriginText(vk, m_datumOrigin, model).c_str()) + ")";
+  }
+  if (m_set.tideMode != 0) t += U8(", plus la marée");
+  const DatumConfig c = DatumCfg();
+  auto yes = [](bool b) { return b ? U8("oui") : U8("non"); };
+  t += "\n" + U8("Références : BathyElli ") + yes(!c.nmFiles.empty() && !c.zhFiles.empty()) +
+       U8(", FES2022 ") + yes(!c.fesAtlas.empty()) + U8(", MSS ") + yes(!c.mssGrid.empty());
+  return t;
+}
+
+void PersonalDepth_pi::DatumChanged() {
+  SaveConfig();
+  ++m_dbEpoch;
+  if (m_renderer) m_renderer->Invalidate();
+  const Datum vk = ViewDatum();
+  // LAT / ellipsoïde : surfaces calculées en tâche de fond sur l'emprise des sources
+  if ((vk == Datum::Lat || vk == Datum::Ell) && !m_dbSources.empty() && !DbNeedsMigration()) {
+    if (!DatumCfg().fesAtlas.empty() || vk == Datum::Ell)
+      StartDbJob(U8("Surfaces de référence : ").ToStdString(wxConvUTF8) + DatumName(vk),
+                 [vk](BathyDb& db, std::string& err, const DbProgress& prog) {
+                   std::string e;
+                   db.ensureDatumForSources(vk, e, prog);  // hors couverture : non décalées
+                   (void)err;
+                   return true;
+                 });
+  }
+  if (m_dlg) m_dlg->RefreshDb();
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void PersonalDepth_pi::DbMigrate(bool ask) {
+  if (!DbNeedsMigration() || m_dbBusy) return;
+  wxFileName bak(W8(m_set.dbFolder.c_str()), "");
+  bak.AppendDir("backup_before_MSL");
+  wxString dir = bak.GetPath();
+  for (int k = 2; wxDirExists(dir) && k < 100; ++k) dir = bak.GetPath() + wxString::Format("_%d", k);
+  long long bytes = 0;
+  for (const auto& c : m_dbCells) bytes += c.bytes;
+  if (ask) {
+    const wxString msg = wxString::Format(
+        U8("Cette base a été créée par une version antérieure de PersonalDepth : ses profondeurs sont "
+           "au zéro des cartes.\n\nLes profondeurs sont désormais rangées sous le niveau moyen, pour "
+           "relier toutes les références (zéro des cartes, LAT, ellipsoïde) et afficher chaque source "
+           "dans la référence choisie. L'affichage au zéro des cartes reste identique.\n\nMigrer "
+           "maintenant ? Les fichiers de la base (%.0f Mo) sont d'abord copiés dans :\n%s\n\nSans "
+           "migration, la base reste affichée telle quelle, mais l'import est bloqué."),
+        bytes / 1e6, dir);
+    if (wxMessageBox(msg, "PersonalDepth", wxYES_NO | wxICON_QUESTION) != wxYES) return;
+  }
+  const std::string backup = dir.ToUTF8().data();
+  const DbPriority prio = (DbPriority)m_set.dbPriority;
+  const std::atomic<bool>* cancel = &m_dbCancel;
+  StartDbJob(U8("Migration vers le niveau moyen").ToStdString(wxConvUTF8),
+             [backup, prio, cancel](BathyDb& db, std::string& err, const DbProgress& prog) {
+               return db.migrate(backup, prio, err, prog, cancel);
+             });
+}
+
+std::string PersonalDepth_pi::LandMaskFile(std::string* name) const {
+  std::string file, nm;
+  if (!m_set.landMaskOn || !LandMask::Find(m_set.landMask, file, nm)) file.clear(), nm.clear();
+  if (name) *name = nm;
+  return file;
+}
+
+void PersonalDepth_pi::DbApplyLandMask() {
+  if (m_dbBusy || DbNeedsMigration() || m_dbSources.empty()) return;
+  const std::string landFile = LandMaskFile();
+  if (landFile.empty()) return;
+  std::vector<int64_t> ids;
+  for (const auto& d : m_dbSources) ids.push_back(d.id);
+  const DbPriority prio = (DbPriority)m_set.dbPriority;
+  const std::atomic<bool>* cancel = &m_dbCancel;
+  StartDbJob(U8("Trait de côte : interpolation retirée sur la terre").ToStdString(wxConvUTF8),
+             [ids, prio, cancel, landFile](BathyDb& db, std::string& err, const DbProgress& prog) {
+               LandMask land;
+               prog(0.f, pd::tr("Trait de côte"));
+               if (!land.open(landFile, err)) return false;
+               db.setLandMask(&land);
+               long long removed = 0;
+               if (!db.applyLandMask(ids, prio, err, prog, cancel, &removed)) return false;
+               prog(1.f, std::to_string(removed) + U8(" pixel(s) retiré(s)").ToStdString(wxConvUTF8));
+               return true;
+             });
+}
+
+void PersonalDepth_pi::DbUpdateDatum() {
+  if (m_dbBusy || DbNeedsMigration()) return;
+  const DbPriority prio = (DbPriority)m_set.dbPriority;
+  const std::atomic<bool>* cancel = &m_dbCancel;
+  StartDbJob(U8("Mise à jour des références verticales").ToStdString(wxConvUTF8),
+             [prio, cancel](BathyDb& db, std::string& err, const DbProgress& prog) {
+               int changed = 0;
+               if (!db.updateDatum(prio, err, prog, cancel, &changed)) return false;
+               prog(1.f, std::to_string(changed) + U8(" source(s) corrigée(s)").ToStdString(wxConvUTF8));
+               return true;
+             });
+}
+
 // Vue de la base : reconstruite en tâche de fond quand la carte sort de la
 // zone déjà préparée (marge de 50 %) ou quand le niveau de détail change
 void PersonalDepth_pi::UpdateDbView() {
@@ -1329,6 +1536,8 @@ void PersonalDepth_pi::UpdateDbView() {
     if (st == BathyLayer::Loading) return;
     const bool first = !m_dbView;
     m_dbView = st == BathyLayer::Ready ? m_dbViewNext : nullptr;
+    if (m_dbViewOriginNext) m_datumOrigin = m_dbViewOriginNext->load();
+    if (m_dlg) m_dlg->RefreshDatum();
     m_dbViewNext.reset();
     m_renderer->Invalidate();
     ++m_set.version;
@@ -1344,7 +1553,8 @@ void PersonalDepth_pi::UpdateDbView() {
   const double* v = m_vpBox;
   const bool inside = v[0] >= m_dbViewBox[0] && v[1] <= m_dbViewBox[1] && v[2] >= m_dbViewBox[2] &&
                       v[3] <= m_dbViewBox[3];
-  if (inside && target == m_dbViewTarget && m_dbViewEpoch == m_dbEpoch) return;
+  const Datum vk = ViewDatum();
+  if (inside && target == m_dbViewTarget && m_dbViewEpoch == m_dbEpoch && m_dbViewDatum == (int)vk) return;
   if (m_dbBusy) return;  // la base est en cours de modification
   const double w = v[1] - v[0], h = v[3] - v[2];
   const double box[4] = {v[0] - 0.5 * w, v[1] + 0.5 * w, v[2] - 0.5 * h, v[3] + 0.5 * h};
@@ -1357,19 +1567,24 @@ void PersonalDepth_pi::UpdateDbView() {
   const std::set<std::string> hidden = m_set.dbHidden;
   const double b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   const bool skipInterp = !m_set.interpShow;
-  p.custom = [folder, hidden, b0, b1, b2, b3, target, skipInterp](
+  auto origin = std::make_shared<std::atomic<int>>(0);
+  p.custom = [folder, hidden, b0, b1, b2, b3, target, skipInterp, vk, origin](
                  PointCloud& pc, double& dl, double& dt, std::vector<int64_t>& src,
                  std::vector<uint8_t>& interp, std::string& err) {
     BathyDb db;
-    int used = 0;
+    int used = 0, org = 0;
     if (!db.open(folder, err)) return false;
     db.setHiddenCells(hidden);
-    return db.buildView(b0, b1, b2, b3, target, 4000000, pc, dl, dt, used, err, nullptr, &src,
-                        &interp, skipInterp);
+    const bool ok = db.buildView(b0, b1, b2, b3, target, 4000000, pc, dl, dt, used, err, nullptr, &src,
+                                 &interp, skipInterp, vk, &org);
+    *origin = org;
+    return ok;
   };
   for (int k = 0; k < 4; ++k) m_dbViewBox[k] = box[k];
   m_dbViewTarget = target;
   m_dbViewEpoch = m_dbEpoch;
+  m_dbViewDatum = (int)vk;
+  m_dbViewOriginNext = origin;
   m_dbViewNext = std::make_shared<BathyLayer>(p);
   m_dbViewNext->startLoad();
 }
@@ -1627,7 +1842,11 @@ void PersonalDepth_pi::UpdateAutoPalette(bool force) {
         hi = std::max(hi, l->grid.zMax);
       }
     for (const auto& d : m_dbSources)
-      if (d.visible) { lo = std::min(lo, d.zmin); hi = std::max(hi, d.zmax); }
+      if (d.visible) {
+        const float off = SourceDisplayOffset(d);  // rangées sous le NM -> référence affichée
+        lo = std::min(lo, d.zmin - off);
+        hi = std::max(hi, d.zmax - off);
+      }
   }
   if (lo > hi) return;  // rien à afficher pour l'instant
   if (s.tideOk && s.tide) {  // profondeurs du moment
@@ -1716,7 +1935,7 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("crsSouth", s.crsSouth);
   kv("crsCustom", s.crsCustom);
   num("readPrj", s.readPrj);
-  num("vrefMode", s.vrefMode);
+  num("vref2", s.vrefMode);
   kv("vrefFranceDir", s.vrefFranceDir);
   kv("vrefZh", s.vrefZh);
   kv("vrefGeoid", s.vrefGeoid);
@@ -1774,7 +1993,8 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "crsSouth") s.crsSouth = d != 0;
     else if (k == "crsCustom") s.crsCustom = v;
     else if (k == "readPrj") s.readPrj = d != 0;
-    else if (k == "vrefMode") s.vrefMode = (int)d;
+    else if (k == "vrefMode") s.vrefMode = OldVrefMode((int)d);  // ancienne numérotation
+    else if (k == "vref2") s.vrefMode = std::max(0, std::min(kVrefModes - 1, (int)d));
     else if (k == "vrefFranceDir") s.vrefFranceDir = v;
     else if (k == "vrefZh") s.vrefZh = v;
     else if (k == "vrefGeoid") s.vrefGeoid = v;

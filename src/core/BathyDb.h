@@ -35,6 +35,8 @@
 #include <tuple>
 #include <vector>
 
+#include "Datum.h"
+#include "LandMask.h"
 #include "PointCloud.h"
 #include "TileCodec.h"
 
@@ -70,6 +72,10 @@ struct DbSource {
   std::string group;             // classe (Litto3D, PFE…)
   std::string params;            // réglages d'import (relecture avec d'autres paramètres)
   std::string info;              // analyse du levé à l'import (nature, espacement, D)
+  // Référence verticale d'origine (Datum) : les valeurs rangées sont sous le
+  // niveau moyen (profondeur_NM = profondeur_origine + S_origine), sauf
+  // Legacy (base antérieure, au zéro des cartes) et Free (non rattachée)
+  int datum = (int)Datum::Cd;
   // Import seulement (non enregistré) : distance maximale d'interpolation D (m)
   // entre les sondes d'un nuage, 0 = pas de surface interpolée ; en retour,
   // nombre de pixels interpolés au niveau natif
@@ -144,7 +150,7 @@ class BathyDb {
   // Rangs manuels (ordre de la liste) ; refusionne si la règle est « manuelle »
   bool setRanks(const std::vector<int64_t>& order, DbPriority prio, std::string& err,
                 const DbProgress& progress = nullptr);
-  // Retire les sondes hors de [zMin, zMax] (m, ZH positif vers le bas) et les
+  // Retire les sondes hors de [zMin, zMax] (m, zéro des cartes local, positif vers le bas) et les
   // valeurs de remplissage des sources, reconstruit leurs pyramides et refusionne
   bool cleanSources(const std::vector<int64_t>& ids, float zMin, float zMax, DbPriority prio,
                     std::string& err, const DbProgress& progress = nullptr,
@@ -152,7 +158,37 @@ class BathyDb {
   bool remergeAll(DbPriority prio, std::string& err, const DbProgress& progress = nullptr,
                   const std::atomic<bool>* cancel = nullptr);
 
-  // Lecture de la surface fusionnée
+  // ---- référence verticale (voir Datum.h)
+  // Calcul des surfaces manquantes (import, mise à jour, migration)
+  void setDatumProvider(DatumProvider* p) { provider_ = p; }
+  DatumStore& datumStore() { return datum_; }
+  // Sources d'une base antérieure (profondeurs au zéro des cartes) à migrer
+  bool needsMigration() const;
+  // Surfaces k sur l'emprise : calcule celles qui manquent (fournisseur requis)
+  bool ensureDatum(Datum k, double lonMin, double lonMax, double latMin, double latMax,
+                   std::string& err, const std::atomic<bool>* cancel = nullptr);
+  // Surfaces k sur l'emprise de toutes les sources (référence d'affichage)
+  bool ensureDatumForSources(Datum k, std::string& err, const DbProgress& progress = nullptr,
+                             const std::atomic<bool>* cancel = nullptr);
+  // Migration d'une base antérieure : copie des fichiers dans `backupDir`
+  // (vide : pas de copie), surfaces du zéro des cartes, puis profondeurs
+  // ramenées au niveau moyen (pyramides et fusion reconstruites)
+  bool migrate(const std::string& backupDir, DbPriority prio, std::string& err,
+               const DbProgress& progress = nullptr, const std::atomic<bool>* cancel = nullptr);
+  // Surfaces recalculées avec les références actuelles (fournisseur) ; les
+  // sources concernées sont corrigées de l'écart ; `changed` : sources corrigées
+  bool updateDatum(DbPriority prio, std::string& err, const DbProgress& progress = nullptr,
+                   const std::atomic<bool>* cancel = nullptr, int* changed = nullptr);
+
+  // ---- masque terre (trait de côte) : pas de surface interpolée sur la terre
+  void setLandMask(LandMask* m) { land_ = m; }
+  // Retire des sources `ids` les pixels interpolés situés sur la terre
+  // (sondes mesurées gardées) ; `removed` : pixels retirés
+  bool applyLandMask(const std::vector<int64_t>& ids, DbPriority prio, std::string& err,
+                     const DbProgress& progress = nullptr, const std::atomic<bool>* cancel = nullptr,
+                     long long* removed = nullptr);
+
+  // Lecture de la surface fusionnée (valeurs rangées, sous le niveau moyen)
   bool readMerged(int z, int x, int y, DepthTile& t);
   int maxMergedLevel(double lonMin, double lonMax, double latMin, double latMax);
   // Cellules régulières lon/lat (centres) couvrant l'emprise, au niveau z
@@ -163,7 +199,7 @@ class BathyDb {
                  size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                  std::string& err, const std::atomic<bool>* cancel = nullptr,
                  std::vector<int64_t>* srcIds = nullptr, std::vector<uint8_t>* interp = nullptr,
-                 bool skipInterp = false);
+                 bool skipInterp = false, Datum display = Datum::Msl, int* originMask = nullptr);
   // Source retenue au point (fusion), 0 si aucune
   int64_t sourceAt(double lon, double lat, int z);
 
@@ -202,6 +238,12 @@ class BathyDb {
   bool importCloudImpl(const PointCloud* whole, const CloudFeed* feed, double midLat, DbSource meta,
                        bool gridded, DbPriority prio, std::string& err, const DbProgress& progress,
                        const std::atomic<bool>* cancel, int64_t* newId);
+  // Applique `fn` à chaque tuile native des sources `ids` (renvoie false :
+  // erreur), puis reconstruit pyramides, statistiques et fusion
+  using TileFn = std::function<bool(const DbSource&, int z, int x, int y, DepthTile&, std::string&)>;
+  bool transformSources(const std::vector<int64_t>& ids, const TileFn& fn, DbPriority prio,
+                        std::string& err, const DbProgress& progress,
+                        const std::atomic<bool>* cancel, const std::string& title);
   bool cleanSourcesImpl(const std::vector<int64_t>& ids, float zMin, float zMax, DbPriority prio,
                         std::string& err, const DbProgress& progress,
                         const std::atomic<bool>* cancel, long long* removed);
@@ -210,6 +252,22 @@ class BathyDb {
   std::set<std::pair<int, int>> hidden_;
   std::vector<DbSource> sources_;
   std::map<std::string, std::unique_ptr<DbCell>> cells_;
+  DatumStore datum_;
+  DatumProvider* provider_ = nullptr;
+  LandMask* land_ = nullptr;
+  // pixels interpolés de la tuile (z, x, y) situés sur la terre : retirés
+  bool maskLand(int z, int x, int y, DepthTile& t, long long& removed, std::string& err);
+};
+
+// Échantillonnage rapide d'une surface S_k (tuiles copiées localement)
+class DatumSampler {
+ public:
+  DatumSampler(DatumStore& st, Datum k) : st_(st), k_(k) {}
+  double at(double lon, double lat, int* origin = nullptr);  // m, NaN si absente
+ private:
+  DatumStore& st_;
+  Datum k_;
+  std::map<std::pair<int, int>, DatumStore::Tile> tiles_;
 };
 
 // Résolution d'un nuage (m) ; gridded = levé maillé détecté

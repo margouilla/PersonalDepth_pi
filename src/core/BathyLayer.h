@@ -41,6 +41,7 @@ struct LayerParams {
   float exaggeration = 3.f;   // ombrage
   int shadeSmooth = 0;        // adoucissement du relief ombré (cellules)
   VerticalRefParams vref;     // conversion d'une référence terrestre vers le ZH
+  int datum = 0;              // import en base : référence des profondeurs (pd::Datum)
   // Bornes d'import : profondeurs ZH finales (m, positives vers le bas, après
   // signe, décalage et référence verticale) ; les autres points sont ignorés
   bool depthBounds = false;

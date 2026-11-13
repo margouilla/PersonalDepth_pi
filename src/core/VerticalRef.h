@@ -54,6 +54,8 @@ bool LoadPointSurface(const std::string& path, std::vector<GeoPoint>& pts, std::
 // Surface(s) (points ou grilles) échantillonnée(s) aux nœuds de `target`
 // (TIN des points, puis prolongement ~20 km au-delà de leur enveloppe)
 bool SampleSurfaces(const std::vector<std::string>& files, Grid2D& target, std::string& err);
+// Prolonge les valeurs au-delà des nœuds connus (moyenne des voisins, `passes` fois)
+void ExtendGrid(Grid2D& g, int passes);
 
 struct VerticalRefParams {
   enum class Mode { None, Surfaces, DirectGrid } mode = Mode::None;

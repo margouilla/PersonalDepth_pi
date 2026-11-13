@@ -89,7 +89,7 @@ add_library(pd_core STATIC
   src/core/PointCloud.cpp src/core/BathyGrid.cpp src/core/ColorRamp.cpp
   src/core/Soundings.cpp src/core/BathyLayer.cpp src/core/Contours.cpp
   src/core/Projection.cpp src/core/VerticalRef.cpp src/core/Triangulate.cpp
-  src/core/Inflate.cpp src/core/TideFES.cpp
+  src/core/Inflate.cpp src/core/TideFES.cpp src/core/GeoGrid.cpp src/core/Datum.cpp src/core/LandMask.cpp
   src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp
   src/core/WaterLevel.cpp src/core/SurveyShape.cpp)
 target_include_directories(pd_core PUBLIC src third_party)

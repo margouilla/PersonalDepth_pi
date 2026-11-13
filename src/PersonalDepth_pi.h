@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -50,6 +51,24 @@ class TideChartDialog;
 class BathyRenderer;
 
 // Réglages d'affichage : tout ceci est appliqué à chaud, sans recalcul des grilles
+// Référence verticale choisie à l'import (DisplaySettings::vrefMode)
+constexpr int kVrefModes = 8;
+inline pd::Datum VrefModeDatum(int m) {
+  static const pd::Datum d[kVrefModes] = {pd::Datum::Cd,  pd::Datum::Msl, pd::Datum::Lat, pd::Datum::Ell,
+                                          pd::Datum::Cd,  pd::Datum::Cd,  pd::Datum::Cd,  pd::Datum::Free};
+  return m >= 0 && m < kVrefModes ? d[m] : pd::Datum::Cd;
+}
+// ancienne numérotation (0 ZH, 1 IGN69, 2 ellipsoïde, 3 surfaces, 4 grille d'écart)
+inline int OldVrefMode(int old) {
+  static const int m[5] = {0, 4, 3, 5, 6};
+  return old >= 0 && old < 5 ? m[old] : 0;
+}
+// Référence d'affichage (DisplaySettings::dispDatum)
+inline pd::Datum DisplayDatumOf(int d) {
+  static const pd::Datum k[4] = {pd::Datum::Cd, pd::Datum::Lat, pd::Datum::Msl, pd::Datum::Ell};
+  return d >= 0 && d < 4 ? k[d] : pd::Datum::Cd;
+}
+
 struct DisplaySettings {
   pd::ColorRamp ramp = pd::ColorRamp::Preset("TimeZero PBG (bleus)");
   int opacity = 85;           // %
@@ -88,7 +107,9 @@ struct DisplaySettings {
   std::string crsCustom;
   bool readPrj = true;
   // Référence verticale proposée à l'import
-  int vrefMode = 0;                 // 0 ZH, 1 IGN69/IGN78C France, 2 ellipsoïde, 3 surfaces, 4 grille d'écart
+  // 0 zéro des cartes, 1 niveau moyen, 2 LAT, 3 ellipsoïde, 4 IGN69/IGN78C France,
+  // 5 surfaces, 6 grille d'écart, 7 non rattachée (voir VrefModeDatum)
+  int vrefMode = 0;
   // Lecture des fichiers à l'import
   int importOrder = 0;              // LoadOptions::Order
   int importSign = 0;               // LoadOptions::ZSign
@@ -123,6 +144,13 @@ struct DisplaySettings {
   std::string tideAtlas;            // fichier .pdtide (tools/pdtide_convert.py)
   std::string tideZ0Files;          // grille(s) « NM au-dessus du ZH » (';'), facultatif
   bool tideUseBathyElli = true;     // Z0 = BathyElli NM/ell − ZH/ell (dossier France)
+  // Référence verticale de l'affichage (sans marée) : 0 zéro des cartes local,
+  // 1 LAT, 2 niveau moyen, 3 ellipsoïde WGS84 ; avec la marée : hauteur d'eau
+  int dispDatum = 0;
+  std::string mssGrid;              // surface moyenne océanique .pdgrid (MSS, hors France)
+  // Trait de côte (fonds OSMSHP / GSHHG d'OpenCPN) : pas d'interpolation sur la terre
+  std::string landMask;             // dossier (ou fichier .shp / poly-*-1.dat)
+  bool landMaskOn = true;
   // Palette automatique : seuils recalculés d'après les profondeurs présentes
   bool autoPalette = false;
   int autoSource = 0;               // 0 toutes les données (base + couches), 1 zone affichée
@@ -231,6 +259,20 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void DbSetGroup(const std::vector<int64_t>& ids, const std::string& group);
   void DbZoomTo(const std::vector<int64_t>& ids);
   void DbSetPriority(int prio);
+  // Référence verticale (voir core/Datum.h) : profondeurs rangées sous le
+  // niveau moyen, affichées au zéro des cartes local, au LAT, au NM ou à
+  // l'ellipsoïde (avec la marée : zéro des cartes + hauteur d'eau)
+  pd::DatumConfig DatumCfg() const;      // fichiers de référence configurés
+  bool DbNeedsMigration() const;
+  void DbMigrate(bool ask);              // base antérieure : migration (copie de sauvegarde)
+  void DbUpdateDatum();                  // surfaces recalculées, sources corrigées
+  void DatumChanged();                   // référence d'affichage ou fichier MSS modifiés
+  pd::Datum ViewDatum() const;           // référence de la vue (marée : zéro des cartes)
+  wxString DatumInfo() const;            // résumé pour le panneau
+  wxString DatumShort() const;           // « ZH », « LAT », « NM », « ell » (curseur)
+  // Trait de côte : fichier utilisé (vide si aucun ou désactivé)
+  std::string LandMaskFile(std::string* name = nullptr) const;
+  void DbApplyLandMask();                // retire l'interpolation sur la terre (toutes les sources)
   // Isobathes peu profonde / de sécurité / profonde des cartes vectorielles
   // d'OpenCPN (Options › Cartes › Cartes vectorielles), en mètres
   void EncContours(float& shallow, float& safety, float& deep);
@@ -329,6 +371,16 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   std::mutex m_dbMx;
   std::string m_dbTitle, m_dbStep, m_dbErr, m_dbLast;
   unsigned m_dbEpoch = 1, m_dbViewEpoch = 0;
+  int m_dbViewDatum = -9;                          // référence de la vue demandée
+  std::shared_ptr<std::atomic<int>> m_dbViewOriginNext;  // origine des surfaces (calcul en cours)
+  int m_datumOrigin = 0;                           // … de la vue affichée
+  bool m_migrationAsked = false;
+  // écart de la référence d'affichage au centre de chaque source (palette
+  // automatique sur toutes les données : profondeurs rangées sous le NM)
+  std::map<int64_t, float> m_srcOffset;
+  unsigned m_srcOffsetEpoch = 0;
+  int m_srcOffsetDatum = -9;
+  float SourceDisplayOffset(const pd::DbSource& d);
   // Vue de la base : couche calculée pour la zone affichée
   pd::LayerPtr m_dbView, m_dbViewNext;
   double m_dbViewBox[4] = {0, 0, 0, 0};

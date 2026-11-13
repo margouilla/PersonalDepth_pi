@@ -45,6 +45,9 @@
 #include "../src/core/Soundings.h"
 #include "../src/core/WaterLevel.h"
 #include "../src/core/SurveyShape.h"
+#include "../src/core/GeoGrid.h"
+#include "../src/core/LandMask.h"
+#include <cstring>
 #include "../src/core/Projection.h"
 
 using namespace pd;
@@ -1494,6 +1497,321 @@ int main(int argc, char** argv) {
     CHECK(bad == 0 && done > iters / 2);
     std::printf("Triangulation : %d grilles aléatoires, %d vérifiées (Delaunay exact), cas réels : OK\n",
                 done, checked);
+  }
+  {  // Grille .pdgrid (surface de référence verticale) : écriture minimale
+     // (deflate « stocké »), lecture par tuiles, échantillonnage, zone
+    const int T = 32, nx = 40, ny = 35, ntx = 2, nty = 2;  // 1° : lon 0..39, lat 10..44
+    auto val = [](int i, int j) { return 100000 + 1000 * i - 700 * j + (i * j % 7) * 3; };  // mm
+    auto zlibStored = [](const std::vector<uint8_t>& d) {
+      std::vector<uint8_t> o = {0x78, 0x01};
+      size_t p = 0;
+      do {
+        const size_t n = std::min<size_t>(65535, d.size() - p);
+        o.push_back(p + n >= d.size() ? 1 : 0);
+        o.push_back(n & 255); o.push_back(n >> 8); o.push_back(~n & 255); o.push_back((~n >> 8) & 255);
+        o.insert(o.end(), d.begin() + p, d.begin() + p + n);
+        p += n;
+      } while (p < d.size());
+      uint32_t a = 1, b = 0;
+      for (uint8_t c : d) { a = (a + c) % 65521; b = (b + a) % 65521; }
+      const uint32_t ad = (b << 16) | a;
+      for (int k = 3; k >= 0; --k) o.push_back((ad >> (8 * k)) & 255);
+      return o;
+    };
+    std::vector<uint8_t> head(272, 0), index, data;
+    auto put = [](std::vector<uint8_t>& v, size_t at, const void* src, size_t n) {
+      std::memcpy(v.data() + at, src, n);
+    };
+    std::memcpy(head.data(), "PDGRID01", 8);
+    const uint32_t tt = T, flags = 0;
+    const int32_t dims[4] = {nx, ny, ntx, nty};
+    const double geo[5] = {0.0, 10.0, 1.0, 1.0, 0.001};
+    put(head, 8, &tt, 4); put(head, 12, dims, 16); put(head, 28, &flags, 4); put(head, 32, geo, 40);
+    std::memcpy(head.data() + 72, "MSS/WGS84", 9);
+    std::memcpy(head.data() + 104, "TEST", 4);
+    const long long base = 272 + 16LL * ntx * nty;
+    for (int tj = 0; tj < nty; ++tj)
+      for (int ti = 0; ti < ntx; ++ti) {
+        std::vector<uint8_t> raw, mask(T * T / 8, 0);
+        std::vector<int32_t> v(T * T);
+        bool partial = false;
+        for (int r = 0; r < T; ++r)
+          for (int q = 0; q < T; ++q) {
+            const int i = ti * T + q, j = tj * T + r;
+            const bool in = i < nx && j < ny && !(i == 5 && j == 5);  // un trou
+            if (in) mask[(r * T + q) >> 3] |= 1 << ((r * T + q) & 7); else partial = true;
+            v[r * T + q] = in ? val(i, j) : (q ? v[r * T + q - 1] : (r ? v[(r - 1) * T] : 0));
+          }
+        if (partial) raw = mask;
+        const bool big = (ti == 1 && tj == 1);  // tuile en int32 bruts
+        if (big) {
+          raw.resize(raw.size() + 4 * T * T);
+          std::memcpy(raw.data() + raw.size() - 4 * T * T, v.data(), 4 * T * T);
+        } else {
+          const size_t at = raw.size();
+          raw.resize(at + 4 + 2 * T * T);
+          std::memcpy(raw.data() + at, &v[0], 4);
+          for (int r = 0; r < T; ++r)
+            for (int q = 0; q < T; ++q) {
+              const int k = r * T + q;
+              const int d = q ? v[k] - v[k - 1] : (r ? v[k] - v[k - T] : 0);
+              raw[at + 4 + k] = (uint8_t)(d & 255);
+              raw[at + 4 + T * T + k] = (uint8_t)((d >> 8) & 255);
+            }
+        }
+        const std::vector<uint8_t> z = zlibStored(raw);
+        uint8_t e[16] = {0};
+        const uint64_t off = base + data.size();
+        const uint32_t sz = (uint32_t)z.size();
+        std::memcpy(e, &off, 8); std::memcpy(e + 8, &sz, 4);
+        e[12] = big ? (partial ? 4 : 3) : (partial ? 2 : 1);
+        index.insert(index.end(), e, e + 16);
+        data.insert(data.end(), z.begin(), z.end());
+      }
+    {
+      FILE* f = std::fopen(Tmp("pd_test.pdgrid").c_str(), "wb");
+      CHECK(f);
+      std::fwrite(head.data(), 1, head.size(), f);
+      std::fwrite(index.data(), 1, index.size(), f);
+      std::fwrite(data.data(), 1, data.size(), f);
+      std::fclose(f);
+    }
+    GeoGridFile gf;
+    CHECK(gf.open(Tmp("pd_test.pdgrid"), err));
+    CHECK(gf.model() == "TEST" && gf.quantity() == "MSS/WGS84");
+    CHECK(std::fabs(gf.sample(3, 12) - val(3, 2) * 0.001) < 1e-9);
+    CHECK(std::fabs(gf.sample(35, 40) - val(35, 30) * 0.001) < 1e-9);  // tuile int32
+    const double mid = 0.25 * (val(3, 2) + val(4, 2) + val(3, 3) + val(4, 3)) * 0.001;
+    CHECK(std::fabs(gf.sample(3.5, 12.5) - mid) < 1e-9);
+    CHECK(std::isnan(gf.sample(-1.5, 12)) && std::isnan(gf.sample(3, 50)));
+    // trou : poids renormalisés sur les 3 nœuds présents
+    const double w3 = (val(4, 5) + val(5, 6) + val(4, 6)) * 0.001 / 3.0;
+    CHECK(std::fabs(gf.sample(4.5, 15.5) - w3) < 1e-9);
+    Grid2D g2;
+    CHECK(gf.loadRegion(30.2, 33.7, 38.1, 40.4, g2, err));
+    CHECK(g2.nx == 7 && g2.ny == 6 && g2.lonW == 29.0 && g2.latN == 42.0);
+    CHECK(std::fabs(g2.sample(31.25, 39.5) - gf.sample(31.25, 39.5)) < 1e-4);
+    if (const char* mss = std::getenv("PD_MSS")) {  // fichier réel (facultatif)
+      GeoGridFile m;
+      CHECK(m.open(mss, err));
+      const double b = m.sample(355.5, 48.36666666666666);
+      const double b2 = m.sample(-4.5, 48.36666666666666);
+      std::printf("MSS %s (%s) Brest : %.4f m\n", m.model().c_str(), m.period().c_str(), b);
+      CHECK(std::fabs(b - 51.5101827) < 0.0006 && std::fabs(b2 - b) < 1e-9);
+    }
+    std::printf("Grille .pdgrid : OK\n");
+  }
+  {  // Référence verticale commune : niveau moyen, surfaces, migration, mise à jour
+    const std::string folder = Tmp("pd_testdatum");
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder);
+    // surfaces « BathyElli » de synthèse (points lon lat valeur) : NM/ell et ZH/ell
+    auto nmF = [](double lo, double la) { return 51.0 + 0.5 * (lo + 4.5) + 0.2 * (la - 48.3); };
+    auto zhF = [](double lo, double la) { return 47.0 + 0.3 * (lo + 4.5) - 0.1 * (la - 48.3); };
+    auto writeSurf = [&](const std::string& f, double add, bool zh) {
+      FILE* o = std::fopen(f.c_str(), "w");
+      for (double la = 48.0; la <= 48.6 + 1e-9; la += 0.02)
+        for (double lo = -4.9; lo <= -4.1 + 1e-9; lo += 0.02)
+          std::fprintf(o, "%.4f %.4f %.4f\n", lo, la, (zh ? zhF(lo, la) : nmF(lo, la)) + add);
+      std::fclose(o);
+    };
+    const std::string nmFile = Tmp("pd_nm.xyz"), zhFile = Tmp("pd_zh.xyz"), zh2File = Tmp("pd_zh2.xyz");
+    writeSurf(nmFile, 0, false);
+    writeSurf(zhFile, 0, true);
+    writeSurf(zh2File, 0.2, true);  // ZH relevé de 20 cm (nouvelle version des surfaces)
+    auto grid = [](double lo0, double lo1, double la0, double la1, double stepM, float z) {
+      PointCloud pc;
+      const double dla = stepM / 110540.0, dlo = stepM / (111320.0 * std::cos(48.3 * M_PI / 180));
+      for (double la = la0; la <= la1; la += dla)
+        for (double lo = lo0; lo <= lo1; lo += dlo) pc.add(lo, la, z);
+      pc.computeBounds();
+      return pc;
+    };
+    PointCloud A = grid(-4.52, -4.48, 48.30, 48.32, 5.0, 10.f);
+    bool gA = false;
+    DbSource ma;
+    ma.name = "A"; ma.date = "2010-06-01"; ma.res = EstimateResolution(A, gA);
+    int64_t ida = 0;
+    {  // base « ancienne » : profondeurs au zéro des cartes, colonne datum vide
+      BathyDb db;
+      CHECK(db.open(folder, err));
+      CHECK(db.importCloud(A, ma, gA, DbPriority::ResolutionDate, err, nullptr, nullptr, &ida));
+    }
+    for (const auto& e : std::filesystem::directory_iterator(folder)) {
+      if (e.path().extension() != ".pdb") continue;
+      sqlite3* sq = nullptr;
+      CHECK(sqlite3_open(e.path().string().c_str(), &sq) == SQLITE_OK);
+      sqlite3_exec(sq, "UPDATE sources SET datum=NULL", nullptr, nullptr, nullptr);
+      sqlite3_close(sq);
+    }
+    std::filesystem::remove(std::filesystem::path(folder) / DatumStore::FileName());
+    DatumConfig cfg;
+    cfg.nmFiles = {nmFile};
+    cfg.zhFiles = {zhFile};
+    DatumProvider prov(cfg);
+    const double plo = -4.50, pla = 48.31;
+    const double z0 = nmF(plo, pla) - zhF(plo, pla);  // NM au-dessus du ZH
+    PointCloud v;
+    double dl, dt;
+    int used, org = 0;
+    {
+      BathyDb db;
+      CHECK(db.open(folder, err) && db.needsMigration());
+      db.setDatumProvider(&prov);
+      CHECK(!db.importCloud(A, ma, gA, DbPriority::ResolutionDate, err));  // migration d'abord
+      // vue avant migration : valeurs d'origine, sans décalage
+      CHECK(db.buildView(-4.52, -4.48, 48.30, 48.32, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd) && v.zMin == 10.f && v.zMax == 10.f);
+      const std::string bak = Tmp("pd_testdatum_v1");
+      std::filesystem::remove_all(bak);
+      CHECK(db.migrate(bak, DbPriority::ResolutionDate, err));
+      CHECK(!db.needsMigration() && db.source(ida)->datum == (int)Datum::Cd);
+      CHECK(std::filesystem::exists(bak) && !std::filesystem::is_empty(bak));
+      // au niveau moyen : 10 + Z0 ; au zéro des cartes : 10 exactement
+      CHECK(db.buildView(plo - 0.002, plo + 0.002, pla - 0.002, pla + 0.002, 16, 20000000, v, dl, dt, used,
+                         err, nullptr, nullptr, nullptr, false, Datum::Msl));
+      std::printf("Référence verticale : Z0 %.3f m, vue NM %.3f..%.3f m\n", z0, v.zMin, v.zMax);
+      CHECK(std::fabs(v.zMin - (10 + z0)) < 0.02 && std::fabs(v.zMax - (10 + z0)) < 0.02);
+      CHECK(db.buildView(-4.52, -4.48, 48.30, 48.32, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd, &org));
+      CHECK(std::fabs(v.zMin - 10.f) < 0.0011 && std::fabs(v.zMax - 10.f) < 0.0011 && org == kOrigBathyElli);
+      // ellipsoïde : hauteur du fond = NM − profondeur_NM (surfaces calculées à la demande)
+      CHECK(db.ensureDatumForSources(Datum::Ell, err));
+      CHECK(db.buildView(plo - 0.002, plo + 0.002, pla - 0.002, pla + 0.002, 16, 20000000, v, dl, dt, used,
+                         err, nullptr, nullptr, nullptr, false, Datum::Ell));
+      CHECK(std::fabs(v.zMin - (10 + z0 - nmF(plo, pla))) < 0.03);
+      // source au niveau moyen (GEBCO…) : affichée au ZH = valeur − Z0
+      PointCloud G = grid(-4.46, -4.44, 48.30, 48.32, 5.0, 30.f);
+      DbSource mg;
+      mg.name = "G"; mg.res = 5; mg.datum = (int)Datum::Msl;
+      int64_t idg = 0;
+      CHECK(db.importCloud(G, mg, true, DbPriority::ResolutionDate, err, nullptr, nullptr, &idg));
+      CHECK(db.buildView(-4.452, -4.448, 48.308, 48.312, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd));
+      const double z0g = nmF(-4.45, 48.31) - zhF(-4.45, 48.31);
+      CHECK(std::fabs(v.zMin - (30 - z0g)) < 0.02);
+      // LAT sans atlas FES : refusé
+      DbSource ml;
+      ml.name = "L"; ml.res = 5; ml.datum = (int)Datum::Lat;
+      CHECK(!db.importCloud(G, ml, true, DbPriority::ResolutionDate, err) && err.find("FES") != std::string::npos);
+      // hauteurs ellipsoïdales (en France : BathyElli NM/ell) : profondeur_NM = z + NM
+      PointCloud E = grid(-4.43, -4.41, 48.30, 48.32, 5.0, -40.f);
+      DbSource me;
+      me.name = "E"; me.res = 5; me.datum = (int)Datum::Ell;
+      CHECK(db.importCloud(E, me, true, DbPriority::ResolutionDate, err));
+      CHECK(db.buildView(-4.422, -4.418, 48.308, 48.312, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Msl));
+      CHECK(std::fabs(v.zMin - (-40 + nmF(-4.42, 48.31))) < 0.02);
+      // non rattachée : jamais décalée
+      DbSource mf;
+      mf.name = "F"; mf.res = 5; mf.datum = (int)Datum::Free;
+      PointCloud F = grid(-4.40, -4.38, 48.30, 48.32, 5.0, 3.f);
+      CHECK(db.importCloud(F, mf, true, DbPriority::ResolutionDate, err));
+      CHECK(db.buildView(-4.392, -4.388, 48.308, 48.312, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd) && v.zMin == 3.f && v.zMax == 3.f);
+    }
+    {  // nouvelles surfaces (ZH relevé de 20 cm) : sources au ZH corrigées, affichage au ZH inchangé
+      DatumConfig cfg2 = cfg;
+      cfg2.zhFiles = {zh2File};
+      DatumProvider prov2(cfg2);
+      BathyDb db;
+      CHECK(db.open(folder, err));
+      db.setDatumProvider(&prov2);
+      int changed = 0;
+      CHECK(db.updateDatum(DbPriority::ResolutionDate, err, nullptr, nullptr, &changed));
+      CHECK(changed == 1);  // A (au ZH) ; G (NM), E (ellipsoïde), F : inchangées
+      CHECK(db.buildView(-4.52, -4.48, 48.30, 48.32, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd));
+      CHECK(std::fabs(v.zMin - 10.f) < 0.0011 && std::fabs(v.zMax - 10.f) < 0.0011);
+      CHECK(db.buildView(plo - 0.002, plo + 0.002, pla - 0.002, pla + 0.002, 16, 20000000, v, dl, dt, used,
+                         err, nullptr, nullptr, nullptr, false, Datum::Msl));
+      CHECK(std::fabs(v.zMin - (10 + z0 - 0.2)) < 0.02);
+      CHECK(db.updateDatum(DbPriority::ResolutionDate, err, nullptr, nullptr, &changed) && changed == 0);
+      // nettoyage : bornes au zéro des cartes local (10 m), pas au niveau moyen (~14 m)
+      long long removed = -1;
+      const bool cok = db.cleanSources({ida}, 9.5f, 10.5f, DbPriority::ResolutionDate, err, nullptr, nullptr, &removed);
+      CHECK(cok &&
+            removed == 0);
+      CHECK(db.cleanSources({ida}, 10.5f, 30.f, DbPriority::ResolutionDate, err, nullptr, nullptr, &removed) &&
+            removed > 0);
+    }
+    std::printf("Référence verticale (niveau moyen, migration, mise à jour) : OK\n");
+  }
+  {  // Masque terre : shapefile de polygones (format OSMSHP d'OpenCPN), île carrée
+    const std::string shp = Tmp("pd_land.shp"), shx = Tmp("pd_land.shx"), dbf = Tmp("pd_land.dbf");
+    // île : carré lon -4.505..-4.495, lat 48.305..48.315 (anneau extérieur horaire)
+    const double ring[5][2] = {{-4.505, 48.305}, {-4.505, 48.315}, {-4.495, 48.315}, {-4.495, 48.305}, {-4.505, 48.305}};
+    auto be32 = [](std::vector<uint8_t>& v, uint32_t x) { for (int k = 3; k >= 0; --k) v.push_back((x >> (8 * k)) & 255); };
+    auto le = [](std::vector<uint8_t>& v, const void* p, size_t n) { const uint8_t* b = (const uint8_t*)p; v.insert(v.end(), b, b + n); };
+    std::vector<uint8_t> rec;  // enregistrement : type 5, emprise, 1 partie, 5 points
+    const int32_t t5 = 5, np = 1, npt = 5, part0 = 0;
+    const double box[4] = {-4.505, 48.305, -4.495, 48.315};
+    le(rec, &t5, 4); le(rec, box, 32); le(rec, &np, 4); le(rec, &npt, 4); le(rec, &part0, 4);
+    for (auto& q : ring) le(rec, q, 16);
+    auto header = [&](std::vector<uint8_t>& h, uint32_t lenWords) {
+      be32(h, 9994); for (int k = 0; k < 5; ++k) be32(h, 0); be32(h, lenWords);
+      const int32_t ver = 1000; le(h, &ver, 4); le(h, &t5, 4); le(h, box, 32);
+      const double zm[4] = {0, 0, 0, 0}; le(h, zm, 32);
+    };
+    std::vector<uint8_t> S, X;
+    header(S, (uint32_t)(100 + 8 + rec.size()) / 2);
+    be32(S, 1); be32(S, (uint32_t)rec.size() / 2); S.insert(S.end(), rec.begin(), rec.end());
+    header(X, (100 + 8) / 2);
+    be32(X, 50); be32(X, (uint32_t)rec.size() / 2);
+    std::vector<uint8_t> D(32, 0);  // .dbf : xmin xmax ymin ymax (N 24)
+    D[0] = 3; const uint32_t one = 1; std::memcpy(&D[4], &one, 4);
+    const uint16_t hl = 32 + 4 * 32 + 1, rl = 1 + 4 * 24;
+    std::memcpy(&D[8], &hl, 2); std::memcpy(&D[10], &rl, 2);
+    const char* names[4] = {"xmin", "xmax", "ymin", "ymax"};
+    for (auto n : names) { std::vector<uint8_t> f(32, 0); std::memcpy(f.data(), n, 4); f[11] = 'N'; f[16] = 24; f[17] = 15; D.insert(D.end(), f.begin(), f.end()); }
+    D.push_back(0x0D);
+    char r[200];
+    std::snprintf(r, sizeof r, " %24.15f%24.15f%24.15f%24.15f", box[0], box[2], box[1], box[3]);
+    D.insert(D.end(), r, r + rl);
+    D.push_back(0x1A);
+    for (auto& fv : {std::make_pair(shp, &S), std::make_pair(shx, &X), std::make_pair(dbf, &D)}) {
+      FILE* f = std::fopen(fv.first.c_str(), "wb");
+      CHECK(f);
+      std::fwrite(fv.second->data(), 1, fv.second->size(), f);
+      std::fclose(f);
+    }
+    LandMask lm;
+    CHECK(lm.open(shp, err));
+    CHECK(lm.landAt(-4.50, 48.31) && !lm.landAt(-4.51, 48.31) && !lm.landAt(-4.50, 48.32));
+    // levé en lignes autour de l'île (sondes jusque sur l'île : interpolation à travers)
+    PointCloud L;
+    for (double la = 48.295; la <= 48.325; la += 0.0009)
+      for (double lo = -4.515; lo <= -4.485; lo += 0.00005) L.add(lo, la, 12.f);
+    L.computeBounds();
+    const std::string folder = Tmp("pd_testland");
+    std::filesystem::remove_all(folder);
+    BathyDb db;
+    CHECK(db.open(folder, err));
+    DbSource m;
+    m.name = "L"; m.res = 5; m.interpD = 150; m.interpMethod = 0;
+    // sans masque : île couverte ; puis masque appliqué à la source
+    int64_t id = 0;
+    CHECK(db.importCloud(L, m, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id));
+    PointCloud v;
+    double dl, dt;
+    int used;
+    auto at = [&](double lo, double la) {
+      return db.buildView(lo - 0.0003, lo + 0.0003, la - 0.0003, la + 0.0003, 17, 100000, v, dl, dt, used, err)
+                 ? v.size() : (size_t)0;
+    };
+    const size_t before = at(-4.50, 48.3105);  // entre deux lignes, sur l'île
+    db.setLandMask(&lm);
+    long long removed = 0;
+    CHECK(db.applyLandMask({id}, DbPriority::ResolutionDate, err, nullptr, nullptr, &removed));
+    const size_t after = at(-4.50, 48.3105);
+    std::printf("Masque terre : %zu cellules sur l'île avant, %zu après, %lld pixels retirés\n", before, after, removed);
+    CHECK(before > 0 && removed > 0 && after < before && at(-4.51, 48.3105) > 0);
+    // import avec le masque : île vide entre les lignes dès l'import
+    int64_t id2 = 0;
+    CHECK(db.removeSources({id}, DbPriority::ResolutionDate, err));
+    CHECK(db.importCloud(L, m, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id2));
+    CHECK(at(-4.50, 48.3105) == after);
+    std::printf("Masque terre (OSMSHP) : OK\n");
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;
