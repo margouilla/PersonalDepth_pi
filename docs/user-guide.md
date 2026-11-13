@@ -146,7 +146,7 @@ compare with the official chart.
 
 *Bathymetry database* › **Data management…** › **Import…**
 
-<!-- capture à venir : ![Import window](images/en/04-import.png) -->
+![Import window](images/en/04-import.png)
 
 The window always shows the files and the everyday settings; less frequent
 settings are in **collapsible sections** whose title sums up the current
@@ -167,6 +167,7 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Z values | Direction: *Automatic*, *Depths positive down*, or *Heights* (bottom negative, e.g. Litto3D); unit: metres or feet (the database always stores metres) |
 | Data type | *Automatic*, **grid** (regular step, already processed: never interpolated), *single-beam echosounder* (tracks, profiles), *dense cloud* (multibeam, lidar), *chart soundings*, *lead-line soundings*, *point cloud (other)*. Forces the result of the survey analysis and sets the maximum interpolation distance (see below) |
 | Interpolate between soundings | Point clouds only: surface computed between the soundings at import, with the method chosen next to it: *automatic method* (natural neighbour for a line survey, otherwise TIN), *TIN (linear)*, *natural neighbour (Sibson)* or *IDW (inverse distance)* (see below). *Max distance*: sets D by hand, in metres |
+| Fixed resolution | Horizontal step of the database for this survey (soundings and interpolated surface). Unticked: given by the survey analysis, usually the best choice. A resolution coarser than the sounding spacing merges several soundings per cell and gives a blocky look |
 
 **Collapsible sections**
 
@@ -175,7 +176,7 @@ separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 | Coordinates | Coordinate system of X, Y (catalogue, UTM zone, EPSG code or PROJ string), neighbouring `.prj` file taking priority (see below) |
 | Vertical reference | Reference of the Z values and transformation to chart datum (see below) |
 | Observed water levels | Corrects each time-stamped sounding with the water level of a gauge at its time (see below); opens by itself when the correction is on |
-| Advanced | *Offset* (constant added to the depths, in the Z unit); *NODATA* (values to ignore, e.g. `-9999 9999`, in addition to the grid header NODATA); *Z bounds* (keep only depths between Z1 and Z2, e.g. −200 to 200 m removes fill values); *Fixed resolution* (horizontal step of the database for this survey; unticked: given by the survey analysis); *Binary cache* (`.pdpc` next to the source for a faster re-import) |
+| Advanced | *Offset* (constant added to the depths, in the Z unit); *NODATA* (values to ignore, e.g. `-9999 9999`, in addition to the grid header NODATA); *Z bounds* (keep only depths between Z1 and Z2, e.g. −200 to 200 m removes fill values); *Binary cache* (`.pdpc` next to the source for a faster re-import) |
 
 At the bottom: *Fixed survey date* and *Class*.
 

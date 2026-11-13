@@ -173,7 +173,8 @@ void ImportDialog::FitToContent() {
 
 // Titre des sections repliables : nom et résumé du réglage (raccourci)
 static wxString PaneTitle(const wxString& name, const wxString& summary) {
-  wxString t = name + W8(" : ") + summary;
+  // espace avant les deux-points en français seulement
+  wxString t = name + (pd::Language() == pd::kFrench ? W8(" : ") : W8(": ")) + summary;
   if (t.length() > 90) t = t.Left(88) + W8("…");
   return t;
 }
@@ -215,7 +216,6 @@ void ImportDialog::UpdatePaneLabels() {
   if (m_nodataOn->GetValue()) adv.Add(W8("NODATA ") + m_nodata->GetValue());
   if (m_boundsOn->GetValue())
     adv.Add(wxString::Format(U8("bornes %.1f … %.1f "), m_boundMin->GetValue(), m_boundMax->GetValue()) + u);
-  if (m_resOn->GetValue()) adv.Add(wxString::Format(U8("résolution %.2f m"), m_res->GetValue()));
   if (m_cache->GetValue()) adv.Add(U8("cache .pdpc"));
   wxString advs = adv.empty() ? U8("aucune") : wxJoin(adv, ';', 0);
   advs.Replace(";", "; ");
@@ -351,7 +351,8 @@ static void DataTypeToPrefs(int idx, int& instrument, int& nature) {
   nature = nat[idx];
 }
 
-// Réglages courants : colonnes, sens et unité de Z, type de données, interpolation
+// Réglages courants : colonnes, sens et unité de Z, type de données, interpolation,
+// résolution
 wxSizer* ImportDialog::BuildMain(wxWindow* p) {
   const DisplaySettings& st = m_init;
   wxString orders[] = {U8("X Y Z (lon lat z / Est Nord z)"), U8("Y X Z (lat lon z / Nord Est z)"),
@@ -461,6 +462,28 @@ wxSizer* ImportDialog::BuildMain(wxWindow* p) {
     ir->Add(L("m"), 0, wxALIGN_CENTER_VERTICAL);
     g->Add(m_interp, 0, wxALIGN_CENTER_VERTICAL); g->Add(ir, 0, wxEXPAND);
   }
+  // pas horizontal de la base (avec l'interpolation : ensemble, ils donnent
+  // l'aspect de la surface ; vaut aussi pour les grilles)
+  // résolution de stockage (pas horizontal des tuiles) : estimée ou imposée
+  m_resOn = new wxCheckBox(p, wxID_ANY, U8("Résolution imposée"));
+  m_resOn->SetValue(st.importRes > 0);
+  m_res = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                               wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
+  m_res->SetDigits(2);
+  const wxString rt = U8("Pas horizontal de stockage des sondes et de la surface interpolée dans la "
+                         "base. Décoché : déduit de l'analyse du levé (pas de la grille, espacement "
+                         "des sondes le long des routes, ou pas fin de la surface interpolée d'un "
+                         "nuage). Dans chaque case, la sonde la plus faible est gardée. Une "
+                         "résolution plus grossière que l'espacement des sondes regroupe plusieurs "
+                         "sondes par case et donne un aspect en blocs.");
+  m_resOn->SetToolTip(rt);
+  m_res->SetToolTip(rt);
+  auto* resr = new wxBoxSizer(wxHORIZONTAL);  // même ligne : valeur et rappel
+  resr->Add(m_res, 0, wxRIGHT, 4);
+  resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
+  m_resOn->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { m_res->Enable(m_resOn->GetValue()); });
+  m_res->Enable(m_resOn->GetValue());
   auto sync = [this]() {
     const bool grid = m_dtype->GetSelection() == 1;  // grille : jamais interpolée
     m_interp->Enable(!grid);
@@ -551,7 +574,7 @@ wxSizer* ImportDialog::BuildWater(wxWindow* p) {
   return col;
 }
 
-// Options avancées : décalage, NODATA, bornes de Z, résolution imposée, cache
+// Options avancées : décalage, NODATA, bornes de Z, cache
 wxSizer* ImportDialog::BuildAdvanced(wxWindow* p) {
   const DisplaySettings& st = m_init;
   auto L = [&](const char* t) { return new wxStaticText(p, wxID_ANY, U8(t)); };
@@ -609,30 +632,12 @@ wxSizer* ImportDialog::BuildAdvanced(wxWindow* p) {
   rr->Add(m_boundsU, 0, wxALIGN_CENTER_VERTICAL);
   g->Add(m_boundsOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(rr, 0);
 
-  // résolution de stockage (pas horizontal des tuiles) : estimée ou imposée
-  m_resOn = new wxCheckBox(p, wxID_ANY, U8("Résolution imposée"));
-  m_resOn->SetValue(st.importRes > 0);
-  m_res = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
-                               wxSP_ARROW_KEYS, 0.05, 5000, st.importRes > 0 ? st.importRes : 5.0, 0.5);
-  m_res->SetDigits(2);
-  const wxString rt = U8("Pas horizontal de stockage des sondes dans la base. Sinon estimé par "
-                         "l'analyse du levé : pas de la grille, ou espacement des sondes le long "
-                         "des routes (levé en lignes), ou espacement typique des sondes. Dans "
-                         "chaque case, la sonde la plus faible est gardée.");
-  m_resOn->SetToolTip(rt);
-  m_res->SetToolTip(rt);
-  auto* resr = new wxBoxSizer(wxHORIZONTAL);
-  resr->Add(m_res, 0, wxRIGHT, 4);
-  resr->Add(L("m (automatique si décoché)"), 0, wxALIGN_CENTER_VERTICAL);
-  g->Add(m_resOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(resr, 0);
 
   auto sync = [this]() {
     m_nodata->Enable(m_nodataOn->GetValue());
     m_boundMin->Enable(m_boundsOn->GetValue());
     m_boundMax->Enable(m_boundsOn->GetValue());
-    m_res->Enable(m_resOn->GetValue());
   };
-  m_resOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_nodataOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   m_boundsOn->Bind(wxEVT_CHECKBOX, [sync](wxCommandEvent&) { sync(); });
   sync();

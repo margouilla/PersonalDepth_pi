@@ -1017,6 +1017,28 @@ int main(int argc, char** argv) {
           f.colZ == 3 && f.colDate == 4);
     lo.text = f;
     CHECK(LoadXYZ(path, lo, pc, e) && pc.size() == 2 && std::fabs(pc.z[1] - 12.7f) < 1e-4f);
+    // NONNA-10 (ian5142) : tabulations, DMS, date AAAAMMJJ avant 1970
+    {
+      std::ofstream o(path);
+      o << "Lat (DMS)\tLong (DMS)\tDepth (m)\tContributor\r\n"
+           "46-13-07.195N\t060-29-59.273W\t7.32\t19451231\r\n"
+           "46-13-10.226N\t060-29-59.596W\t12.97\t20000618\r\n"
+           "46-13-10.387N\t060-29-59.588W\t13.05\t19620301\r\n";
+    }
+    {
+      TextFormat nf;
+      nf.custom = true; nf.skipLines = 1; nf.sep = '\t'; nf.colY = 1; nf.colX = 2; nf.colZ = 3;
+      nf.colDate = 4; nf.dateFmt = "yyyyMMdd"; nf.xFmt = "DDD-MM-SS.SSSX"; nf.yFmt = "DD-MM-SS.SSSX";
+      LoadOptions ln;
+      ln.text = nf;
+      ln.zsign = LoadOptions::ZSign::DepthPositive;
+      PointCloud pn;
+      CHECK(LoadXYZ(path, ln, pn, e) && pn.size() == 3);
+      CHECK(std::fabs(pn.lon(0) + (60 + 29 / 60.0 + 59.273 / 3600)) < 2e-7);
+      // plus ancienne et plus récente, dates avant 1970 comprises
+      CHECK(pd::FormatTime(pn.tMin).substr(0, 10) == "1945-12-31");
+      CHECK(pd::FormatTime(pn.tMax).substr(0, 10) == "2000-06-18");
+    }
     // degrés-minutes-secondes avec lettre d'hémisphère, sans motif (Baikal)
     {
       std::ofstream o(path);

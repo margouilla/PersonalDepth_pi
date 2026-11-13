@@ -27,6 +27,7 @@
 
 #include "core/FileUtil.h"
 #include "core/Lang.h"
+#include "core/WaterLevel.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -432,10 +433,8 @@ void TextFormatDialog::RefreshPreview() {
       ++good;
       if (sample.empty()) {
         sample = wxString::Format(U8("1re hauteur : %.4g → %.3f m"), z, z * (m_zFeetV ? 0.3048 : 1.0));
-        const time_t tt = (time_t)t;
-        char b[32];
-        std::strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", std::gmtime(&tt));
-        sample += W8("   — ") + W8(b) + " UTC";
+        // pas de gmtime : sous Windows, NULL avant 1970 (plantage)
+        sample += W8("   — ") + W8(pd::FormatTime((long long)t, true).c_str()) + " UTC";
       }
     } else if (ok) {
       ParseFieldCoord(v[f.colX - 1], f, false, x);
@@ -458,12 +457,8 @@ void TextFormatDialog::RefreshPreview() {
             sample += U8("\n⚠ Latitude très élevée : les colonnes X (longitude) et Y (latitude) "
                          "sont peut-être inversées.");
         }
-        if (f.colDate && t) {
-          const time_t tt = (time_t)t;
-          char b[32];
-          std::strftime(b, sizeof b, "%Y-%m-%d %H:%M:%S", std::gmtime(&tt));
-          sample += W8("   — ") + W8(b) + " UTC";
-        }
+        if (f.colDate && t)  // pas de gmtime : sous Windows, NULL avant 1970 (plantage)
+          sample += W8("   — ") + W8(pd::FormatTime((long long)t, true).c_str()) + " UTC";
       }
     }
   }

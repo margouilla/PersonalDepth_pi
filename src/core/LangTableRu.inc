@@ -784,3 +784,4 @@
 {"N", "С"},
 {"S", "Ю"},
 {"E", "В"},
+{"Pas horizontal de stockage des sondes et de la surface interpolée dans la base. Décoché : déduit de l'analyse du levé (pas de la grille, espacement des sondes le long des routes, ou pas fin de la surface interpolée d'un nuage). Dans chaque case, la sonde la plus faible est gardée. Une résolution plus grossière que l'espacement des sondes regroupe plusieurs sondes par case et donne un aspect en blocs.", "Горизонтальный шаг хранения отметок и интерполированной поверхности в базе. Флажок снят: определяется анализом съёмки (шаг сетки, расстояние между отметками вдоль галсов или мелкий шаг интерполированной поверхности облака). В каждой ячейке сохраняется наименьшая глубина. Разрешение грубее расстояния между отметками объединяет несколько отметок в ячейке и даёт ступенчатый вид."},

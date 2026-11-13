@@ -153,7 +153,7 @@ comparer avec la carte officielle.
 
 *Base de bathymétrie* › **Gestion des données…** › **Importer…**
 
-<!-- capture à venir : ![Fenêtre d'import](images/fr/04-import.png) -->
+![Fenêtre d'import](images/fr/04-import.png)
 
 La fenêtre montre toujours les fichiers et les réglages courants ; les
 réglages moins fréquents sont rangés dans des **sections repliables** dont
@@ -176,6 +176,7 @@ avec GDAL.
 | Valeurs Z | Sens : *Automatique*, *Profondeurs positives vers le bas*, ou *Altitudes* (fond négatif, ex. Litto3D) ; unité : mètres ou pieds (la base est toujours en mètres) |
 | Type de données | *Automatique*, **grille** (pas régulier, déjà traitée : jamais interpolée), *sondeur monofaisceau* (routes, profils), *nuage dense* (multifaisceau, lidar), *sondes de carte*, *sondes au plomb*, *nuage de points (autre)*. Impose le résultat de l'analyse du levé et règle la distance maximale d'interpolation (voir plus bas) |
 | Interpoler entre les sondes | Nuages de points seulement : surface calculée entre les sondes à l'import, avec la méthode choisie à côté : *méthode automatique* (voisin naturel pour un levé en lignes, sinon TIN), *TIN (linéaire)*, *voisin naturel (Sibson)* ou *IDW (inverse de la distance)* (voir plus bas). *Distance max* : fixe D à la main, en mètres |
+| Résolution imposée | Pas horizontal de la base pour ce levé (sondes et surface interpolée). Décoché : donné par l'analyse du levé, à conseiller en général. Une résolution plus grossière que l'espacement des sondes regroupe plusieurs sondes par case et donne un aspect en blocs |
 
 **Sections repliables**
 
@@ -184,7 +185,7 @@ avec GDAL.
 | Coordonnées | Système de coordonnées des X, Y (catalogue, fuseau UTM, code EPSG ou chaîne PROJ), fichier `.prj` voisin prioritaire (voir plus bas) |
 | Référence verticale | Référence des Z et transformation vers le zéro hydrographique (voir plus bas) |
 | Hauteurs d'eau observées | Corrige chaque sonde horodatée de la hauteur d'eau d'une échelle à son heure (voir plus bas) ; s'ouvre d'office si la correction est active |
-| Avancé | *Décalage* (constante ajoutée aux profondeurs, dans l'unité de Z) ; *NODATA* (valeurs à ignorer, ex. `-9999 9999`, en plus du NODATA de l'entête des grilles) ; *Bornes de Z* (ne garder que les profondeurs entre Z1 et Z2, ex. −200 à 200 m écarte les remplissages) ; *Résolution imposée* (pas horizontal de la base pour ce levé ; décoché : donné par l'analyse du levé) ; *Cache binaire* (`.pdpc` à côté de la source pour un réimport rapide) |
+| Avancé | *Décalage* (constante ajoutée aux profondeurs, dans l'unité de Z) ; *NODATA* (valeurs à ignorer, ex. `-9999 9999`, en plus du NODATA de l'entête des grilles) ; *Bornes de Z* (ne garder que les profondeurs entre Z1 et Z2, ex. −200 à 200 m écarte les remplissages) ; *Cache binaire* (`.pdpc` à côté de la source pour un réimport rapide) |
 
 En bas : *Date du levé imposée* et *Classe*.
 

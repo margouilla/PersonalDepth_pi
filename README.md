@@ -400,6 +400,9 @@ marcaurelio.franzetti@gmail.com
 Bug reports and feedback / retours et signalements :
 [Issues](https://github.com/margouilla/PersonalDepth_pi/issues)
 
+Contributions (translations, fixes, features) / contributions (traductions,
+corrections, fonctions) : see / voir [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Licence
 
 GNU General Public License version 2 or (at your option) any later version —

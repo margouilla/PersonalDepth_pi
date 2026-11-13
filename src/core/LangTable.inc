@@ -784,3 +784,4 @@
 {"N", "N"},
 {"S", "S"},
 {"E", "E"},
+{"Pas horizontal de stockage des sondes et de la surface interpolée dans la base. Décoché : déduit de l'analyse du levé (pas de la grille, espacement des sondes le long des routes, ou pas fin de la surface interpolée d'un nuage). Dans chaque case, la sonde la plus faible est gardée. Une résolution plus grossière que l'espacement des sondes regroupe plusieurs sondes par case et donne un aspect en blocs.", "Horizontal step at which soundings and the interpolated surface are stored in the database. Unticked: given by the survey analysis (grid step, sounding spacing along tracks, or the fine step of a point cloud's interpolated surface). In each cell the shallowest sounding is kept. A resolution coarser than the sounding spacing merges several soundings per cell and gives a blocky look."},

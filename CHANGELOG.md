@@ -8,15 +8,23 @@
 
 - **Import window reorganised**: files and everyday settings always shown;
   coordinates, vertical reference, observed water levels and advanced
-  options (offset, NODATA, Z bounds, fixed resolution, cache) in collapsible
+  options (offset, NODATA, Z bounds, cache) in collapsible
   sections whose title sums up the current setting; rows that do not apply
   are hidden. No more scrolling on usual screens. Suggested by Baikal.
+  *Fixed resolution* sits next to the interpolation settings.
 - *Survey type* and *Nature* merged into one *Data type* list (grid,
   single-beam, dense cloud — multibeam and lidar, which were handled the
   same —, chart soundings, lead line, other point cloud).
 - Custom text format: the position of the first sounding is written out,
   with a warning when the latitude is polar (latitude / longitude columns
   probably swapped, as in Garmin Quickdraw exports).
+- Fixed: OpenCPN crashed on Windows when a date column held dates before
+  1970 (e.g. NONNA-10 contributor dates such as 19451231), as soon as the
+  preview showed the date; the survey date is now also taken from such
+  files. Reported by ian5142.
+- Fixed: raising the max distance on a dense point cloud made the stored
+  surface coarser (pixel = sounding spacing instead of the fine
+  interpolation step), giving a blocky look. Reported by ian5142.
 - Continuous integration: the Windows package (OpenCPN 32 bits) is now built
   and tested by GitHub Actions like the others and attached to the release;
   tests also run on Raspberry Pi armhf (light version under emulation); a
@@ -216,10 +224,10 @@ crash of OpenCPN when opening the plugin panel.
 
 - **Fenêtre d'import réorganisée** : fichiers et réglages courants toujours
   visibles ; coordonnées, référence verticale, hauteurs d'eau observées et
-  options avancées (décalage, NODATA, bornes de Z, résolution imposée, cache)
+  options avancées (décalage, NODATA, bornes de Z, cache)
   dans des sections repliables dont le titre résume le réglage ; lignes
   inutiles masquées. Plus de défilement sur un écran courant. Suggestion de
-  Baikal.
+  Baikal. La *Résolution imposée* est placée avec les réglages d'interpolation.
 - *Type de levé* et *Nature* réunis en une seule liste *Type de données*
   (grille, monofaisceau, nuage dense — multifaisceau et lidar, traités de la
   même façon —, sondes de carte, plomb, autre nuage de points).
@@ -227,6 +235,13 @@ crash of OpenCPN when opening the plugin panel.
   clair, avec un avertissement si la latitude est polaire (colonnes latitude
   / longitude sans doute inversées, comme dans les exports Garmin
   Quickdraw).
+- Corrigé : OpenCPN plantait sous Windows quand une colonne date contenait
+  des dates antérieures à 1970 (ex. dates des contributeurs NONNA-10 comme
+  19451231), dès que l'aperçu affichait la date ; la date du levé est
+  maintenant aussi tirée de ces fichiers. Signalé par ian5142.
+- Corrigé : augmenter la distance max sur un nuage dense rendait la surface
+  stockée plus grossière (pixel = espacement des sondes au lieu du pas fin de
+  l'interpolation), d'où un aspect en blocs. Signalé par ian5142.
 - Intégration continue : le paquet Windows (OpenCPN 32 bits) est désormais
   compilé et testé par les Actions GitHub comme les autres, et joint à la
   release ; les tests tournent aussi sur Raspberry Pi armhf (version allégée

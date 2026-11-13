@@ -1076,8 +1076,11 @@ static void parseLineCustom(const char* p, const char* e, ParseState& st, long l
     const std::string& tm = (f.colTime && f.colTime <= nf) ? v[f.colTime - 1] : std::string();
     if (ParseFieldDateTime(v[f.colDate - 1], tm, f, t)) {
       hasT = true;
-      if (!tMin || t < tMin) tMin = t;
-      if (t > tMax) tMax = t;
+      if (!tMin && !tMax) tMin = tMax = t;  // première date (éventuellement avant 1970)
+      else {
+        tMin = std::min(tMin, t);
+        tMax = std::max(tMax, t);
+      }
     }
   }
   addWithWater(st, x, y, z, hasT, t);

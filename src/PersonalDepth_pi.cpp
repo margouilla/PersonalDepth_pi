@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "core/Lang.h"
+#include "core/WaterLevel.h"
 #include "PersonalDepth_pi.h"
 
 #include <wx/dir.h>
@@ -1133,19 +1134,16 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  // traînées de longs triangles entre les lignes), sinon TIN
                  m.interpMethod = p.interpMethod > 0 ? p.interpMethod - 1
                                   : (int)(shape.lines ? InterpMethod::NaturalNeighbour : InterpMethod::Tin);
-                 m.res = m.interpD <= 0 ? shape.storeRes
-                         : shape.lines ? shape.storeRes
-                                       : std::min(shape.storeRes, std::max(2.0, m.interpD / 8.0));
+                 // pas de la surface : celui de l'analyse (D automatique), jamais
+                 // déduit d'une distance max imposée (une grande D rendait la
+                 // surface grossière) ; la base garde au moins D / 128 (coût borné)
+                 m.res = m.interpD <= 0 ? shape.storeRes : shape.interpRes;
                  if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
                  // date du levé : imposée, sinon première date de la colonne
                  // date du fichier, sinon nom du fichier ou date du fichier
                  m.date = p.surveyDate;
-                 if (m.date.empty() && cloud.tMin > 0) {
-                   const time_t t0 = (time_t)cloud.tMin;
-                   char b[16];
-                   std::strftime(b, sizeof b, "%Y-%m-%d", std::gmtime(&t0));
-                   m.date = b;
-                 }
+                 // (dates avant 1970 comprises : pas de gmtime, NULL sous Windows)
+                 if (m.date.empty() && cloud.tMin != 0) m.date = pd::FormatTime(cloud.tMin).substr(0, 10);
                  if (m.date.empty()) m.date = GuessSurveyDate(p.path);
                  m.params = p.importPrefs;
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
