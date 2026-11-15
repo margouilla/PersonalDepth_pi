@@ -84,7 +84,7 @@ bool LandMask::Find(const std::string& path, std::string& file, std::string& nam
 
 bool LandMask::open(const std::string& path, std::string& err) {
   if (f_) { std::fclose(f_); f_ = nullptr; }
-  kind_ = None;
+  kind_ = kNone;
   shpIndex_.clear(); shxOff_.clear(); cellPolys_.clear(); recPoly_.clear(); polys_.clear();
   std::string nm;
   if (!Find(path, file_, nm)) {
@@ -161,7 +161,7 @@ bool LandMask::open(const std::string& path, std::string& err) {
     std::fclose(fd);
     f_ = OpenFile(file_, "rb");
     if (!f_) { err = pd::tr("Impossible d'ouvrir ") + file_; return false; }
-    kind_ = Shp;
+    kind_ = kShp;
     name_ = nm;
   } else {
     f_ = OpenFile(file_, "rb");
@@ -173,7 +173,7 @@ bool LandMask::open(const std::string& path, std::string& err) {
       return false;
     }
     pasx_ = h[1]; pasy_ = h[2];
-    kind_ = Gshhg;
+    kind_ = kGshhg;
     name_ = nm;
   }
   return true;
@@ -211,7 +211,7 @@ bool LandMask::loadCell(int cx, int cy, std::string& err) {
   const std::pair<int, int> key(cx, cy);
   if (cellPolys_.count(key)) return true;
   std::vector<int>& list = cellPolys_[key];
-  if (kind_ == Shp) {
+  if (kind_ == kShp) {
     auto it = shpIndex_.find(key);
     if (it == shpIndex_.end()) return true;
     for (uint32_t rec : it->second) {
@@ -226,7 +226,7 @@ bool LandMask::loadCell(int cx, int cy, std::string& err) {
     }
     return true;
   }
-  if (kind_ == Gshhg) {
+  if (kind_ == kGshhg) {
     if (cy < -90 || cy >= 90) return true;
     const int x0 = ((cx % 360) + 360) % 360;  // longitudes 0..360 dans le fichier
     const long tab = (long)(x0 / pasx_) * (180 / pasy_) + (cy + 90) / pasy_;

@@ -1651,7 +1651,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
   if (!h.valid) return false;
   const bool button = e.ButtonDown() || e.ButtonUp() || e.ButtonDClick() ||
                       e.GetEventType() == wxEVT_MOUSEWHEEL;
-  const bool pressed = m_bannerDown != BannerHit::None || m_bannerDrag;
+  const bool pressed = m_bannerDown != BannerHit::NoPart || m_bannerDrag;
   if (!button && !(pressed && (e.Dragging() || e.Moving()))) return false;
   if (DrawLayers().empty()) { m_renderer->HideBanner(); return false; }  // rien d'affiché
   // coordonnées souris (points) -> pixels du point de vue (écrans haute densité)
@@ -1666,7 +1666,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
   // Déplacement du bandeau : appui dessus puis glisser (sauf position verrouillée)
   if (pressed && (e.Dragging() || e.Moving() || e.LeftUp())) {
     if (!m_bannerDrag && !e.LeftIsDown() && !e.LeftUp()) {  // bouton relâché hors du canevas
-      m_bannerDown = BannerHit::None;
+      m_bannerDown = BannerHit::NoPart;
       return false;
     }
     if (!m_bannerDrag && e.Dragging() && !m_set.bannerLock &&
@@ -1681,7 +1681,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
       m_set.bannerPos = 3;
       if (e.LeftUp() || !e.LeftIsDown()) {  // fin du déplacement
         m_bannerDrag = false;
-        m_bannerDown = BannerHit::None;
+        m_bannerDown = BannerHit::NoPart;
         SaveConfig();
         if (m_dlg) m_dlg->RefreshPalette();
       }
@@ -1691,8 +1691,8 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
     if (!e.LeftUp()) return true;  // bouton tenu sur le bandeau : la carte ne bouge pas
   }
   const int part = h.PartAt(p);
-  if (part == BannerHit::None) {
-    m_bannerDown = BannerHit::None;
+  if (part == BannerHit::NoPart) {
+    m_bannerDown = BannerHit::NoPart;
     return false;
   }
   if (e.LeftDown()) {
@@ -1705,7 +1705,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
   if (e.LeftDown()) m_bannerDown = part;
   if (e.LeftUp()) {
     const bool same = (m_bannerDown == part);
-    m_bannerDown = BannerHit::None;
+    m_bannerDown = BannerHit::NoPart;
     if (same) {
       const wxPoint pos = e.GetPosition();
       if (m_events) m_events->CallAfter([this, part, win, pos] { BannerClick(part, win, pos); });

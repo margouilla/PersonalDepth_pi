@@ -58,14 +58,14 @@ bool SampleSurfaces(const std::vector<std::string>& files, Grid2D& target, std::
 void ExtendGrid(Grid2D& g, int passes);
 
 struct VerticalRefParams {
-  enum class Mode { None, Surfaces, DirectGrid } mode = Mode::None;
+  enum class Mode { Off, Surfaces, DirectGrid } mode = Mode::Off;  // (X11 définit « None »)
   std::vector<std::string> zhFiles;  // surface(s) ZH/ellipsoïde (points ou grille)
   std::string refGrid;               // géoïde(s) : RAC23;RAF20… (« ; », par priorité) ;
                                      // vide : Z en hauteurs ellipsoïdales (GNSS)
   std::string directFile;            // grille ou points de C déjà calculés
   bool directInvert = false;         // le fichier donne -C (ZH positif sous la référence)
   std::string label;                 // libellé affiché
-  bool active() const { return mode != Mode::None; }
+  bool active() const { return mode != Mode::Off; }
 };
 
 class VerticalCorrection {

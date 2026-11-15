@@ -39,7 +39,7 @@ class LandMask {
   // Fichier retenu pour `path` (dossier ou fichier) et son nom court, sans
   // lecture ; false si aucun trait de côte reconnu
   static bool Find(const std::string& path, std::string& file, std::string& name);
-  bool isOpen() const { return kind_ != None; }
+  bool isOpen() const { return kind_ != kNone; }
   const std::string& name() const { return name_; }  // « OSM basemap_full », « GSHHG f »
   const std::string& file() const { return file_; }
   // Terre (1) ou mer (0) aux centres des 256 × 256 pixels de la tuile Web
@@ -58,7 +58,7 @@ class LandMask {
   };
   bool loadCell(int cx, int cy, std::string& err);  // cellule de 1° (lon -180..179)
   bool readShpRecord(uint32_t rec, Poly& p, std::string& err);
-  enum Kind { None, Shp, Gshhg } kind_ = None;
+  enum Kind { kNone, kShp, kGshhg } kind_ = kNone;  // (X11 définit « None »)
   std::string name_, file_;
   FILE* f_ = nullptr;
   // OSMSHP : index des enregistrements par cellule de 1°, positions (.shx)

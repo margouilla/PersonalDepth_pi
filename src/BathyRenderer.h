@@ -35,12 +35,12 @@ struct DisplaySettings;
 // Bandeau de palette posé sur la carte : zones cliquables (pixels du canevas,
 // tels que les donne le point de vue d'OpenCPN)
 struct BannerHit {
-  enum Part { None = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body };
+  enum Part { NoPart = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body };
   bool valid = false;
   wxRect box, minR, modeR, srcR, maxR, barR, gearR, orientR;
   int pixW = 0, pixH = 0;  // taille du point de vue (rapport avec les coordonnées souris)
   Part PartAt(const wxPoint& p) const {
-    if (!valid || !box.Contains(p)) return None;
+    if (!valid || !box.Contains(p)) return NoPart;
     if (minR.Contains(p)) return Min;
     if (modeR.Contains(p)) return Mode;
     if (!srcR.IsEmpty() && srcR.Contains(p)) return Source;
