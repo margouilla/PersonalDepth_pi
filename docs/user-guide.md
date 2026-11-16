@@ -64,12 +64,12 @@ Advanced › Use accelerated graphics (OpenGL)*).
 ## 2. First try in 5 minutes (sample data)
 
 Ready-made database files for the Iroise Sea (Litto3D® Finistère 2014, 1 m
-resolution, depths at chart datum) let you see the rendering without importing
-anything.
+resolution, shown at chart datum) let you see the rendering without importing
+anything. They need version 0.1.0-beta.10 or later.
 
-1. Download the `.pdb` files of the
+1. Download the `.pdb` files **and `PersonalDepth_datum.sqlite`** of the
    [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
-   release and put them **in one folder** (e.g. `Documents/PersonalDepth/base`).
+   release and put them **in one empty folder** (e.g. `Documents/PersonalDepth/base`).
 2. In the PersonalDepth panel, *Bathymetry database* section: click **…** and
    choose this folder. The `.pdb` files appear in the list.
 3. Select the files and click **Centre**: the chart moves to the Iroise Sea.

@@ -83,7 +83,8 @@ chosen in OpenCPN.
 ### Sample data
 
 Ready-to-use database files for the Iroise Sea (Litto3D® Finistère 2014, 1 m,
-depths below chart datum) to try the rendering without importing anything:
+shown at chart datum; version 0.1.0-beta.10 or later) to try the rendering
+without importing anything:
 [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
 (Licence Ouverte 2.0 — see the attached `README_DATA.md`).
 
@@ -247,8 +248,8 @@ OpenCPN.
 ### Données d'exemple
 
 Fichiers de base prêts à l'emploi pour la mer d'Iroise (Litto3D® Finistère 2014,
-1 m, profondeurs au zéro hydrographique), pour essayer le rendu sans rien
-importer :
+1 m, affichés au zéro hydrographique ; version 0.1.0-beta.10 ou suivante), pour
+essayer le rendu sans rien importer :
 [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
 (Licence Ouverte 2.0 — voir le `README_DATA.md` joint).
 

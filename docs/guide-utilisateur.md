@@ -68,12 +68,13 @@ Affichage › Avancé › Utiliser l'accélération graphique (OpenGL)*).
 ## 2. Premier essai en 5 minutes (données d'exemple)
 
 Des fichiers de base prêts à l'emploi pour la mer d'Iroise (Litto3D®
-Finistère 2014, résolution 1 m, profondeurs au zéro hydrographique)
-permettent de voir le rendu sans rien importer.
+Finistère 2014, résolution 1 m, affichés au zéro hydrographique)
+permettent de voir le rendu sans rien importer. Ils demandent la version
+0.1.0-beta.10 ou suivante.
 
-1. Télécharger les fichiers `.pdb` de la release
+1. Télécharger les fichiers `.pdb` **et `PersonalDepth_datum.sqlite`** de la release
    [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
-   et les placer **dans un même dossier** (ex. `Documents/PersonalDepth/base`).
+   et les placer **dans un même dossier vide** (ex. `Documents/PersonalDepth/base`).
 2. Panneau PersonalDepth, cadre *Base de bathymétrie* : cliquer sur **…** et
    choisir ce dossier. Les fichiers `.pdb` apparaissent dans la liste.
 3. Sélectionner les fichiers et cliquer sur **Centrer** : la carte se place
