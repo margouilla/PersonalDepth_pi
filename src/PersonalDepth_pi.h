@@ -301,6 +301,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void SaveConfig();
   void TideChanged();              // réglage de marée modifié dans le panneau
   void UpdateTide(bool findStation);
+  bool TideZone(double box[4], std::string* sig) const;  // zone de la marée (sources à l'écran)
+  std::string m_tideZoneSig;
   static wxString DefaultReferenceDir();
 
  private:

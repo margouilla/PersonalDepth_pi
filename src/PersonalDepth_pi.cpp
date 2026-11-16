@@ -495,6 +495,46 @@ void PersonalDepth_pi::StopFes() {
 // isobathes) ; les données restent au zéro hydrographique.
 //  - stations OpenCPN : hauteur uniforme, station la plus proche du centre des couches ;
 //  - FES2022 maillé : hauteur en chaque nœud de l'atlas (1/30°) + Z0 local.
+// Zone de la marée : emprise des sources visibles qui touchent la carte
+// affichée (pas toutes les sources de la base : levés en France et au
+// Canada donnaient un centre au milieu de l'Atlantique) ; sans source à
+// l'écran, la carte elle-même (arrondie au 1/20° pour limiter les calculs).
+// `sig` : signature de la zone, pour la recalculer quand elle change.
+bool PersonalDepth_pi::TideZone(double box[4], std::string* sig) const {
+  double la0 = 1e9, la1 = -1e9, lo0 = 1e9, lo1 = -1e9;
+  const double* v = m_vpBox;
+  auto inView = [&](double x0, double x1, double y0, double y1) {
+    return !m_vpValid || (x1 >= v[0] && x0 <= v[1] && y1 >= v[2] && y0 <= v[3]);
+  };
+  std::string s;
+  auto add = [&](double x0, double x1, double y0, double y1) {
+    la0 = std::min(la0, y0); la1 = std::max(la1, y1);
+    lo0 = std::min(lo0, x0); lo1 = std::max(lo1, x1);
+  };
+  for (auto& l : m_layers)
+    if (l->visible && l->state() == BathyLayer::Ready &&
+        inView(l->cloud.lonMin, l->cloud.lonMax, l->cloud.latMin, l->cloud.latMax)) {
+      add(l->cloud.lonMin, l->cloud.lonMax, l->cloud.latMin, l->cloud.latMax);
+      s += "L" + std::to_string((uintptr_t)l.get()) + ",";
+    }
+  for (const auto& d : m_dbSources)
+    if (d.visible && inView(d.lonMin, d.lonMax, d.latMin, d.latMax)) {
+      add(d.lonMin, d.lonMax, d.latMin, d.latMax);
+      s += std::to_string(d.id) + ",";
+    }
+  if (la0 > la1 && m_vpValid && (!m_dbSources.empty() || !m_layers.empty())) {
+    lo0 = std::floor(v[0] * 20) / 20; lo1 = std::ceil(v[1] * 20) / 20;
+    la0 = std::floor(v[2] * 20) / 20; la1 = std::ceil(v[3] * 20) / 20;
+    char b[96];
+    std::snprintf(b, sizeof b, "V%.2f %.2f %.2f %.2f", lo0, lo1, la0, la1);
+    s = b;
+  }
+  if (sig) *sig = s;
+  if (la0 > la1) return false;
+  box[0] = lo0; box[1] = lo1; box[2] = la0; box[3] = la1;
+  return true;
+}
+
 void PersonalDepth_pi::UpdateTide(bool findStation) {
   DisplaySettings& s = m_set;
   const float oldH = s.tideH;
@@ -515,18 +555,9 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
   auto compute = [&]() -> wxString {
     if (s.tideMode == 0)
       return U8("Profondeurs : ") + W8(DatumName(DisplayDatumOf(s.dispDatum)).c_str()) + U8(" (sans marée)");
-    double la0 = 1e9, la1 = -1e9, lo0 = 1e9, lo1 = -1e9;
-    for (auto& l : m_layers)
-      if (l->visible && l->state() == BathyLayer::Ready) {
-        la0 = std::min(la0, l->cloud.latMin); la1 = std::max(la1, l->cloud.latMax);
-        lo0 = std::min(lo0, l->cloud.lonMin); lo1 = std::max(lo1, l->cloud.lonMax);
-      }
-    for (const auto& d : m_dbSources)  // base : emprise des sources visibles
-      if (d.visible) {
-        la0 = std::min(la0, d.latMin); la1 = std::max(la1, d.latMax);
-        lo0 = std::min(lo0, d.lonMin); lo1 = std::max(lo1, d.lonMax);
-      }
-    if (la0 > la1) { m_tideBoxOk = false; return U8("En attente d'une couche chargée"); }
+    double zb[4];
+    if (!TideZone(zb, nullptr)) { m_tideBoxOk = false; return U8("En attente d'une couche chargée"); }
+    const double lo0 = zb[0], lo1 = zb[1], la0 = zb[2], la1 = zb[3];
     m_tideBox[0] = lo0; m_tideBox[1] = lo1; m_tideBox[2] = la0; m_tideBox[3] = la1;
     m_tideBoxOk = true;
     const double clat = 0.5 * (la0 + la1), clon = 0.5 * (lo0 + lo1);
@@ -1546,6 +1577,15 @@ void PersonalDepth_pi::UpdateDbView() {
     RequestRefresh(GetOCPNCanvasWindow());
   }
   if (!m_vpValid) return;
+  if (m_set.tideMode) {  // zone de la marée : sources à l'écran
+    std::string sig;
+    double zb[4];
+    TideZone(zb, &sig);
+    if (sig != m_tideZoneSig) {
+      m_tideZoneSig = sig;
+      UpdateTide(true);
+    }
+  }
   // niveau : un pixel de la base ≈ un pixel d'écran
   const double ppd = std::max(1e-6, m_lastPpd);
   const int target = std::max(kDbMinLevel, std::min(kDbMaxLevel,

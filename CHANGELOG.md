@@ -4,6 +4,22 @@
 
 ## English
 
+### 0.1.0-beta.11 (unreleased)
+
+- Fixed: tide station and FES2022 tide area chosen from **all** the visible
+  sources of the database. With surveys on both sides of the Atlantic, the
+  "centre" fell in mid-ocean (Azores station shown at Le Conquet). The tide
+  now uses the sources shown on the chart, or the chart itself, and follows
+  the chart when it moves to another area.
+
+### 0.1.0-beta.11 (à venir)
+
+- Corrigé : station de marée et zone de la marée FES2022 choisies d'après
+  **toutes** les sources visibles de la base. Avec des levés des deux côtés
+  de l'Atlantique, le « centre » tombait en plein océan (station des Açores
+  affichée au Conquet). La marée utilise maintenant les sources affichées à
+  l'écran, ou la carte elle-même, et suit la carte quand elle change de zone.
+
 ### 0.1.0-beta.10 (2026-11-13)
 
 - **Common vertical datum**: the database now stores depths below **mean sea
