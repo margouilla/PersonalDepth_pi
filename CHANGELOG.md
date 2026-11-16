@@ -4,7 +4,7 @@
 
 ## English
 
-### 0.1.0-beta.11 (unreleased)
+### 0.1.0-beta.11 (2026-11-16)
 
 - Fixed: tide station and FES2022 tide area chosen from **all** the visible
   sources of the database. With surveys on both sides of the Atlantic, the
@@ -12,7 +12,7 @@
   now uses the sources shown on the chart, or the chart itself, and follows
   the chart when it moves to another area.
 
-### 0.1.0-beta.11 (à venir)
+### 0.1.0-beta.11 (2026-11-16)
 
 - Corrigé : station de marée et zone de la marée FES2022 choisies d'après
   **toutes** les sources visibles de la base. Avec des levés des deux côtés
