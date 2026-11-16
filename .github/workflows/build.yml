@@ -68,7 +68,7 @@ jobs:
             arch: armhf
             tests: light   # émulation qemu : lente, tests allégés
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Pré-version (tag v0.1.0-beta.4 -> beta.4)
         id: ver
         shell: bash
@@ -80,13 +80,13 @@ jobs:
           echo "pre=$pre" >> "$GITHUB_OUTPUT"
       - name: Émulation ARM 32 bits
         if: matrix.platform == 'linux/arm/v7'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Compilation dans ${{ matrix.image }}
         run: |
           docker run --rm --platform ${{ matrix.platform }} -v "$PWD:/src" -w /src ${{ matrix.image }} \
             bash tools/ci/build-linux.sh "${{ matrix.target }}" "${{ matrix.tversion }}" \
             "${{ matrix.arch }}" "${{ steps.ver.outputs.pre }}" "${{ matrix.tests }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.target }}-${{ strategy.job-index }}
           path: dist/*.tar.gz
@@ -99,7 +99,7 @@ jobs:
       WX_VERSION: 3.2.6
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Pré-version
         id: ver
         shell: bash
@@ -111,7 +111,7 @@ jobs:
           echo "pre=$pre" >> "$GITHUB_OUTPUT"
       - name: Cache wxWidgets
         id: wxcache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/wx-universal
           key: wx-${{ env.WX_VERSION }}-universal-macos11-v1
@@ -141,7 +141,7 @@ jobs:
           lipo -info build/libPersonalDepth_pi.dylib
           otool -L build/libPersonalDepth_pi.dylib
           cmake --build build --target pd-package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: darwin-wx32
           path: dist/*.tar.gz
@@ -153,7 +153,7 @@ jobs:
     env:
       WX_VERSION: 3.2.6
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Pré-version
         id: ver
         shell: bash
@@ -165,7 +165,7 @@ jobs:
           echo "pre=$pre" >> "$GITHUB_OUTPUT"
       - name: Cache wxWidgets
         id: wxcache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\wx
           key: wx-${{ env.WX_VERSION }}-msvc-x86-v1
@@ -193,7 +193,7 @@ jobs:
           cmake --build build --config Release --target pd-package
           if ($LASTEXITCODE) { exit 1 }
           Get-ChildItem dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: msvc-wx32
           path: dist/*.tar.gz
@@ -205,13 +205,13 @@ jobs:
     needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
       - name: Sommes de contrôle
         run: cd dist && sha256sum *.tar.gz > SHA256SUMS.txt && cat SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           prerelease: true
