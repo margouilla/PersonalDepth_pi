@@ -213,7 +213,13 @@ if(PD_BUILD_PLUGIN)
     else()
       set(_arch "${PD_TARGET_ARCH}")
     endif()
-    set(PD_PACKAGE_NAME "PersonalDepth-${PD_VERSION}_${PD_TARGET}-${_tvf}-${_arch}")
+    if(_layout STREQUAL "msvc")
+      # Windows (OpenCPN 32 bits) : nom sans architecture, comme jusqu'à la
+      # beta.9 (metadata.xml garde <target-arch>x86_64</target-arch>)
+      set(PD_PACKAGE_NAME "PersonalDepth-${PD_VERSION}_${PD_TARGET}-${_tvf}")
+    else()
+      set(PD_PACKAGE_NAME "PersonalDepth-${PD_VERSION}_${PD_TARGET}-${_tvf}-${_arch}")
+    endif()
     add_custom_target(pd-package
       COMMAND ${CMAKE_COMMAND} -DLIB=$<TARGET_FILE:PersonalDepth_pi> -DSRC=${CMAKE_SOURCE_DIR}
               -DBIN=${CMAKE_BINARY_DIR} -DNAME=${PD_PACKAGE_NAME} -DLAYOUT=${_layout}
