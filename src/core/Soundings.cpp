@@ -20,8 +20,16 @@
 
 namespace pd {
 
-bool ScreenMapper::fit(const double lon[3], const double lat[3], const double x[3],
+bool ScreenMapper::fit(const double lonIn[3], const double lat[3], const double x[3],
                        const double y[3]) {
+  // longitudes ramenées à moins de 180° de la première (antiméridien) ; ne
+  // jamais supposer un ordre ouest -> est entre deux coins de l'écran : la
+  // carte peut être tournée (route ou cap en haut)
+  double lon[3] = {lonIn[0], lonIn[1], lonIn[2]};
+  for (int k = 1; k < 3; ++k) {
+    while (lon[k] - lon[0] > 180.0) lon[k] -= 360.0;
+    while (lon[k] - lon[0] < -180.0) lon[k] += 360.0;
+  }
   double m[3] = {mercY(lat[0]), mercY(lat[1]), mercY(lat[2])};
   double det = lon[0] * (m[1] - m[2]) - m[0] * (lon[1] - lon[2]) + (lon[1] * m[2] - lon[2] * m[1]);
   if (std::fabs(det) < 1e-15) return false;

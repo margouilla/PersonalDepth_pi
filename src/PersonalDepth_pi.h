@@ -82,6 +82,7 @@ struct DisplaySettings {
   int fontSize = 9;
   bool smooth = true;         // profondeur et ombrage interpolés entre cellules
   bool legend = true;         // lecture au curseur
+  bool perfLog = false;       // journal des temps d'affichage (opencpn.ini : PerfLog=1)
   bool banner = true;         // bandeau de palette sur la carte
   bool interpShow = true;     // zones interpolées de la base affichées
   bool interpDistinct = true; // … et éclaircies (distinguées des zones mesurées)
@@ -148,9 +149,12 @@ struct DisplaySettings {
   // 1 LAT, 2 niveau moyen, 3 ellipsoïde WGS84 ; avec la marée : hauteur d'eau
   int dispDatum = 0;
   std::string mssGrid;              // surface moyenne océanique .pdgrid (MSS, hors France)
+  std::string nationalDir;          // « Fichiers des pays » : zéros des cartes officiels (VDatum…)
   // Trait de côte (fonds OSMSHP / GSHHG d'OpenCPN) : pas d'interpolation sur la terre
   std::string landMask;             // dossier (ou fichier .shp / poly-*-1.dat)
   bool landMaskOn = true;
+  std::string shoreFiles;           // traits de côte personnels .kml .kmz .shp .gpkg (';')
+  bool shoreZero = true;            // non rattachées : rivage = isobathe 0 de l'interpolation
   // Palette automatique : seuils recalculés d'après les profondeurs présentes
   bool autoPalette = false;
   int autoSource = 0;               // 0 toutes les données (base + couches), 1 zone affichée
@@ -263,6 +267,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   // niveau moyen, affichées au zéro des cartes local, au LAT, au NM ou à
   // l'ellipsoïde (avec la marée : zéro des cartes + hauteur d'eau)
   pd::DatumConfig DatumCfg() const;      // fichiers de référence configurés
+  void NationalChanged();                // dossier des fichiers des pays modifié
   bool DbNeedsMigration() const;
   void DbMigrate(bool ask);              // base antérieure : migration (copie de sauvegarde)
   void DbUpdateDatum();                  // surfaces recalculées, sources corrigées
@@ -272,6 +277,16 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   wxString DatumShort() const;           // « ZH », « LAT », « NM », « ell » (curseur)
   // Trait de côte : fichier utilisé (vide si aucun ou désactivé)
   std::string LandMaskFile(std::string* name = nullptr) const;
+  // Trait de côte de l'import : fond (OSMSHP / GSHHG) et traits personnels
+  struct LandCfg {
+    std::string base;
+    std::vector<std::string> custom;
+    bool shore = false;
+    bool any() const { return !base.empty() || !custom.empty(); }
+  };
+  LandCfg LandConfig() const;
+  static std::vector<std::string> ShoreFileList(const std::string& s);
+  static void OpenLand(const LandCfg& c, pd::LandMask& m, std::string& errors);
   void DbApplyLandMask();                // retire l'interpolation sur la terre (toutes les sources)
   // Isobathes peu profonde / de sécurité / profonde des cartes vectorielles
   // d'OpenCPN (Options › Cartes › Cartes vectorielles), en mètres
@@ -376,6 +391,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   int m_dbViewDatum = -9;                          // référence de la vue demandée
   std::shared_ptr<std::atomic<int>> m_dbViewOriginNext;  // origine des surfaces (calcul en cours)
   int m_datumOrigin = 0;                           // … de la vue affichée
+  mutable std::string m_natDir;                    // dossier des pays déjà lu
+  mutable std::vector<pd::NationalDatum> m_natList;  // … et ses fichiers
   bool m_migrationAsked = false;
   // écart de la référence d'affichage au centre de chaque source (palette
   // automatique sur toutes les données : profondeurs rangées sous le NM)
@@ -387,8 +404,28 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   pd::LayerPtr m_dbView, m_dbViewNext;
   double m_dbViewBox[4] = {0, 0, 0, 0};
   int m_dbViewTarget = -1;
+  pd::ViewQuad m_dbViewQuad{};                 // écran (+ marge) de la vue préparée
+  bool m_dbViewHasQuad = false;
+  struct DbViewPrep {
+    pd::ViewQuad quad{};
+    double box[4] = {0, 0, 0, 0};
+  };
+  // journal PerfLog : vues de la base lancées / arrêtées / prêtes
+  int m_perfViewsStarted = 0, m_perfViewsCancelled = 0, m_perfViewsReady = 0;
+  double m_perfViewMs = 0, m_perfViewMaxMs = 0;
+  wxLongLong m_perfViewStart = 0, m_perfLast = 0;
+  void PerfLogTick();
+  std::shared_ptr<DbViewPrep> m_dbViewResult;  // zone réellement préparée (fin du calcul)
+  std::shared_ptr<std::atomic<bool>> m_dbViewStop;  // arrêt de la vue en cours de calcul
+  std::vector<pd::LayerPtr> m_dbViewDying;     // vues abandonnées, en fin d'arrêt
   double m_vpBox[4] = {0, 0, 0, 0};
+  pd::ViewQuad m_vpQuad{};  // coins de l'écran (lon, y Mercator), carte tournée comprise
+  bool m_vpQuadOk = false;
   bool m_vpValid = false;
+  double m_vpCenter[2] = {1e9, 1e9};
+  wxLongLong m_vpMoveTime = 0, m_pendingSince = 0;
+  bool m_lastRenderGL = false;  // dernier rendu en OpenGL (préparation des vues possible)
+  void StoreViewport(PlugIn_ViewPort* vp);
   std::string m_autoKey;
   wxString m_autoInfo;
   const pd::FesTide* m_fieldFes = nullptr;

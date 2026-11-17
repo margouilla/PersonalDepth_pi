@@ -28,6 +28,7 @@
 #include <wx/utils.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <set>
@@ -38,6 +39,7 @@
 #include "TideChart.h"
 #include "BathyRenderer.h"
 #include "core/WebMerc.h"
+#include "core/Soundings.h"
 #include "core/SurveyShape.h"
 #include "core/Triangulate.h"
 #include "core/GeoGrid.h"
@@ -137,8 +139,11 @@ bool PersonalDepth_pi::DeInit() {
   StopFes();
   m_dbCancel = true;
   if (m_dbThread.joinable()) m_dbThread.join();
+  if (m_dbViewStop) *m_dbViewStop = true;
   if (m_dbViewNext) m_dbViewNext->cancel();
+  if (m_renderer) m_renderer->ClearPending();
   m_dbViewNext.reset();
+  m_dbViewDying.clear();
   m_dbView.reset();
   // Fenêtres supprimées tout de suite : Destroy() les laisse à wxWidgets, qui
   // les supprime plus tard, quand OpenCPN a déjà déchargé le plugin (mise à
@@ -296,7 +301,40 @@ bool PersonalDepth_pi::UpdateLanguage() {
   return true;
 }
 
+// Journal des temps (PerfLog=1 dans opencpn.ini, section [PlugIns/PersonalDepth]) :
+// une ligne toutes les 3 s d'activité dans le journal d'OpenCPN
+void PersonalDepth_pi::PerfLogTick() {
+  if (!m_set.perfLog || !m_renderer) return;
+  const wxLongLong now = wxGetLocalTimeMillis();
+  if (m_perfLast == 0) m_perfLast = now;
+  const double span = (now - m_perfLast).ToDouble();
+  if (span < 3000) return;
+  BathyRenderer::Perf& p = m_renderer->m_perf;
+  if (p.frames || m_perfViewsStarted) {
+    const double n = std::max(1, p.frames);
+    wxLogMessage(
+        "PersonalDepth_pi perf: %d images en %.1f s (%.1f/s) ; plugin moy %.1f ms, max %.1f ms ; "
+        "fond %.1f ms/image dont envoi de %d tuiles %.0f ms ; isobathes %.1f ms/image ; "
+        "sondes et valeurs recalculées %d fois, %.0f ms ; vues : %d lancées, %d arrêtées, %d prêtes "
+        "(calcul moy %.0f ms, max %.0f ms) ; niveau visé %d",
+        p.frames, span / 1000.0, p.frames * 1000.0 / span, p.totalMs / n, p.maxMs, p.tileMs / n, p.uploads,
+        p.uploadMs, p.contourMs / n, p.labelRuns, p.labelMs, m_perfViewsStarted, m_perfViewsCancelled,
+        m_perfViewsReady, m_perfViewsReady ? m_perfViewMs / m_perfViewsReady : 0.0, m_perfViewMaxMs,
+        m_dbViewTarget);
+  }
+  p = BathyRenderer::Perf();
+  m_perfViewsStarted = m_perfViewsCancelled = m_perfViewsReady = 0;
+  m_perfViewMs = m_perfViewMaxMs = 0;
+  m_perfLast = now;
+}
+
 void PersonalDepth_pi::OnTick() {
+  PerfLogTick();
+  // sondes et valeurs décalées pendant le déplacement : nouvelle sélection à l'arrêt
+  if (m_renderer && m_renderer->LabelsShifted() && (wxGetLocalTimeMillis() - m_vpMoveTime).ToDouble() > 300) {
+    m_renderer->RefreshLabels();
+    RequestRefresh(GetOCPNCanvasWindow());
+  }
   if (UpdateLanguage()) {  // langue changée : fenêtres reconstruites dans la nouvelle langue
     const bool dlgShown = m_dlg && m_dlg->IsShown(), chartShown = m_chart && m_chart->IsShown();
     wxPoint pos = m_dlg ? m_dlg->GetPosition() : wxDefaultPosition;
@@ -706,11 +744,39 @@ wxString PersonalDepth_pi::CursorTextFor(int priority) const {
   return m_cursorText;  // hôte ancien : tout est dessiné dans la passe LEGACY
 }
 
+// Emprise de l'écran : rectangle lon/lat et, carte tournée, ses 4 coins
+void PersonalDepth_pi::StoreViewport(PlugIn_ViewPort* vp) {
+  if (vp->clat != m_vpCenter[0] || vp->clon != m_vpCenter[1]) {  // carte déplacée
+    m_vpCenter[0] = vp->clat;
+    m_vpCenter[1] = vp->clon;
+    m_vpMoveTime = wxGetLocalTimeMillis();
+  }
+  m_vpBox[0] = vp->lon_min; m_vpBox[1] = vp->lon_max; m_vpBox[2] = vp->lat_min; m_vpBox[3] = vp->lat_max;
+  m_vpValid = true;
+  const wxPoint c[4] = {wxPoint(0, 0), wxPoint(vp->pix_width, 0),
+                        wxPoint(vp->pix_width, vp->pix_height), wxPoint(0, vp->pix_height)};
+  m_vpQuadOk = vp->pix_width > 0 && vp->pix_height > 0;
+  for (int k = 0; k < 4 && m_vpQuadOk; ++k) {
+    double lat, lon;
+    GetCanvasLLPix(vp, c[k], &lat, &lon);
+    if (k) {  // longitudes à moins de 180° du premier coin
+      while (lon - m_vpQuad.x[0] > 180.0) lon -= 360.0;
+      while (lon - m_vpQuad.x[0] < -180.0) lon += 360.0;
+    }
+    if (!std::isfinite(lat) || !std::isfinite(lon) || std::fabs(lat) > 85.0) m_vpQuadOk = false;
+    m_vpQuad.x[k] = lon;
+    m_vpQuad.y[k] = ScreenMapper::mercY(lat);
+  }
+  // emprise hors de [-180, 180] (antiméridien) : rectangle seul
+  for (int k = 0; k < 4 && m_vpQuadOk; ++k)
+    if (m_vpQuad.x[k] < -180.0 || m_vpQuad.x[k] > 180.0) m_vpQuadOk = false;
+  if (m_vpQuadOk && m_vpQuad.area() <= 0) m_vpQuadOk = false;
+}
+
 bool PersonalDepth_pi::RenderOverlayMultiCanvas(wxDC& dc, PlugIn_ViewPort* vp, int,
                                                 int priority) {
   if (!vp) return false;
-  m_vpBox[0] = vp->lon_min; m_vpBox[1] = vp->lon_max; m_vpBox[2] = vp->lat_min; m_vpBox[3] = vp->lat_max;
-  m_vpValid = true;
+  StoreViewport(vp);
   const auto layers = DrawLayers();
   if (layers.empty()) return false;
   if (priority == OVERLAY_OVER_UI && m_hostHasChartsPriority) {
@@ -720,14 +786,14 @@ bool PersonalDepth_pi::RenderOverlayMultiCanvas(wxDC& dc, PlugIn_ViewPort* vp, i
   if (!ShouldDraw(priority)) return false;
   m_renderer->RenderDC(dc, vp, layers, m_set, CursorTextFor(priority));
   m_lastPpd = m_renderer->LastPixelsPerDegLon();
+  m_lastRenderGL = false;
   return true;
 }
 
 bool PersonalDepth_pi::RenderGLOverlayMultiCanvas(wxGLContext*, PlugIn_ViewPort* vp, int,
                                                   int priority) {
   if (!vp) return false;
-  m_vpBox[0] = vp->lon_min; m_vpBox[1] = vp->lon_max; m_vpBox[2] = vp->lat_min; m_vpBox[3] = vp->lat_max;
-  m_vpValid = true;
+  StoreViewport(vp);
   const auto layers = DrawLayers();
   if (layers.empty()) return false;
   if (priority == OVERLAY_OVER_UI && m_hostHasChartsPriority) {
@@ -737,6 +803,10 @@ bool PersonalDepth_pi::RenderGLOverlayMultiCanvas(wxGLContext*, PlugIn_ViewPort*
   if (!ShouldDraw(priority)) return false;
   m_renderer->RenderGL(vp, layers, m_set, CursorTextFor(priority));
   m_lastPpd = m_renderer->LastPixelsPerDegLon();
+  m_lastRenderGL = true;
+  // nouvelle vue en préparation : images suivantes demandées tout de suite
+  if (m_renderer->Pending() && !m_renderer->PendingDone() && m_cursorRefresh && !m_cursorRefresh->IsRunning())
+    m_cursorRefresh->StartOnce(20);
   return true;
 }
 
@@ -828,6 +898,7 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("FontSize", m_set.fontSize);
   c->Write("Smooth", m_set.smooth);
   c->Write("Legend", m_set.legend);
+  if (m_set.perfLog) c->Write("PerfLog", m_set.perfLog);
   c->Write("Banner", m_set.banner);
   c->Write("BannerPos", m_set.bannerPos);
   c->Write("BannerFx", (double)m_set.bannerFx);
@@ -850,8 +921,11 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("VrefChoice2", m_set.vrefMode);  // (« VrefChoice » : ancienne numérotation)
   c->Write("DisplayDatum", m_set.dispDatum);
   c->Write("MssGrid", W8(m_set.mssGrid.c_str()));
+  c->Write("NationalDir", W8(m_set.nationalDir.c_str()));
   c->Write("LandMask", W8(m_set.landMask.c_str()));
   c->Write("LandMaskOn", m_set.landMaskOn);
+  c->Write("ShoreFiles", W8(m_set.shoreFiles.c_str()));
+  c->Write("ShoreZero", m_set.shoreZero);
   c->Write("ImportOrder", m_set.importOrder);
   c->Write("ImportSign", m_set.importSign);
   c->Write("ImportOffset", (double)m_set.importOffset);
@@ -927,6 +1001,7 @@ void PersonalDepth_pi::LoadConfig() {
   c->Read("FontSize", &m_set.fontSize, m_set.fontSize);
   c->Read("Smooth", &m_set.smooth, m_set.smooth);
   c->Read("Legend", &m_set.legend, m_set.legend);
+  c->Read("PerfLog", &m_set.perfLog, m_set.perfLog);
   c->Read("Banner", &m_set.banner, m_set.banner);
   c->Read("BannerPos", &m_set.bannerPos, m_set.bannerPos);
   {
@@ -960,8 +1035,11 @@ void PersonalDepth_pi::LoadConfig() {
     c->Read("DisplayDatum", &m_set.dispDatum, m_set.dispDatum);
     m_set.dispDatum = std::max(0, std::min(3, m_set.dispDatum));
     if (c->Read("MssGrid", &ws)) m_set.mssGrid = ws.ToUTF8().data();
+    if (c->Read("NationalDir", &ws)) m_set.nationalDir = ws.ToUTF8().data();
     if (c->Read("LandMask", &ws)) m_set.landMask = ws.ToUTF8().data();
     c->Read("LandMaskOn", &m_set.landMaskOn, m_set.landMaskOn);
+    if (c->Read("ShoreFiles", &ws)) m_set.shoreFiles = ws.ToUTF8().data();
+    c->Read("ShoreZero", &m_set.shoreZero, m_set.shoreZero);
   }
   c->Read("ImportOrder", &m_set.importOrder, m_set.importOrder);
   c->Read("ImportSign", &m_set.importSign, m_set.importSign);
@@ -1059,6 +1137,12 @@ void PersonalDepth_pi::DbOpen() {
   std::string err;
   const bool opened = db.open(m_set.dbFolder, err);
   m_dbCells.clear();
+  if (opened && !db.needsMigration()) {
+    // surfaces de référence : copies dans les .pdb (et reprises depuis un
+    // .pdb copié d'un autre dossier) ; rapide quand rien n'a changé
+    std::string se;
+    db.syncDatum(se);
+  }
   if (opened) {
     m_dbSources = db.sources();
     m_dbCells = db.cellInfo();
@@ -1113,6 +1197,8 @@ void PersonalDepth_pi::StartDbJob(
     if (ok && (vk == Datum::Lat || vk == Datum::Ell) && prov.available(vk) && !db.needsMigration())
       db.ensureDatumForSources(vk, e2, prog, &m_dbCancel);
     e2.clear();
+    if (ok && !db.needsMigration()) db.syncDatum(e2);  // copies des surfaces dans les .pdb
+    e2.clear();
     db.reloadSources(e2);
     {
       std::lock_guard<std::mutex> lk(m_dbMx);
@@ -1135,16 +1221,16 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                                 const std::vector<std::vector<int64_t>>& replace) {
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
-  const std::string landFile = LandMaskFile();
+  const LandCfg landCfg = LandConfig();
   StartDbJob(JobLabel("Import (%d fichier(s))", files.size()),
-             [files, prio, cancel, group, replace, landFile](BathyDb& db, std::string& err, const DbProgress& prog) {
+             [files, prio, cancel, group, replace, landCfg](BathyDb& db, std::string& err, const DbProgress& prog) {
                std::string errors;
                LandMask land;  // pas de surface interpolée sur la terre
-               if (!landFile.empty()) {
-                 std::string le;
+               if (landCfg.any()) {
                  prog(0.f, pd::tr("Trait de côte"));
-                 if (land.open(landFile, le)) db.setLandMask(&land);
-                 else errors += le + "\n";
+                 OpenLand(landCfg, land, errors);
+                 if (land.isOpen()) db.setLandMask(&land);
+                 db.setShoreConstraint(landCfg.shore);
                }
                size_t done = 0;
                auto stopped = [&]() {
@@ -1413,7 +1499,24 @@ DatumConfig PersonalDepth_pi::DatumCfg() const {
   }
   if (!m_set.tideAtlas.empty() && wxFileExists(W8(m_set.tideAtlas.c_str()))) c.fesAtlas = m_set.tideAtlas;
   if (!m_set.mssGrid.empty() && wxFileExists(W8(m_set.mssGrid.c_str()))) c.mssGrid = m_set.mssGrid;
+  // zéros des cartes officiels des autres pays (dossier lu une fois)
+  if (m_natDir != m_set.nationalDir) {
+    m_natDir = m_set.nationalDir;
+    m_natList = ScanNationalDatums(m_natDir);
+  }
+  c.national = m_natList;
   return c;
+}
+
+void PersonalDepth_pi::NationalChanged() {
+  m_natDir = "\x01";  // relire le dossier
+  SaveConfig();
+  ++m_dbEpoch;
+  // surfaces du zéro des cartes recalculées, sources corrigées
+  if (!m_dbSources.empty() && !DbNeedsMigration()) DbUpdateDatum();
+  if (m_renderer) m_renderer->Invalidate();
+  if (m_dlg) m_dlg->RefreshDb();
+  RequestRefresh(GetOCPNCanvasWindow());
 }
 
 bool PersonalDepth_pi::DbNeedsMigration() const {
@@ -1441,22 +1544,33 @@ wxString PersonalDepth_pi::DatumInfo() const {
     return U8("Base d'une version antérieure : profondeurs au zéro des cartes, à migrer vers le "
               "niveau moyen (bouton « Migrer la base… »).");
   const Datum vk = ViewDatum();
+  const DatumConfig c = DatumCfg();
+  const std::string natNames = NationalNames(c.national);
   wxString t = U8("Profondeurs affichées : ") + W8(DatumName(vk).c_str());
   if (DatumHasSurface(vk) && m_datumOrigin) {
-    const DatumConfig c = DatumCfg();
     std::string model;
     if (vk == Datum::Ell && !c.mssGrid.empty()) {
       GeoGridFile g;
       std::string e;
       if (g.open(c.mssGrid, e)) model = g.model();
     }
-    t += " (" + W8(DatumOriginText(vk, m_datumOrigin, model).c_str()) + ")";
+    t += " (" + W8(DatumOriginText(vk, m_datumOrigin, model, natNames).c_str()) + ")";
   }
   if (m_set.tideMode != 0) t += U8(", plus la marée");
-  const DatumConfig c = DatumCfg();
+  // zéro des cartes : officiel ou approché, en clair
+  if (vk == Datum::Cd && m_datumOrigin) {
+    if (m_datumOrigin & kOrigNone)
+      t += "\n" + U8("⚠ Zone sans zéro des cartes connu : profondeurs telles qu'importées.");
+    else if (m_datumOrigin & kOrigFes)
+      t += "\n" + U8("≈ Zéro approché ici (plus basse mer de la marée FES) : écart possible de quelques "
+                      "décimètres avec les cartes officielles. Fichiers des pays : docs/external-data.md.");
+    else
+      t += "\n" + U8("✓ Zéro officiel du pays, comme sur les cartes marines.");
+  }
   auto yes = [](bool b) { return b ? U8("oui") : U8("non"); };
   t += "\n" + U8("Références : BathyElli ") + yes(!c.nmFiles.empty() && !c.zhFiles.empty()) +
-       U8(", FES2022 ") + yes(!c.fesAtlas.empty()) + U8(", MSS ") + yes(!c.mssGrid.empty());
+       U8(", FES2022 ") + yes(!c.fesAtlas.empty()) + U8(", MSS ") + yes(!c.mssGrid.empty()) +
+       U8(", pays ") + (natNames.empty() ? U8("aucun") : W8(natNames.c_str()));
   return t;
 }
 
@@ -1515,19 +1629,56 @@ std::string PersonalDepth_pi::LandMaskFile(std::string* name) const {
   return file;
 }
 
+std::vector<std::string> PersonalDepth_pi::ShoreFileList(const std::string& s) {
+  std::vector<std::string> v;
+  size_t a = 0;
+  while (a <= s.size()) {
+    size_t b = s.find(';', a);
+    if (b == std::string::npos) b = s.size();
+    std::string f = s.substr(a, b - a);
+    while (!f.empty() && std::isspace((unsigned char)f.back())) f.pop_back();
+    size_t k = 0;
+    while (k < f.size() && std::isspace((unsigned char)f[k])) ++k;
+    if (k < f.size()) v.push_back(f.substr(k));
+    a = b + 1;
+  }
+  return v;
+}
+
+PersonalDepth_pi::LandCfg PersonalDepth_pi::LandConfig() const {
+  LandCfg c;
+  if (!m_set.landMaskOn) return c;
+  c.base = LandMaskFile();
+  c.custom = ShoreFileList(m_set.shoreFiles);
+  c.shore = m_set.shoreZero;
+  return c;
+}
+
+// fond et traits personnels ; erreurs ajoutées à `errors` (le reste est gardé)
+void PersonalDepth_pi::OpenLand(const LandCfg& c, LandMask& m, std::string& errors) {
+  std::string le;
+  if (!c.base.empty() && !m.open(c.base, le)) errors += le + "\n";
+  for (const std::string& f : c.custom) {
+    le.clear();
+    if (!m.addCustom(f, le)) errors += le + "\n";
+  }
+}
+
 void PersonalDepth_pi::DbApplyLandMask() {
   if (m_dbBusy || DbNeedsMigration() || m_dbSources.empty()) return;
-  const std::string landFile = LandMaskFile();
-  if (landFile.empty()) return;
+  const LandCfg landCfg = LandConfig();
+  if (!landCfg.any()) return;
   std::vector<int64_t> ids;
   for (const auto& d : m_dbSources) ids.push_back(d.id);
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
   StartDbJob(U8("Trait de côte : interpolation retirée sur la terre").ToStdString(wxConvUTF8),
-             [ids, prio, cancel, landFile](BathyDb& db, std::string& err, const DbProgress& prog) {
+             [ids, prio, cancel, landCfg](BathyDb& db, std::string& err, const DbProgress& prog) {
                LandMask land;
                prog(0.f, pd::tr("Trait de côte"));
-               if (!land.open(landFile, err)) return false;
+               std::string errors;
+               OpenLand(landCfg, land, errors);
+               if (!land.isOpen()) { err = errors; return false; }
                db.setLandMask(&land);
                long long removed = 0;
                if (!db.applyLandMask(ids, prio, err, prog, cancel, &removed)) return false;
@@ -1555,6 +1706,7 @@ void PersonalDepth_pi::UpdateDbView() {
   if (m_set.dbFolder.empty() || m_dbSources.empty()) {
     if (m_dbView || m_dbViewNext) {
       if (m_dbViewNext) m_dbViewNext->cancel();
+      m_renderer->ClearPending();
       m_dbViewNext.reset();
       m_dbView.reset();
       m_renderer->Invalidate();
@@ -1562,15 +1714,47 @@ void PersonalDepth_pi::UpdateDbView() {
     }
     return;
   }
-  if (m_dbViewNext) {
+  // vues abandonnées : libérées une fois leur calcul arrêté
+  m_dbViewDying.erase(std::remove_if(m_dbViewDying.begin(), m_dbViewDying.end(),
+                                     [](const LayerPtr& l) { return l->state() != BathyLayer::Loading; }),
+                      m_dbViewDying.end());
+  bool swapNow = m_dbViewNext && m_dbViewNext->state() != BathyLayer::Loading;
+  if (swapNow && m_dbViewNext->state() == BathyLayer::Ready && m_dbView && m_lastRenderGL) {
+    // OpenGL : la nouvelle vue est d'abord préparée (textures, isobathes) par
+    // petits lots pendant que l'actuelle reste affichée, puis la remplace
+    const wxLongLong now = wxGetLocalTimeMillis();
+    if (m_renderer->Pending() != m_dbViewNext) {
+      m_renderer->SetPending(m_dbViewNext);
+      m_pendingSince = now;
+      RequestRefresh(GetOCPNCanvasWindow());
+      swapNow = false;
+    } else if (!m_renderer->PendingDone() && (now - m_pendingSince).ToDouble() < 2000) {
+      swapNow = false;
+    }
+  }
+  if (swapNow) {
     const auto st = m_dbViewNext->state();
-    if (st == BathyLayer::Loading) return;
     const bool first = !m_dbView;
     m_dbView = st == BathyLayer::Ready ? m_dbViewNext : nullptr;
+    if (st == BathyLayer::Ready) {
+      const double ms = (wxGetLocalTimeMillis() - m_perfViewStart).ToDouble();
+      ++m_perfViewsReady;
+      m_perfViewMs += ms;
+      m_perfViewMaxMs = std::max(m_perfViewMaxMs, ms);
+    }
+    if (m_dbViewResult && st == BathyLayer::Ready) {  // zone réellement préparée
+      m_dbViewQuad = m_dbViewResult->quad;
+      for (int k = 0; k < 4; ++k) m_dbViewBox[k] = m_dbViewResult->box[k];
+    }
     if (m_dbViewOriginNext) m_datumOrigin = m_dbViewOriginNext->load();
     if (m_dlg) m_dlg->RefreshDatum();
+    if (m_renderer->Pending() == m_dbViewNext && st == BathyLayer::Ready) {
+      m_renderer->AdoptPending();  // textures déjà prêtes : pas d'à-coup
+    } else {
+      m_renderer->ClearPending();
+      m_renderer->Invalidate();
+    }
     m_dbViewNext.reset();
-    m_renderer->Invalidate();
     ++m_set.version;
     if (first && m_dbView && m_set.tideMode && !m_set.tideOk) UpdateTide(true);
     if (m_dlg && m_dlg->IsShown()) m_dlg->RefreshLayers();
@@ -1591,42 +1775,112 @@ void PersonalDepth_pi::UpdateDbView() {
   const int target = std::max(kDbMinLevel, std::min(kDbMaxLevel,
                               (int)std::lround(std::log2(ppd * 360.0 / kTileSize))));
   const double* v = m_vpBox;
-  const bool inside = v[0] >= m_dbViewBox[0] && v[1] <= m_dbViewBox[1] && v[2] >= m_dbViewBox[2] &&
-                      v[3] <= m_dbViewBox[3];
+  // Écran (carte tournée comprise) encore dans la zone préparée ?
+  bool inside;
+  if (m_vpQuadOk && m_dbViewHasQuad) {
+    inside = true;
+    for (int k = 0; k < 4 && inside; ++k) inside = m_dbViewQuad.contains(m_vpQuad.x[k], m_vpQuad.y[k]);
+  } else {
+    inside = !m_dbViewHasQuad && v[0] >= m_dbViewBox[0] && v[1] <= m_dbViewBox[1] &&
+             v[2] >= m_dbViewBox[2] && v[3] <= m_dbViewBox[3];
+  }
   const Datum vk = ViewDatum();
   if (inside && target == m_dbViewTarget && m_dbViewEpoch == m_dbEpoch && m_dbViewDatum == (int)vk) return;
   if (m_dbBusy) return;  // la base est en cours de modification
-  const double w = v[1] - v[0], h = v[3] - v[2];
-  const double box[4] = {v[0] - 0.5 * w, v[1] + 0.5 * w, v[2] - 0.5 * h, v[3] + 0.5 * h};
+  // Vue en cours de calcul devenue inutile (zoom, déplacement) : arrêtée tout
+  // de suite plutôt que d'enchaîner des vues périmées (latence au zoom)
+  if (m_dbViewNext) {
+    if (m_dbViewStop) *m_dbViewStop = true;
+    m_dbViewNext->cancel();
+    if (m_renderer->Pending() == m_dbViewNext) m_renderer->ClearPending();
+    ++m_perfViewsCancelled;
+    m_dbViewDying.push_back(m_dbViewNext);
+    m_dbViewNext.reset();
+  }
+  // Marge autour de l'écran pour suivre un déplacement sans recharger. Carte
+  // tournée : seules les cellules de l'écran tourné (et de sa marge) sont
+  // calculées, pas tout le rectangle qui l'englobe ; la marge est réduite
+  // (jusqu'à 10 %) pour que la vue reste au niveau visé dans le budget.
+  static constexpr size_t kViewCells = 4000000;
+  // Écran + marge m : coins écartés du centre de (1 + 2m)
+  using Prep = DbViewPrep;
+  auto expand = [](const ViewQuad& sq, double m, Prep& r) {
+    double cx = 0, cy = 0;
+    for (int k = 0; k < 4; ++k) { cx += 0.25 * sq.x[k]; cy += 0.25 * sq.y[k]; }
+    double x0 = 1e300, x1 = -1e300, y0 = 1e300, y1 = -1e300;
+    for (int k = 0; k < 4; ++k) {
+      r.quad.x[k] = cx + (sq.x[k] - cx) * (1 + 2 * m);
+      r.quad.y[k] = cy + (sq.y[k] - cy) * (1 + 2 * m);
+      x0 = std::min(x0, r.quad.x[k]); x1 = std::max(x1, r.quad.x[k]);
+      y0 = std::min(y0, r.quad.y[k]); y1 = std::max(y1, r.quad.y[k]);
+    }
+    auto latOf = [](double my) { return std::atan(std::sinh(my * M_PI / 180.0)) * 180.0 / M_PI; };
+    r.box[0] = x0; r.box[1] = x1; r.box[2] = latOf(y0); r.box[3] = latOf(y1);
+  };
+  const bool useQuad = m_vpQuadOk;
+  const ViewQuad screen = m_vpQuad;
+  Prep prov;  // zone prise en compte pendant le calcul (marge minimale)
+  if (useQuad) {
+    expand(screen, 0.1, prov);
+  } else {
+    const double w = v[1] - v[0], h = v[3] - v[2];
+    prov.box[0] = v[0] - 0.5 * w; prov.box[1] = v[1] + 0.5 * w;
+    prov.box[2] = v[2] - 0.5 * h; prov.box[3] = v[3] + 0.5 * h;
+  }
+  // zone réellement préparée, connue du calcul (marge selon le niveau des données)
+  auto result = std::make_shared<Prep>(prov);
   LayerParams p;
   p.label = U8("Base de bathymétrie").ToStdString(wxConvUTF8);
   p.useCache = false;
   p.exaggeration = m_set.exaggeration;
   p.shadeSmooth = m_set.shadeSmooth;
+  auto stop = std::make_shared<std::atomic<bool>>(false);
+  p.stop = stop.get();
   const std::string folder = m_set.dbFolder;
   const std::set<std::string> hidden = m_set.dbHidden;
-  const double b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3];
   const bool skipInterp = !m_set.interpShow;
   auto origin = std::make_shared<std::atomic<int>>(0);
-  p.custom = [folder, hidden, b0, b1, b2, b3, target, skipInterp, vk, origin](
+  p.custom = [folder, hidden, target, skipInterp, vk, origin, stop, useQuad, screen, result, expand](
                  PointCloud& pc, double& dl, double& dt, std::vector<int64_t>& src,
                  std::vector<uint8_t>& interp, std::string& err) {
     BathyDb db;
     int used = 0, org = 0;
     if (!db.open(folder, err)) return false;
     db.setHiddenCells(hidden);
-    const bool ok = db.buildView(b0, b1, b2, b3, target, 4000000, pc, dl, dt, used, err, nullptr, &src,
-                                 &interp, skipInterp, vk, &org);
+    Prep r = *result;
+    if (useQuad) {
+      // Marge la plus large qui garde la vue au niveau visé, plafonné par le
+      // niveau des données (zoom au-delà de leur résolution : marge pleine,
+      // moins de rechargements en faisant glisser la carte)
+      const int zmax = db.maxMergedLevel(r.box[0], r.box[1], r.box[2], r.box[3]);
+      const int eff = std::max(kDbMinLevel, std::min(target, zmax));
+      const double d = 360.0 / std::ldexp((double)kTileSize, eff);
+      const double cs = screen.area() / (d * d);
+      auto marginFor = [](double c) { return 0.5 * (std::sqrt(0.95 * kViewCells / c) - 1.0); };
+      double m = marginFor(cs);
+      if (m < 0.1) m = marginFor(cs / 4);  // l'écran seul dépasse : un niveau plus bas
+      expand(screen, std::max(0.1, std::min(0.5, m)), r);
+    }
+    const bool ok = db.buildView(r.box[0], r.box[1], r.box[2], r.box[3], target, kViewCells, pc, dl, dt, used,
+                                 err, stop.get(), &src, &interp, skipInterp, vk, &org,
+                                 useQuad ? &r.quad : nullptr);
+    *result = r;  // lu après la fin du calcul seulement
     *origin = org;
     return ok;
   };
-  for (int k = 0; k < 4; ++k) m_dbViewBox[k] = box[k];
+  for (int k = 0; k < 4; ++k) m_dbViewBox[k] = prov.box[k];
+  m_dbViewQuad = prov.quad;
+  m_dbViewHasQuad = useQuad;
+  m_dbViewResult = result;
+  m_dbViewStop = stop;
   m_dbViewTarget = target;
   m_dbViewEpoch = m_dbEpoch;
   m_dbViewDatum = (int)vk;
   m_dbViewOriginNext = origin;
   m_dbViewNext = std::make_shared<BathyLayer>(p);
   m_dbViewNext->startLoad();
+  ++m_perfViewsStarted;
+  m_perfViewStart = wxGetLocalTimeMillis();
 }
 
 // ======================================================= palette automatique

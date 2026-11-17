@@ -157,7 +157,18 @@ zone, vertical reference files…) are hidden.
 **Files** — *Add files…* or *Add a folder…* (all bathymetry files of the
 folder and its sub-folders). Supported: XYZ text (`.xyz .txt .csv .dat`, any
 separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
-(`.xml`); GeoTIFF / BAG on builds with GDAL.
+(`.xml`), GPX echo sounder tracks (`.gpx`) and Lowrance / Simrad / B&G sonar
+logs (`.sl2 .sl3`); GeoTIFF / BAG on builds with GDAL.
+
+**Echo sounder tracks** — GPX: track, route and waypoints carrying a depth
+(Garmin `gpxx:Depth` extension, `gpxtpx:depth`…, in metres) and their time.
+SL2 / SL3: only the depth under the transducer of each ping is read (the
+sonar image is skipped), on the primary channel (else DownScan, else
+secondary); pings at the same GPS fix are reduced to their median.
+Coordinates are always WGS84 and depths metres (column, Z direction and Z
+unit settings are ignored). The **Z offset** adds the transducer depth;
+**observed water levels** correct each sounding at its time. For a lake,
+choose the *not tied* vertical reference.
 
 **Everyday settings** (always shown)
 
@@ -388,22 +399,32 @@ surfaces computed once and kept in the database folder
 
 | Datum | Surface used |
 |---|---|
-| Local chart datum | France: Shom ZH (BathyElli v2.1 NM − ZH); elsewhere: FES2022 lowest astronomical tide (LAT); without these files: "undefined", zero offset |
+| Official chart datum | France: Shom ZH (BathyElli v2.1 NM − ZH); other countries: official file put in the *Countries* folder (NOAA VDatum MLLW in the United States…); elsewhere: FES2022 lowest astronomical tide (LAT); without these files: "undefined", zero offset |
 | LAT | FES2022 lowest astronomical tide over 19 years |
 | WGS84 ellipsoid | France: BathyElli v2.1 NM; elsewhere: mean sea surface (MSS CNES_CLS 2025) |
+
+Each `.pdb` file also keeps a copy of the surfaces over its area: a `.pdb`
+copied alone to another folder (or shared without
+`PersonalDepth_datum.sqlite`) brings its surfaces, taken back when the
+database is opened, and is shown at the same chart datum.
 
 In the **Database** tab, *Vertical datum* box:
 
 - **Depths**: datum of the depths shown (colours, soundings, contours,
-  cursor). Default: *local chart datum*, so values match the charts (ENC,
+  cursor). Default: *official chart datum of the country*, so values match the charts (ENC,
   RNC) and a source imported at chart datum shows exactly its original
   values. With the tide, the display is always the actual water depth (chart
   datum + tide).
 - **MSS**: mean sea surface file (`.pdgrid`), for GNSS heights and the
   display at the ellipsoid outside France.
+- **Countries**: folder of the official files of other countries (NOAA
+  VDatum grids of the United States…), recognised automatically; changing
+  the folder recomputes the surfaces. See
+  [external-data.md](external-data.md#5-official-chart-datum-of-other-countries).
 - The information line gives the datum shown, the surface used (e.g. *CD
-  BathyElli v2.1*, *LAT FES2022b*, *undefined*) and the reference files
-  found.
+  BathyElli v2.1*, *MLLW NOAA VDatum*, *LAT FES2022b*, *undefined*), says in
+  plain words whether the datum is **official** (✓) or **approximate** (≈ LAT
+  FES, may differ by a few decimetres), and lists the reference files found.
 - **Update surfaces**: after adding or changing BathyElli, the FES2022 atlas
   or the MSS, recomputes the surfaces and corrects the sources concerned. The
   chart-datum display of a source imported at chart datum does not change.
@@ -436,13 +457,37 @@ a headland. The *Coastline* box of the **Database** tab prevents it:
 - **No interpolated surface on land**: at import, interpolated pixels on land
   are removed. Measured soundings are always kept (intertidal surveys,
   Litto3D).
+- **Own**: the user's shorelines, in addition to the basemap (or alone):
+  KML / KMZ drawn in Google Earth, shapefiles (polygons or polylines, system
+  read from the `.prj`) and GeoPackage (`.gpkg`). Several files: separate
+  them with `;` or add them with *…*. The **water side** of the polygons is
+  that of the soundings: a polygon around the soundings outlines water (a
+  lake outline, its islands drawn inside), a polygon without soundings
+  outlines land (islands, coast). Lines are used as shoreline for the 0 m
+  contour below.
+- **Unreferenced water bodies: shoreline = 0 m contour for interpolation**:
+  for sources imported with the *not tied* reference (lake, reservoir), the
+  interpolated surface slopes down to 0 m at the shoreline instead of
+  stopping at the last sounding line. No sounding is added to the database:
+  the shoreline is only used by the computation, and only within the
+  distance D of the soundings.
 - **Apply to sources**: removes the interpolation on land from the sources
-  already imported. To get it back, re-import the source.
+  already imported. To get it back, re-import the source. The 0 m contour is
+  applied at import only (re-import the source to use it).
 
-See [external-data.md](external-data.md) to download these basemaps.
+**Water bodies missing from the basemap**: small lakes, reservoirs and rivers
+are classed as land by OSMSHP and GSHHG. When most measured soundings of a
+survey fall on "land", the basemap is not applied to that survey (noted in
+the source information): draw the outline of the water body in KML to get a
+mask back.
+
+See [external-data.md](external-data.md) to download these basemaps and to
+prepare a shoreline from OpenStreetMap.
 
 > 🧪 **Testers — check:** a line survey around an island no longer covers it;
-> soundings measured on the foreshore are still shown.
+> soundings measured on the foreshore are still shown; a small-lake survey
+> keeps its interpolation; with a KML outline of the lake, the surface slopes
+> down to 0 at the edge.
 
 ## 6. Palette and depth thresholds
 

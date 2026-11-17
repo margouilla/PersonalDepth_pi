@@ -88,6 +88,14 @@ using DbProgress = std::function<void(float, const std::string&)>;
 
 class DbCell;  // un fichier SQLite
 
+// Quadrilatère convexe en (lon, y Mercator en degrés), sommets dans l'ordre
+struct ViewQuad {
+  double x[4], y[4];
+  double area() const;                                   // aire (degrés²)
+  bool contains(double x, double y) const;               // point intérieur
+  bool row(double y, double& x0, double& x1) const;      // segment intérieur à y
+};
+
 class BathyDb {
  public:
   BathyDb();
@@ -167,6 +175,11 @@ class BathyDb {
   // Surfaces k sur l'emprise : calcule celles qui manquent (fournisseur requis)
   bool ensureDatum(Datum k, double lonMin, double lonMax, double latMin, double latMax,
                    std::string& err, const std::atomic<bool>* cancel = nullptr);
+  // Copies des surfaces dans les .pdb (table datum_surf) : les surfaces d'un
+  // .pdb absentes de PersonalDepth_datum.sqlite y sont ajoutées (`adopted`),
+  // puis chaque .pdb reçoit celles de son emprise (`copied`). Rapide quand
+  // rien n'a changé (révision du fichier notée dans chaque .pdb).
+  bool syncDatum(std::string& err, int* adopted = nullptr, int* copied = nullptr);
   // Surfaces k sur l'emprise de toutes les sources (référence d'affichage)
   bool ensureDatumForSources(Datum k, std::string& err, const DbProgress& progress = nullptr,
                              const std::atomic<bool>* cancel = nullptr);
@@ -182,6 +195,9 @@ class BathyDb {
 
   // ---- masque terre (trait de côte) : pas de surface interpolée sur la terre
   void setLandMask(LandMask* m) { land_ = m; }
+  // Import des sources non rattachées (lacs) : le trait de côte sert
+  // d'isobathe 0 à l'interpolation (aucune sonde ajoutée)
+  void setShoreConstraint(bool on) { shore_ = on; }
   // Retire des sources `ids` les pixels interpolés situés sur la terre
   // (sondes mesurées gardées) ; `removed` : pixels retirés
   bool applyLandMask(const std::vector<int64_t>& ids, DbPriority prio, std::string& err,
@@ -191,6 +207,9 @@ class BathyDb {
   // Lecture de la surface fusionnée (valeurs rangées, sous le niveau moyen)
   bool readMerged(int z, int x, int y, DepthTile& t);
   int maxMergedLevel(double lonMin, double lonMax, double latMin, double latMax);
+  // quad : écran tourné (route ou cap en haut) ; seules les cellules dans ce
+  // quadrilatère sont produites et comptées dans maxCells (l'emprise reste
+  // le rectangle qui l'englobe) : la rotation ne fait plus baisser le niveau
   // Cellules régulières lon/lat (centres) couvrant l'emprise, au niveau z
   // (ou moins si absent) : profondeurs fusionnées, pour l'affichage
   // interp : cellule interpolée (1) ou mesurée (0) ; skipInterp : cellules
@@ -199,7 +218,8 @@ class BathyDb {
                  size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                  std::string& err, const std::atomic<bool>* cancel = nullptr,
                  std::vector<int64_t>* srcIds = nullptr, std::vector<uint8_t>* interp = nullptr,
-                 bool skipInterp = false, Datum display = Datum::Msl, int* originMask = nullptr);
+                 bool skipInterp = false, Datum display = Datum::Msl, int* originMask = nullptr,
+                 const ViewQuad* quad = nullptr);
   // Source retenue au point (fusion), 0 si aucune
   int64_t sourceAt(double lon, double lat, int z);
 
@@ -255,8 +275,21 @@ class BathyDb {
   DatumStore datum_;
   DatumProvider* provider_ = nullptr;
   LandMask* land_ = nullptr;
+  bool shore_ = false;
   // pixels interpolés de la tuile (z, x, y) situés sur la terre : retirés
   bool maskLand(int z, int x, int y, DepthTile& t, long long& removed, std::string& err);
+  // Vote sur les tuiles natives `keys` d'une source : plus de la moitié des
+  // sondes mesurées en eau sur la « terre » -> plan d'eau inconnu du trait de
+  // côte (landUnknown_), masque non appliqué aux tuiles pauvres en sondes
+  bool landVote(int z, const std::vector<std::pair<int, int>>& keys,
+                const std::function<const DepthTile*(const std::pair<int, int>&)>& get,
+                std::string& err, const std::atomic<bool>* cancel);
+  static constexpr long long kLandVoteMin = 16;  // sondes mesurées pour un vote par tuile
+  bool landUnknown_ = false;  // fond OSMSHP / GSHHG : plan d'eau inconnu
+  bool customWater_ = false;  // traits personnels : les polygones tracent l'eau
+  std::map<int64_t, std::pair<bool, bool>> landUnknownOf_;
+  // terre de la tuile pour la source en cours (fond, traits personnels, votes)
+  bool landTile(int z, int x, int y, const DepthTile* t, std::vector<uint8_t>& land, std::string& err);
 };
 
 // Échantillonnage rapide d'une surface S_k (tuiles copiées localement)

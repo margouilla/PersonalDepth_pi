@@ -66,7 +66,33 @@ class BathyRenderer {
   void RenderCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& text, int fontSize);
   // Position du curseur pour l'étiquette de lecture (on=false : masquée)
   void SetCursor(bool on, double lat, double lon) { m_curOn = on; m_curLat = lat; m_curLon = lon; }
-  void Invalidate() { ++m_epoch; m_contours.clear(); m_labelKey.clear(); }  // couches ajoutées / retirées
+  // couches ajoutées / retirées ; la vue adoptée (AdoptPending) garde ses textures et isobathes
+  void Invalidate() {
+    ++m_epoch;
+    for (auto it = m_contours.begin(); it != m_contours.end();)
+      it = (it->first.first && it->first.first == m_keepLayer) ? std::next(it) : m_contours.erase(it);
+    m_labelKey.clear();
+  }
+  // Nouvelle vue de la base préparée en tâche de fond (OpenGL) avant d'être affichée
+  void SetPending(const pd::LayerPtr& l) { m_pending = l; m_pendingDone = !l; }
+  bool PendingDone() const { return !m_pending || m_pendingDone; }
+  const pd::LayerPtr& Pending() const { return m_pending; }
+  void ClearPending() { m_pending.reset(); m_pendingDone = true; }
+  void AdoptPending() {  // la vue en attente devient la vue affichée
+    m_keepLayer = m_pending.get();
+    m_pending.reset();
+    m_pendingDone = true;
+    Invalidate();
+  }
+  // Sondes et valeurs : décalées pendant un déplacement, recalculées à l'arrêt
+  bool LabelsShifted() const { return m_labelsShifted; }
+  void RefreshLabels() { m_labelKey.clear(); m_labelStatic.clear(); }
+  // Mesures de temps (journal PerfLog) : cumulées depuis la dernière remise à zéro
+  struct Perf {
+    int frames = 0, uploads = 0, labelRuns = 0;
+    double totalMs = 0, maxMs = 0, uploadMs = 0, contourMs = 0, labelMs = 0, tileMs = 0;
+  };
+  Perf m_perf;
   void ReleaseGL();                 // à appeler avec un contexte GL courant
   double LastPixelsPerDegLon() const { return m_ppd; }
   const BannerHit& Banner() const { return m_banner; }
@@ -78,6 +104,16 @@ class BathyRenderer {
   struct SmoothGL;  // rendu lissé par shader (profondeur interpolée sur la carte graphique)
   bool InitSmoothGL();
   void UploadDepthTile(Tile& t, const pd::GridLevel& g, const pd::BathyLayer& l, int ti, int tj);
+  bool EnsureTile(Tile& t, const pd::GridLevel& g, const pd::BathyLayer& l, int ti, int tj, bool shader,
+                  const DisplaySettings& s, std::vector<uint32_t>& buf);
+  void PrewarmPending(PlugIn_ViewPort* vp, const DisplaySettings& s, bool shader, std::vector<uint32_t>& buf);
+  pd::LayerPtr m_pending;
+  bool m_pendingDone = true;
+  const void* m_keepLayer = nullptr;
+  // sondes : position géographique de chaque étiquette, pour les décaler
+  std::vector<double> m_labelLon, m_labelLat;
+  wxString m_labelStatic;  // clé des étiquettes sans le centre de la vue
+  bool m_labelsShifted = false;
   bool PrepareLUT(const std::vector<pd::LayerPtr>& layers, const DisplaySettings& s);
   bool FitMapper(PlugIn_ViewPort* vp, pd::ScreenMapper& sm);
   std::vector<pd::Label> CollectLabels(PlugIn_ViewPort* vp, const pd::ScreenMapper& sm,
@@ -106,7 +142,7 @@ class BathyRenderer {
   void DrawContoursDC(wxDC& dc, PlugIn_ViewPort* vp, const pd::ScreenMapper& sm,
                       const std::vector<pd::LayerPtr>& layers, const DisplaySettings& s);
   wxString LabelKey(PlugIn_ViewPort* vp, const std::vector<pd::LayerPtr>& layers,
-                    const DisplaySettings& s, char mode) const;
+                    const DisplaySettings& s, char mode, bool center = true) const;
 
   pd::ColorLUT m_lut;
   unsigned m_lutVersion = 0, m_lutStamp = 0, m_tideVersion = ~0u;
@@ -119,10 +155,22 @@ class BathyRenderer {
   bool m_glPlain = false;  // texte GL sans halo, teinté par glColor
   // Sondes déjà sélectionnées et désencombrées pour la vue courante
   std::vector<pd::Label> m_labels;
+  // Isobathes d'une couche ; projetées une fois en (lon, y Mercator) relatifs à
+  // (ox, oy) : à chaque image, une seule transformation affine (matrice GL)
+  // au lieu d'un log/tan par point (déplacement et zoom fluides)
+  struct ContourRun {
+    uint32_t first, count;
+    float x0, y0, x1, y1;  // emprise (coordonnées relatives)
+    float level;
+  };
   struct ContourCache {
     wxString key;
     std::vector<pd::Isoline> lines;
+    double ox = 0, oy = 0;
+    std::vector<float> uv;
+    std::vector<ContourRun> runs;
   };
+  const ContourCache& Contours(const pd::BathyLayer& l, const DisplaySettings& s);
   std::map<std::pair<const void*, int>, ContourCache> m_contours;
   wxString m_labelKey;
   double m_curLat = 0, m_curLon = 0;

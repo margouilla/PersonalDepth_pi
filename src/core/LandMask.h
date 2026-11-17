@@ -25,9 +25,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "Shoreline.h"
 
 namespace pd {
 
@@ -39,13 +43,29 @@ class LandMask {
   // Fichier retenu pour `path` (dossier ou fichier) et son nom court, sans
   // lecture ; false si aucun trait de côte reconnu
   static bool Find(const std::string& path, std::string& file, std::string& name);
-  bool isOpen() const { return kind_ != kNone; }
+  bool isOpen() const { return kind_ != kNone || !custom_.empty() || !lazy_.empty(); }
+  bool hasBase() const { return kind_ != kNone; }  // OSMSHP ou GSHHG ouvert
   const std::string& name() const { return name_; }  // « OSM basemap_full », « GSHHG f »
   const std::string& file() const { return file_; }
   // Terre (1) ou mer (0) aux centres des 256 × 256 pixels de la tuile Web
   // Mercator (z, x, y), ligne 0 au nord ; false : erreur de lecture
   bool tile(int z, int x, int y, std::vector<uint8_t>& land, std::string& err);
   bool landAt(double lon, double lat);  // (contrôles)
+
+  // Traits de côte personnels (KML/KMZ, shapefile, GeoPackage : voir
+  // Shoreline.h), gardés en mémoire ; s'ajoutent au fond OSMSHP / GSHHG
+  bool addCustom(const std::string& path, std::string& err);
+  void clearCustom();
+  bool hasCustomPolygons() const { return customPolys_; }
+  const std::vector<std::string>& customFiles() const { return customFiles_; }
+  // Pair-impair sur tous les anneaux personnels : 1 à l'intérieur (le côté
+  // terre ou eau est décidé d'après les sondes, voir BathyDb)
+  bool customTile(int z, int x, int y, std::vector<uint8_t>& inside, std::string& err);
+  // Segments de trait de côte (x0 y0 x1 y1 en pixels globaux du niveau z)
+  // touchant le rectangle [gx0, gx1] × [gy0, gy1] : bords des polygones de
+  // terre du fond (sans les coupures des carrés de 1°) et/ou traits personnels
+  bool shoreSegments(int z, double gx0, double gy0, double gx1, double gy1, bool base, bool custom,
+                     std::vector<double>& seg, std::string& err);
 
  private:
   struct Ring {
@@ -55,7 +75,9 @@ class LandMask {
     double x0, x1, y0, y1;     // emprise
     std::vector<Ring> rings;   // pair-impair entre les anneaux
     bool water = false;        // GSHHG : lac / étang (retranché)
+    bool line = false;         // trait personnel ouvert (pas d'intérieur)
   };
+  std::vector<int> cellIds(double lonW, double lonE, double latS, double latN, std::string& err);
   bool loadCell(int cx, int cy, std::string& err);  // cellule de 1° (lon -180..179)
   bool readShpRecord(uint32_t rec, Poly& p, std::string& err);
   enum Kind { kNone, kShp, kGshhg } kind_ = kNone;  // (X11 définit « None »)
@@ -70,6 +92,21 @@ class LandMask {
   std::map<std::pair<int, int>, std::vector<int>> cellPolys_;
   std::map<uint32_t, int> recPoly_;  // OSMSHP : enregistrement -> polygone (partagé)
   std::vector<Poly> polys_;
+  // traits personnels : en mémoire (KML, GeoPackage) ou shapefiles lus à la
+  // demande par carré de 1° (gros fichiers nationaux)
+  std::vector<Poly> custom_;
+  std::map<std::pair<int, int>, std::vector<int>> customCell_;
+  struct Lazy {
+    std::unique_ptr<ShpSource> src;
+    std::map<std::pair<int, int>, std::vector<uint32_t>> cells;  // enregistrements par carré
+    std::map<uint32_t, std::vector<int>> loaded;                 // enregistrement -> polygones
+  };
+  std::vector<Lazy> lazy_;
+  std::set<std::pair<int, int>> lazyDone_;
+  void ensureCustomCell(int cx, int cy);
+  void pushCustom(ShoreFeature& f, std::vector<int>* ids, bool index);
+  std::vector<std::string> customFiles_;
+  bool customPolys_ = false;
 };
 
 }  // namespace pd

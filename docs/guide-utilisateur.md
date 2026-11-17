@@ -166,8 +166,20 @@ référence verticale…) sont masquées.
 **Fichiers** — *Ajouter des fichiers…* ou *Ajouter un dossier…* (tous les
 fichiers de bathymétrie du dossier et de ses sous-dossiers). Formats : XYZ
 texte (`.xyz .txt .csv .dat`, tout séparateur, entêtes ignorés), grilles ESRI
-ASCII (`.asc`), TIN LandXML (`.xml`) ; GeoTIFF / BAG si le plugin est compilé
-avec GDAL.
+ASCII (`.asc`), TIN LandXML (`.xml`), traces de sondeur GPX (`.gpx`) et
+journaux sonar Lowrance / Simrad / B&G (`.sl2 .sl3`) ; GeoTIFF / BAG si le
+plugin est compilé avec GDAL.
+
+**Traces de sondeur** — GPX : points de trace, de route et waypoints portant
+une profondeur (extension `gpxx:Depth` des Garmin, `gpxtpx:depth`…, en
+mètres) et leur heure. SL2 / SL3 : seule la profondeur sous le transducteur
+de chaque ping est lue (l'image sonar est sautée), sur le canal primaire
+(sinon DownScan, sinon secondaire) ; les pings d'une même position GPS sont
+réduits à leur médiane. Les coordonnées sont toujours en WGS84 et les
+profondeurs en mètres (les réglages de colonnes, de sens et d'unité de Z
+sont ignorés). Le **décalage Z** ajoute l'enfoncement du transducteur ; les
+**hauteurs d'eau observées** corrigent chaque sonde à son heure. Pour un lac,
+choisir la référence verticale *non rattachée*.
 
 **Réglages courants** (toujours visibles)
 
@@ -406,22 +418,33 @@ la base (`PersonalDepth_datum.sqlite`) :
 
 | Référence | Surface utilisée |
 |---|---|
-| Zéro des cartes local | France : ZH du Shom (BathyElli v2.1 NM − ZH) ; ailleurs : plus basse mer astronomique FES2022 (LAT) ; sans ces fichiers : « non défini », écart nul |
+| Zéro des cartes officiel | France : ZH du Shom (BathyElli v2.1 NM − ZH) ; autres pays : fichier officiel déposé dans le dossier *Pays* (MLLW NOAA VDatum aux États-Unis…) ; ailleurs : plus basse mer astronomique FES2022 (LAT) ; sans ces fichiers : « non défini », écart nul |
 | LAT | Plus basse mer astronomique FES2022, sur 19 ans |
 | Ellipsoïde WGS84 | France : BathyElli v2.1 NM ; ailleurs : surface moyenne océanique (MSS CNES_CLS 2025) |
+
+Chaque fichier `.pdb` garde aussi une copie des surfaces de son emprise : un
+`.pdb` copié seul dans un autre dossier (ou partagé sans
+`PersonalDepth_datum.sqlite`) apporte ses surfaces, reprises à l'ouverture de
+la base, et s'affiche au même zéro des cartes.
 
 Dans l'onglet **Base**, cadre *Référence verticale* :
 
 - **Profondeurs** : référence des profondeurs affichées (couleurs, sondes,
-  isobathes, curseur). Par défaut le *zéro des cartes local* : les valeurs
+  isobathes, curseur). Par défaut le *zéro des cartes officiel du pays* : les valeurs
   sont celles des cartes (ENC, RNC) et une source importée au zéro des cartes
   s'affiche exactement avec ses valeurs d'origine. Avec la marée, l'affichage
   est toujours la hauteur d'eau réelle (zéro des cartes + marée).
 - **MSS** : fichier de la surface moyenne océanique (`.pdgrid`), pour les
   hauteurs GNSS et l'affichage à l'ellipsoïde hors de France.
+- **Pays** : dossier des fichiers officiels des autres pays (grilles NOAA
+  VDatum des États-Unis…), reconnus tout seuls ; changer de dossier
+  recalcule les surfaces. Voir
+  [external-data.md](external-data.md#5-zéro-des-cartes-officiel-des-autres-pays).
 - La ligne d'information indique la référence affichée, la surface utilisée
-  (ex. *ZH BathyElli v2.1*, *LAT FES2022b*, *non défini*) et les fichiers de
-  référence trouvés.
+  (ex. *ZH BathyElli v2.1*, *MLLW NOAA VDatum*, *LAT FES2022b*, *non défini*),
+  dit en clair si le zéro est **officiel** (✓) ou **approché** (≈ LAT FES,
+  écart possible de quelques décimètres), et liste les fichiers de référence
+  trouvés.
 - **Mettre à jour les surfaces** : après avoir ajouté ou changé BathyElli,
   l'atlas FES2022 ou la MSS, recalcule les surfaces et corrige les sources
   concernées. L'affichage au zéro des cartes d'une source importée au zéro
@@ -455,13 +478,36 @@ une pointe. Le cadre *Trait de côte* de l'onglet **Base** l'évite :
 - **Pas de surface interpolée sur la terre** : à l'import, les pixels
   interpolés situés sur la terre sont retirés. Les sondes mesurées sont
   toujours gardées (levés d'estran, Litto3D).
+- **Personnels** : traits de côte de l'utilisateur, en plus du fond (ou
+  seuls) : KML / KMZ dessinés dans Google Earth, shapefiles (polygones ou
+  polylignes, système lu dans le `.prj`) et GeoPackage (`.gpkg`). Plusieurs
+  fichiers : les séparer par `;` ou les ajouter avec *…*. Le **côté eau** des
+  polygones est celui des sondes : un polygone qui entoure les sondes trace
+  l'eau (contour d'un lac, ses îles dessinées à l'intérieur), un polygone
+  sans sondes trace la terre (îles, côte). Les lignes servent de rivage pour
+  l'isobathe 0 ci-dessous.
+- **Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation** :
+  pour les sources importées en référence *non rattachée* (lac, retenue), la
+  surface interpolée descend vers 0 m au rivage au lieu de s'arrêter à la
+  dernière ligne de sondes. Aucune sonde n'est ajoutée à la base : le rivage
+  ne sert qu'au calcul, et seulement jusqu'à la distance D des sondes.
 - **Appliquer aux sources** : retire l'interpolation sur la terre des sources
-  déjà importées. Pour la retrouver, réimporter la source.
+  déjà importées. Pour la retrouver, réimporter la source. L'isobathe 0 ne
+  s'applique qu'à l'import (réimporter la source pour en profiter).
 
-Voir [external-data.md](external-data.md#français) pour télécharger ces fonds.
+**Plans d'eau absents du fond** : les petits lacs, retenues et rivières sont
+rangés en terre par OSMSHP et GSHHG. Quand la plupart des sondes mesurées
+d'un levé tombent sur la « terre », le fond n'est pas appliqué à ce levé
+(mention dans les informations de la source) : dessiner alors le contour du
+plan d'eau en KML pour retrouver un masque.
+
+Voir [external-data.md](external-data.md#français) pour télécharger ces fonds
+et préparer un trait de côte depuis OpenStreetMap.
 
 > 🧪 **Testeurs — à vérifier :** un levé en lignes autour d'une île ne la
-> couvre plus ; les sondes mesurées sur l'estran restent affichées.
+> couvre plus ; les sondes mesurées sur l'estran restent affichées ; un levé
+> de petit lac garde son interpolation ; avec un contour KML du lac, la
+> surface descend vers 0 au bord.
 
 ## 6. Palette et seuils de profondeur
 

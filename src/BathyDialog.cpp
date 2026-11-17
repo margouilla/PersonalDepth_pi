@@ -384,7 +384,7 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale"));
   wxWindow* sb = box->GetStaticBox();
   const DisplaySettings& s = m_pi->Settings();
-  wxString refs[] = {U8("Zéro des cartes local (ZH en France), comme les cartes"),
+  wxString refs[] = {U8("Zéro des cartes officiel du pays, comme les cartes marines"),
                      U8("Plus basse mer astronomique (LAT)"), U8("Niveau moyen (NM)"),
                      U8("Ellipsoïde WGS84 (hauteur du fond)")};
   m_dispDatum = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 4, refs);
@@ -409,12 +409,26 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   r2->Add(m_mss, 1, wxRIGHT, 2);
   r2->Add(m_mssBtn, 0);
   box->Add(r2, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  // zéros des cartes officiels hors France : un dossier, reconnu tout seul
+  auto* r4 = new wxBoxSizer(wxHORIZONTAL);
+  m_national = new wxTextCtrl(sb, wxID_ANY, W8(s.nationalDir.c_str()), wxDefaultPosition, wxDefaultSize,
+                              wxTE_PROCESS_ENTER);
+  m_national->SetHint(U8("dossier des fichiers officiels (NOAA VDatum…)"));
+  m_national->SetToolTip(U8("Zéro des cartes officiel des autres pays : déposer dans ce dossier les fichiers "
+                            "téléchargés (régions NOAA VDatum des États-Unis…), le plugin les reconnaît et "
+                            "les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. "
+                            "Liens et licences : docs/external-data.md."));
+  m_nationalBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
+  r4->Add(new wxStaticText(sb, wxID_ANY, U8("Pays")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r4->Add(m_national, 1, wxRIGHT, 2);
+  r4->Add(m_nationalBtn, 0);
+  box->Add(r4, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
   m_datumInfo = new wxStaticText(sb, wxID_ANY, "");
   box->Add(m_datumInfo, 0, wxEXPAND | wxALL, 4);
   auto* r3 = new wxBoxSizer(wxHORIZONTAL);
   m_datumUpdate = new wxButton(sb, wxID_ANY, U8("Mettre à jour les surfaces"));
   m_datumUpdate->SetToolTip(U8("Recalcule les surfaces de référence de la base avec les fichiers "
-                               "actuels (BathyElli, FES2022, MSS) et corrige les sources concernées. "
+                               "actuels (BathyElli, FES2022, MSS, pays) et corrige les sources concernées. "
                                "À lancer après avoir ajouté ou changé un de ces fichiers."));
   m_datumMigrate = new wxButton(sb, wxID_ANY, U8("Migrer la base…"));
   m_datumMigrate->SetToolTip(U8("Base d'une version antérieure : profondeurs ramenées au niveau moyen "
@@ -443,6 +457,21 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
     if (fd.ShowModal() != wxID_OK) return;
     m_mss->SetValue(fd.GetPath());
     setMss();
+  });
+  auto setNational = [this]() {
+    const std::string f = m_national->GetValue().Trim().Trim(false).ToUTF8().data();
+    if (f == m_pi->Settings().nationalDir) return;
+    m_pi->Settings().nationalDir = f;
+    m_pi->NationalChanged();
+    RefreshDatum();
+  };
+  m_national->Bind(wxEVT_TEXT_ENTER, [setNational](wxCommandEvent&) { setNational(); });
+  m_national->Bind(wxEVT_KILL_FOCUS, [setNational](wxFocusEvent& e) { setNational(); e.Skip(); });
+  m_nationalBtn->Bind(wxEVT_BUTTON, [this, setNational](wxCommandEvent&) {
+    wxDirDialog dd(this, U8("Fichiers officiels des pays"), m_national->GetValue());
+    if (dd.ShowModal() != wxID_OK) return;
+    m_national->SetValue(dd.GetPath());
+    setNational();
   });
   m_datumUpdate->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     m_pi->DbUpdateDatum();
@@ -477,6 +506,27 @@ wxSizer* BathyDialog::BuildLandBox(wxWindow* p) {
   r->Add(m_land, 1, wxRIGHT, 2);
   r->Add(m_landBtn, 0);
   box->Add(r, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  // traits de côte personnels (KML Google Earth, shapefile, GeoPackage)
+  auto* r3 = new wxBoxSizer(wxHORIZONTAL);
+  m_shore = new wxTextCtrl(sb, wxID_ANY, W8(s.shoreFiles.c_str()), wxDefaultPosition, wxDefaultSize,
+                           wxTE_PROCESS_ENTER);
+  m_shore->SetHint(U8("traits personnels .kml .kmz .shp .gpkg (séparer par ;)"));
+  m_shore->SetToolTip(U8("Rivages dessinés ou extraits par l'utilisateur, en plus du fond de carte : "
+                         "polygones (lac et ses îles, îles, côte) ou lignes. Le côté eau des polygones "
+                         "est celui des sondes : un polygone qui entoure les sondes trace l'eau, un "
+                         "polygone sans sondes trace la terre."));
+  m_shoreBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
+  r3->Add(new wxStaticText(sb, wxID_ANY, U8("Personnels")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r3->Add(m_shore, 1, wxRIGHT, 2);
+  r3->Add(m_shoreBtn, 0);
+  box->Add(r3, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  m_shoreZero = new wxCheckBox(sb, wxID_ANY, U8("Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation"));
+  m_shoreZero->SetValue(s.shoreZero);
+  m_shoreZero->SetToolTip(U8("Sources « non rattachées » (lac, retenue) : à l'import, la surface "
+                             "interpolée descend vers 0 m au rivage au lieu de s'arrêter à la dernière "
+                             "sonde. Aucune sonde n'est ajoutée ; la distance D d'interpolation reste "
+                             "la limite."));
+  box->Add(m_shoreZero, 0, wxALL, 4);
   auto* r2 = new wxBoxSizer(wxHORIZONTAL);
   m_landInfo = new wxStaticText(sb, wxID_ANY, "");
   m_landApply = new wxButton(sb, wxID_ANY, U8("Appliquer aux sources"));
@@ -500,6 +550,33 @@ wxSizer* BathyDialog::BuildLandBox(wxWindow* p) {
     m_land->SetValue(dd.GetPath());
     setPath();
   });
+  auto setShore = [this]() {
+    const std::string f = m_shore->GetValue().Trim().Trim(false).ToUTF8().data();
+    if (f == m_pi->Settings().shoreFiles) return;
+    m_pi->Settings().shoreFiles = f;
+    m_pi->SaveConfig();
+    RefreshLand();
+  };
+  m_shore->Bind(wxEVT_TEXT_ENTER, [setShore](wxCommandEvent&) { setShore(); });
+  m_shore->Bind(wxEVT_KILL_FOCUS, [setShore](wxFocusEvent& e) { setShore(); e.Skip(); });
+  m_shoreBtn->Bind(wxEVT_BUTTON, [this, setShore](wxCommandEvent&) {
+    wxFileDialog fd(this, U8("Traits de côte personnels"), "", "",
+                    U8("Traits de côte (*.kml;*.kmz;*.shp;*.gpkg)|*.kml;*.KML;*.kmz;*.KMZ;*.shp;*.SHP;*.gpkg;*.GPKG|"
+                       "Tous les fichiers|*"),
+                    wxFD_OPEN | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE);
+    if (fd.ShowModal() != wxID_OK) return;
+    wxArrayString ps;
+    fd.GetPaths(ps);
+    wxString v = m_shore->GetValue().Trim().Trim(false);
+    for (const wxString& f : ps)
+      if (!v.Contains(f)) v += (v.empty() ? "" : ";") + f;
+    m_shore->SetValue(v);
+    setShore();
+  });
+  m_shoreZero->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    m_pi->Settings().shoreZero = m_shoreZero->GetValue();
+    m_pi->SaveConfig();
+  });
   m_landOn->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
     m_pi->Settings().landMaskOn = m_landOn->GetValue();
     m_pi->SaveConfig();
@@ -522,13 +599,20 @@ void BathyDialog::RefreshLand() {
   std::string name;
   const std::string file = m_pi->LandMaskFile(&name);
   const bool busy = m_pi->DbBusy();
+  const auto cfg = m_pi->LandConfig();
+  wxString used = file.empty() ? wxString() : W8(name.c_str());
+  if (!cfg.custom.empty())
+    used += (used.empty() ? wxString() : W8(" + ")) +
+            wxString::Format(U8("%d trait(s) personnel(s)"), (int)cfg.custom.size());
   m_landInfo->SetLabel(!m_pi->Settings().landMaskOn ? U8("désactivé")
-                       : file.empty() ? (m_pi->Settings().landMask.empty() ? U8("aucun dossier choisi")
+                       : used.empty() ? (m_pi->Settings().landMask.empty() ? U8("aucun dossier choisi")
                                                                            : U8("aucun trait de côte reconnu"))
-                                      : U8("utilisé : ") + W8(name.c_str()));
-  m_landApply->Enable(!busy && !file.empty() && !m_pi->DbSources().empty() && !m_pi->DbNeedsMigration());
+                                      : U8("utilisé : ") + used);
+  m_landApply->Enable(!busy && cfg.any() && !m_pi->DbSources().empty() && !m_pi->DbNeedsMigration());
   m_land->Enable(!busy);
   m_landBtn->Enable(!busy);
+  m_shore->Enable(!busy);
+  m_shoreBtn->Enable(!busy);
 }
 
 void BathyDialog::RefreshDatum() {

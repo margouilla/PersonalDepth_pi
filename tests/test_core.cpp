@@ -47,6 +47,8 @@
 #include "../src/core/SurveyShape.h"
 #include "../src/core/GeoGrid.h"
 #include "../src/core/LandMask.h"
+#include "../src/core/Tracks.h"
+#include "../src/core/Shoreline.h"
 #include <cstring>
 #include "../src/core/Projection.h"
 
@@ -61,6 +63,17 @@ static double ms(clk::time_point a) {
 #define CHECK(c) do { if (!(c)) { std::printf("ÉCHEC %s:%d %s\n", __FILE__, __LINE__, #c); return 1; } } while (0)
 
 int main(int argc, char** argv) {
+  {  // cellules interpolées près d'une cellule mesurée : pas éclaircies
+    GridLevel g;
+    g.nx = 10; g.ny = 3;
+    g.z.assign(30, 1.f);
+    g.interp.assign(30, 1);
+    g.interp[10] = 0;  // mesurée (0, 1)
+    g.markInterpNear();
+    CHECK(!g.isInterp(10) && g.isInterp(11) && !g.isInterpFar(11) && !g.isInterpFar(2) &&
+          !g.isInterpFar(22) && g.isInterpFar(3) && g.isInterpFar(29) && g.isInterp(29));
+    std::printf("Interpolé près du mesuré non éclairci : OK\n");
+  }
   size_t N = argc > 1 ? std::strtoul(argv[1], nullptr, 10) : 3000000;
   // PD_TEST_LIGHT : version allégée (émulation lente, ex. armhf sous QEMU)
   if (std::getenv("PD_TEST_LIGHT")) N = std::min<size_t>(N, 50000);
@@ -874,6 +887,36 @@ int main(int argc, char** argv) {
       int used;
       CHECK(db.buildView(-4.53, -4.47, 48.29, 48.33, 16, 20000000, v, dl, dt, used, err));
       before = v.size();
+      {  // écran tourné de 45° : seules ses cellules, et le niveau tient dans le budget
+        const double cx = -4.50, cy = ScreenMapper::mercY(48.31), r = 0.015;
+        ViewQuad q;
+        for (int k = 0; k < 4; ++k) {
+          const double a = M_PI / 4 + k * M_PI / 2;
+          q.x[k] = cx + r * std::cos(a); q.y[k] = cy + r * std::sin(a);
+        }
+        PointCloud vq;
+        double dl2, dt2;
+        int used2 = 0, usedR = 0;
+        const double la0 = std::atan(std::sinh((cy - r) * M_PI / 180)) * 180 / M_PI;
+        const double la1 = std::atan(std::sinh((cy + r) * M_PI / 180)) * 180 / M_PI;
+        int L = 0;  // niveau propre des données
+        CHECK(db.buildView(cx - r, cx + r, la0, la1, 18, 100000000, vq, dl2, dt2, L, err));
+        const size_t cellsQ = (size_t)(q.area() / std::pow(360.0 / std::ldexp(256.0, L), 2));
+        CHECK(db.buildView(cx - r, cx + r, la0, la1, L, cellsQ + 100, vq, dl2, dt2, used2, err, nullptr,
+                          nullptr, nullptr, false, Datum::Msl, nullptr, &q));
+        ViewQuad q2 = q;  // tolérance : une cellule au bord
+        for (int k = 0; k < 4; ++k) {
+          q2.x[k] = cx + (q.x[k] - cx) * (r + 2 * dl2) / r;
+          q2.y[k] = cy + (q.y[k] - cy) * (r + 2 * dl2) / r;
+        }
+        bool in = true;
+        for (size_t k = 0; k < vq.size(); ++k) in &= q2.contains(vq.lon(k), ScreenMapper::mercY(vq.lat(k)));
+        PointCloud vr;
+        CHECK(db.buildView(cx - r, cx + r, la0, la1, L, cellsQ + 100, vr, dl2, dt2, usedR, err));
+        std::printf("vue tournée : %zu cellules (rectangle %zu), niveau %d (rectangle %d)\n", vq.size(),
+                    vr.size(), used2, usedR);
+        CHECK(used2 == L && usedR < L && in && vq.size() > 0);
+      }
       // redécoupage en 0,25°
       CHECK(db.resplit(0.25, err));
       CHECK(db.cellDeg() == 0.25 && db.sources().size() == 1);
@@ -1735,6 +1778,63 @@ int main(int argc, char** argv) {
       CHECK(db.cleanSources({ida}, 10.5f, 30.f, DbPriority::ResolutionDate, err, nullptr, nullptr, &removed) &&
             removed > 0);
     }
+    {  // copies des surfaces dans les .pdb : un .pdb copié seul garde ses surfaces
+      int adopted = -1, copied = -1;
+      {
+        BathyDb db;
+        CHECK(db.open(folder, err));
+        CHECK(db.syncDatum(err, &adopted, &copied) && adopted == 0 && copied > 0);
+        CHECK(db.syncDatum(err, &adopted, &copied) && adopted == 0 && copied == 0);  // déjà à jour
+      }
+      const std::string solo = Tmp("pd_testdatum_solo");
+      std::filesystem::remove_all(solo);
+      std::filesystem::create_directories(solo);
+      for (const auto& e : std::filesystem::directory_iterator(folder))
+        if (e.path().extension() == ".pdb") std::filesystem::copy_file(e.path(), std::filesystem::path(solo) / e.path().filename());
+      BathyDb d2;
+      CHECK(d2.open(solo, err));
+      CHECK(!std::filesystem::exists(std::filesystem::path(solo) / DatumStore::FileName()));
+      CHECK(d2.syncDatum(err, &adopted, &copied) && adopted > 0);
+      // source G (au niveau moyen) : affichée au ZH avec les surfaces reprises du .pdb
+      CHECK(d2.buildView(-4.452, -4.448, 48.308, 48.312, 16, 20000000, v, dl, dt, used, err, nullptr,
+                         nullptr, nullptr, false, Datum::Cd));
+      const double z0g = nmF(-4.45, 48.31) - zhF(-4.45, 48.31) - 0.2;  // ZH relevé de 20 cm
+      std::printf("Surfaces copiées dans les .pdb : %d reprises par la base copiée, vue ZH %.3f (attendu %.3f)\n",
+                  adopted, v.zMin, 30 - z0g);
+      CHECK(std::fabs(v.zMin - (30 - z0g)) < 0.02);
+    }
+    {  // zéro des cartes officiel d'un autre pays : mllw.gtx NOAA VDatum (MLLW − LMSL)
+      const std::string nd = Tmp("pd_national");
+      std::filesystem::remove_all(nd);
+      std::filesystem::create_directories(std::filesystem::path(nd) / "vdatum" / "MAcoast01_8301");
+      {
+        FILE* f = std::fopen((std::filesystem::path(nd) / "vdatum" / "MAcoast01_8301" / "MAcoast01_8301_mllw.gtx").string().c_str(), "wb");
+        auto be64 = [&](double x) { uint64_t u; std::memcpy(&u, &x, 8); for (int k = 7; k >= 0; --k) std::fputc((int)(u >> (8 * k)) & 255, f); };
+        auto be32 = [&](uint32_t u) { for (int k = 3; k >= 0; --k) std::fputc((int)(u >> (8 * k)) & 255, f); };
+        be64(41.0); be64(289.0); be64(0.05); be64(0.05); be32(21); be32(21);  // 41–42° N, 71–70° W (0–360)
+        for (int r = 0; r < 21; ++r)
+          for (int c = 0; c < 21; ++c) {
+            float v = c >= 18 ? -88.8888f : (float)(-1.0 - 0.01 * c);  // MLLW sous le NM ; bord est à terre
+            uint32_t u; std::memcpy(&u, &v, 4); be32(u);
+          }
+        std::fclose(f);
+      }
+      DatumConfig nc;
+      nc.national = ScanNationalDatums(nd);
+      CHECK(nc.national.size() == 1 && nc.national[0].name == "MLLW NOAA VDatum" &&
+            std::fabs(nc.national[0].lonW + 71.0) < 1e-9);
+      DatumProvider np(nc);
+      Grid2D sg;
+      std::vector<uint8_t> so;
+      CHECK(np.compute(Datum::Cd, -70.9, -70.5, 41.4, 41.6, sg, so, err));
+      const double sv = sg.sample(-70.75, 41.5);  // c = 5 : MLLW = −1,05 m -> S_cd = 1,05
+      int nNat = 0, nNone = 0;
+      for (uint8_t o : so) { nNat += o == kOrigNational; nNone += o == kOrigNone; }
+      std::printf("Zéro national (VDatum) : S_cd %.3f m, nœuds national %d, sans référence %d (%s)\n", sv, nNat,
+                  nNone, DatumOriginText(Datum::Cd, kOrigNational, "", NationalNames(nc.national)).c_str());
+      CHECK(std::fabs(sv - 1.05) < 0.002 && nNat == (int)so.size());
+      CHECK(np.compute(Datum::Cd, -60.5, -60.4, 41.4, 41.6, sg, so, err) && so[0] == kOrigNone && sg.v[0] == 0.f);
+    }
     std::printf("Référence verticale (niveau moyen, migration, mise à jour) : OK\n");
   }
   {  // Masque terre : shapefile de polygones (format OSMSHP d'OpenCPN), île carrée
@@ -1811,7 +1911,187 @@ int main(int argc, char** argv) {
     CHECK(db.removeSources({id}, DbPriority::ResolutionDate, err));
     CHECK(db.importCloud(L, m, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id2));
     CHECK(at(-4.50, 48.3105) == after);
+    // lac absent du trait de côte (sondes toutes sur la « terre ») : masque non appliqué
+    CHECK(db.removeSources({id2}, DbPriority::ResolutionDate, err));
+    PointCloud K;
+    for (double la = 48.3062; la <= 48.3138; la += 0.0009)
+      for (double lo = -4.5038; lo <= -4.4962; lo += 0.00005) K.add(lo, la, 6.f);
+    K.computeBounds();
+    DbSource mk = m;
+    mk.name = "K"; mk.datum = (int)Datum::Free;
+    int64_t id3 = 0;
+    CHECK(db.importCloud(K, mk, false, DbPriority::ResolutionDate, err, nullptr, nullptr, &id3));
+    const size_t lake = at(-4.50, 48.3105);
+    CHECK(db.applyLandMask({id3}, DbPriority::ResolutionDate, err, nullptr, nullptr, &removed));
+    std::printf("Masque terre, lac inconnu : %zu cellules, %lld pixels retirés\n", lake, removed);
+    CHECK(lake > 0 && removed == 0 && at(-4.50, 48.3105) == lake);
     std::printf("Masque terre (OSMSHP) : OK\n");
+    // Trait de côte personnel (KML) : lac rectangulaire, sondes à 10 m en lignes
+    // jusqu'à ~150 m du bord ; rivage = isobathe 0 pour l'interpolation
+    const std::string kml = Tmp("pd_lac.kml");
+    {
+      FILE* f = std::fopen(kml.c_str(), "wb");
+      std::fputs("<?xml version=\"1.0\"?><kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><Placemark>"
+                 "<Polygon><outerBoundaryIs><LinearRing><coordinates>-4.60,48.40,0 -4.58,48.40,0 "
+                 "-4.58,48.41,0 -4.60,48.41,0 -4.60,48.40,0</coordinates></LinearRing></outerBoundaryIs>"
+                 "</Polygon></Placemark></Document></kml>", f);
+      std::fclose(f);
+    }
+    std::vector<ShoreFeature> sf;
+    CHECK(ReadShoreFile(kml, sf, err) && sf.size() == 1 && sf[0].closed && sf[0].x.size() == 4);
+    LandMask lk;
+    CHECK(lk.addCustom(kml, err) && lk.isOpen() && !lk.hasBase() && lk.hasCustomPolygons());
+    PointCloud W;
+    for (double la = 48.4015; la <= 48.4086; la += 0.0009)
+      for (double lo = -4.598; lo <= -4.582; lo += 0.00005) W.add(lo, la, 10.f);
+    W.computeBounds();
+    DbSource mw;
+    mw.name = "W"; mw.res = 5; mw.interpD = 300; mw.interpMethod = 0; mw.datum = (int)Datum::Free;
+    auto depthAt = [&](BathyDb& d, double lo, double la) -> float {
+      if (!d.buildView(lo - 0.00005, lo + 0.00005, la - 0.00005, la + 0.00005, 17, 100000, v, dl, dt, used, err) ||
+          v.empty())
+        return NAN;
+      return v.z[v.size() / 2];
+    };
+    for (int pass = 0; pass < 2; ++pass) {
+      const std::string fw = Tmp(pass ? "pd_testshore1" : "pd_testshore0");
+      std::filesystem::remove_all(fw);
+      BathyDb dw;
+      CHECK(dw.open(fw, err));
+      dw.setLandMask(&lk);
+      dw.setShoreConstraint(pass == 1);
+      CHECK(dw.importCloud(W, mw, false, DbPriority::ResolutionDate, err));
+      const float edge = depthAt(dw, -4.599, 48.4051), out = depthAt(dw, -4.6015, 48.4051);
+      const float mid = depthAt(dw, -4.59, 48.4051);
+      std::printf("Trait de côte KML, isobathe 0 %s : bord %.2f m, hors du lac %.2f, centre %.2f\n",
+                  pass ? "oui" : "non", edge, out, mid);
+      CHECK(std::isnan(out) && std::fabs(mid - 10.f) < 0.01f);
+      if (pass) CHECK(edge > 3.f && edge < 7.f);
+      else CHECK(std::isnan(edge));
+    }
+    {  // même lac en shapefile (lu à la demande, .shx)
+      const std::string shp = Tmp("pd_lac.shp"), shx = Tmp("pd_lac.shx");
+      const double X[5] = {-4.60, -4.60, -4.58, -4.58, -4.60}, Y[5] = {48.40, 48.41, 48.41, 48.40, 48.40};
+      std::vector<uint8_t> rec;
+      auto le32 = [&](std::vector<uint8_t>& v, int32_t x) { for (int k = 0; k < 4; ++k) v.push_back((uint8_t)(x >> (8 * k))); };
+      auto le64 = [&](std::vector<uint8_t>& v, double d) { uint64_t u; std::memcpy(&u, &d, 8); for (int k = 0; k < 8; ++k) v.push_back((uint8_t)(u >> (8 * k))); };
+      auto be32 = [&](std::vector<uint8_t>& v, int32_t x) { for (int k = 3; k >= 0; --k) v.push_back((uint8_t)(x >> (8 * k))); };
+      le32(rec, 5); le64(rec, -4.60); le64(rec, 48.40); le64(rec, -4.58); le64(rec, 48.41);
+      le32(rec, 1); le32(rec, 5); le32(rec, 0);
+      for (int k = 0; k < 5; ++k) { le64(rec, X[k]); le64(rec, Y[k]); }
+      auto header = [&](int32_t lenWords) {
+        std::vector<uint8_t> h;
+        be32(h, 9994);
+        for (int k = 0; k < 5; ++k) be32(h, 0);
+        be32(h, lenWords); le32(h, 1000); le32(h, 5);
+        le64(h, -4.60); le64(h, 48.40); le64(h, -4.58); le64(h, 48.41);
+        for (int k = 0; k < 4; ++k) le64(h, 0);
+        return h;
+      };
+      std::vector<uint8_t> fshp = header((int32_t)((100 + 8 + rec.size()) / 2));
+      be32(fshp, 1); be32(fshp, (int32_t)(rec.size() / 2));
+      fshp.insert(fshp.end(), rec.begin(), rec.end());
+      std::vector<uint8_t> fshx = header((100 + 8) / 2);
+      be32(fshx, 50); be32(fshx, (int32_t)(rec.size() / 2));
+      FILE* f = std::fopen(shp.c_str(), "wb"); std::fwrite(fshp.data(), 1, fshp.size(), f); std::fclose(f);
+      f = std::fopen(shx.c_str(), "wb"); std::fwrite(fshx.data(), 1, fshx.size(), f); std::fclose(f);
+      LandMask ls;
+      CHECK(ls.addCustom(shp, err) && ls.isOpen() && ls.hasCustomPolygons());
+      const std::string fw = Tmp("pd_testshore_shp");
+      std::filesystem::remove_all(fw);
+      BathyDb dw;
+      CHECK(dw.open(fw, err));
+      dw.setLandMask(&ls);
+      dw.setShoreConstraint(true);
+      CHECK(dw.importCloud(W, mw, false, DbPriority::ResolutionDate, err));
+      const float edge = depthAt(dw, -4.599, 48.4051), out = depthAt(dw, -4.6015, 48.4051);
+      std::printf("Trait de côte shapefile (à la demande) : bord %.2f m, hors du lac %.2f\n", edge, out);
+      CHECK(std::isnan(out) && edge > 3.f && edge < 7.f);
+    }
+    std::printf("Trait de côte personnel (KML, lac) : OK\n");
+  }
+  {  // Traces de sondeur : GPX Garmin et journal sonar SL2 synthétique
+    const std::string gpx = Tmp("pd_trace.gpx");
+    {
+      FILE* f = std::fopen(gpx.c_str(), "wb");
+      std::fputs("<?xml version=\"1.0\"?><gpx xmlns:gpxx=\"x\"><wpt lat=\"52.24\" lon=\"104.35\"><name>1</name>"
+                 "<extensions><gpxx:WaypointExtension><gpxx:Depth>2.5</gpxx:Depth></gpxx:WaypointExtension>"
+                 "</extensions></wpt><trk><trkseg>"
+                 "<trkpt lat='52.2020' lon='104.3711'><time>2022-08-07T01:44:02Z</time><extensions>"
+                 "<gpxx:TrackPointExtension><gpxx:Temperature>15</gpxx:Temperature><gpxx:Depth>0.56</gpxx:Depth>"
+                 "</gpxx:TrackPointExtension></extensions></trkpt>"
+                 "<trkpt lat=\"52.2021\" lon=\"104.3712\"><time>2022-08-07T01:44:28Z</time></trkpt>"
+                 "<trkpt lat=\"52.2022\" lon=\"104.3713\"/></trkseg></trk></gpx>", f);
+      std::fclose(f);
+    }
+    std::vector<TrackSample> ts;
+    TrackInfo ti;
+    CHECK(ReadGpxSamples(gpx, ts, ti, err) && ti.records == 4 && ti.noDepth == 2 && ts.size() == 2);
+    CHECK(std::fabs(ts[0].depth - 2.5f) < 1e-6 && !ts[0].hasT);
+    CHECK(ts[1].hasT && ts[1].t == 1659836642LL && std::fabs(ts[1].lon - 104.3711) < 1e-9);
+    LoadOptions lo;
+    lo.zOffset = 0.4f;  // enfoncement du transducteur
+    PointCloud pc;
+    CHECK(LoadTrack(gpx, lo, pc, err) && pc.size() == 2 && std::fabs(pc.z[1] - 0.96f) < 1e-5 &&
+          pc.tMin == 1659836642LL);
+    // SL2 : 2 positions, 3 pings primaires sur la première (médiane), 1 secondaire
+    const std::string sl2 = Tmp("pd_sonar.sl2");
+    {
+      std::vector<uint8_t> F(8, 0);
+      const uint16_t hdr[4] = {2, 2, 3200, 1};
+      std::memcpy(F.data(), hdr, 8);
+      const double R = 6356752.3142;
+      auto frame = [&](int ch, float ft, double lon, double lat, int ms, uint32_t date) {
+        std::vector<uint8_t> h(144 + 16, 0);
+        const uint32_t pos = (uint32_t)F.size();
+        const uint16_t size = (uint16_t)h.size(), c = (uint16_t)ch;
+        const int32_t e = (int32_t)std::lround(lon * M_PI / 180 * R);
+        const int32_t n = (int32_t)std::lround(R * std::log(std::tan(M_PI / 4 + lat * M_PI / 360)));
+        std::memcpy(&h[0], &pos, 4); std::memcpy(&h[28], &size, 2); std::memcpy(&h[32], &c, 2);
+        std::memcpy(&h[60], &date, 4); std::memcpy(&h[64], &ft, 4);
+        std::memcpy(&h[108], &e, 4); std::memcpy(&h[112], &n, 4); std::memcpy(&h[140], &ms, 4);
+        F.insert(F.end(), h.begin(), h.end());
+      };
+      frame(0, 10.f, 31.7, 61.37, 0, 1620821817u);
+      frame(1, 99.f, 31.7, 61.37, 0, 0);
+      frame(0, 30.f, 31.7, 61.37, 100, 100);
+      frame(0, 20.f, 31.7, 61.37, 200, 200);
+      frame(0, 0.f, 31.701, 61.371, 1500, 1500);  // fond non trouvé
+      frame(0, 40.f, 31.701, 61.371, 1600, 1600);
+      FILE* f = std::fopen(sl2.c_str(), "wb");
+      std::fwrite(F.data(), 1, F.size(), f);
+      std::fclose(f);
+    }
+    ts.clear();
+    CHECK(ReadSonarLogSamples(sl2, ts, ti, err) && ti.kind == "SL2" && ti.records == 6 && ti.channel == 0 &&
+          ti.pings == 5 && ti.noDepth == 1 && ts.size() == 2);
+    CHECK(std::fabs(ts[0].depth - 20 * 0.3048f) < 1e-4 && std::fabs(ts[1].depth - 40 * 0.3048f) < 1e-4);
+    CHECK(std::fabs(ts[0].lon - 31.7) < 2e-5 && std::fabs(ts[0].lat - 61.37) < 2e-5 && ts[0].t == 1620821817LL &&
+          ts[1].t == 1620821819LL);
+    std::printf("Traces GPX et SL2 : OK\n");
+  }
+  {  // Écran tourné (route / cap en haut) : l'échelle ne dépend pas de l'angle
+    const double clon = -4.8, clat = 48.37, ppd = 20000.0, W = 1900, H = 980;
+    double prev = -1;
+    for (int deg = 0; deg < 360; deg += 15) {
+      const double r = deg * M_PI / 180, cs = std::cos(r), sn = std::sin(r);
+      auto ll = [&](double px, double py, double& lo, double& la) {  // pixel -> lon/lat
+        const double dx = px - W / 2, dy = py - H / 2;
+        const double ex = cs * dx + sn * dy, ny = -(-sn * dx + cs * dy);  // repère nord en haut
+        lo = clon + ex / ppd;
+        la = 2 * std::atan(std::exp((ScreenMapper::mercY(clat) + ny / ppd) * M_PI / 180)) * 180 / M_PI - 90;
+      };
+      double lon[3], lat[3], x[3] = {0, W, 0}, y[3] = {H, H, 0};
+      for (int k = 0; k < 3; ++k) ll(x[k], y[k], lon[k], lat[k]);
+      ScreenMapper sm;
+      CHECK(sm.fit(lon, lat, x, y));
+      CHECK(std::fabs(sm.pixelsPerDegLon() - ppd) < 1e-3 * ppd);
+      float px, py;
+      sm.map(clon, clat, px, py);
+      CHECK(std::fabs(px - W / 2) < 0.5 && std::fabs(py - H / 2) < 0.5);
+      prev = sm.pixelsPerDegLon();
+    }
+    std::printf("Écran tourné : échelle constante sur 360° (%.1f px/°) : OK\n", prev);
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;

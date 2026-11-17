@@ -60,9 +60,15 @@ struct GridLevel {
   double dlon = 0, dlat = 0;
   std::vector<float> z;        // NaN = pas de donnée
   std::vector<uint8_t> shade;  // ombrage ; 160 = neutre (relief plat)
-  std::vector<uint8_t> interp; // 1 = cellule interpolée (base), vide = aucune
+  // bit 0 : cellule interpolée (base) ; bit 1 : à moins de kInterpNear cellules
+  // d'une cellule mesurée (petit trou d'un levé, non éclairci) ; vide = aucune
+  std::vector<uint8_t> interp;
+  static constexpr int kInterpNear = 2;
 
-  bool isInterp(size_t c) const { return !interp.empty() && interp[c]; }
+  bool isInterp(size_t c) const { return !interp.empty() && (interp[c] & 1); }
+  // zone interpolée à montrer plus claire (« les distinguer »)
+  bool isInterpFar(size_t c) const { return !interp.empty() && interp[c] == 1; }
+  void markInterpNear();
 
   float at(int i, int j) const { return z[(size_t)j * nx + i]; }
   bool cellOf(double lon, double lat, int& i, int& j) const {

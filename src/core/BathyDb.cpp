@@ -78,6 +78,10 @@ class DbCell {
         " data BLOB, PRIMARY KEY(src, z, x, y));"
         "CREATE TABLE IF NOT EXISTS merged(z INTEGER, x INTEGER, y INTEGER, zmin REAL, zmax REAL,"
         " data BLOB, PRIMARY KEY(z, x, y));"
+        // copie des surfaces de référence verticale sur l'emprise du fichier
+        // (même forme que PersonalDepth_datum.sqlite, voir BathyDb::syncDatum)
+        "CREATE TABLE IF NOT EXISTS datum_surf(kind INTEGER, tx INTEGER, ty INTEGER,"
+        " origin INTEGER, model TEXT, data BLOB, PRIMARY KEY(kind, tx, ty));"
         "INSERT OR IGNORE INTO meta VALUES('format', 'PersonalDepth 1');";
     if (!exec(schema, err)) return false;
     if (create && cellDeg > 0) {  // taille des cellules du découpage (lue à l'ouverture)
@@ -1094,7 +1098,10 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     });
     std::set<TK> added;
     size_t q = 0;
-    std::vector<double> xy;
+    std::vector<double> xy, seg;
+    const bool shoreOn = shore_ && land_ && land_->isOpen() && meta.datum == (int)Datum::Free;
+    const bool shoreBase = !landUnknown_ && !(customWater_ && land_ && land_->hasCustomPolygons());
+    const double shoreStep = std::min(16.0, std::max(2.0, Dpx / 4));
     std::vector<int32_t> val;
     std::vector<int> filled;  // pixels remplis (i, j) pour une autre méthode que le TIN
     const double D2 = Dpx * Dpx;
@@ -1121,6 +1128,29 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
           }
         }
       if (val.size() < 3) continue;
+      // trait de côte = isobathe 0 du plan d'eau (sources non rattachées) :
+      // sommets virtuels le long du rivage, pour l'interpolation seulement
+      // (jamais rangés comme sondes) ; triangles faits de seuls sommets
+      // virtuels ignorés, arêtes > D toujours écartées
+      const size_t nReal = val.size();
+      if (shoreOn) {
+        if (!land_->shoreSegments(zl, T.first * 256.0 - Mpx, T.second * 256.0 - Mpx,
+                                  T.first * 256.0 + 256 + Mpx, T.second * 256.0 + 256 + Mpx, shoreBase,
+                                  true, seg, err))
+          return false;
+        for (size_t q = 0; q + 3 < seg.size(); q += 4) {
+          const double ax = seg[q] - T.first * 256.0, ay = seg[q + 1] - T.second * 256.0;
+          const double dx = seg[q + 2] - seg[q], dy = seg[q + 3] - seg[q + 1];
+          const int n = std::max(1, (int)std::ceil(std::hypot(dx, dy) / shoreStep));
+          for (int k = 0; k < n; ++k) {  // extrémité suivante : début du segment suivant
+            const double x = ax + dx * k / n, y = ay + dy * k / n;
+            if (x < -Mpx || x > 256 + Mpx || y < -Mpx || y > 256 + Mpx) continue;
+            xy.push_back(x);
+            xy.push_back(y);
+            val.push_back(0);
+          }
+        }
+      }
       const DepthTile* base = keys.count(T) ? get(T) : nullptr;
       DepthTile out;
       if (base) out = *base;
@@ -1130,6 +1160,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
       const auto tri = Triangulate(xy);
       for (size_t t = 0; t + 2 < tri.size(); t += 3) {
         const size_t ia = tri[t], ib = tri[t + 1], ic = tri[t + 2];
+        if (ia >= nReal && ib >= nReal && ic >= nReal) continue;  // rivage seul
         const double x0 = xy[2 * ia], y0 = xy[2 * ia + 1], x1 = xy[2 * ib], y1 = xy[2 * ib + 1];
         const double x2 = xy[2 * ic], y2 = xy[2 * ic + 1];
         if (std::max({x0, x1, x2}) < 0 || std::min({x0, x1, x2}) > 256 ||
@@ -1184,6 +1215,12 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     return true;
   };
   if (!gridded && meta.interpD > 0) {
+    if (land_ && land_->isOpen()) {  // le trait de côte connaît-il ce plan d'eau ?
+      if (progress) progress(0.4f, pd::tr("Trait de côte"));
+      if (!landVote(zs, std::vector<TK>(keysZs.begin(), keysZs.end()), tileAt, err, cancel)) return false;
+      if (landUnknown_ && !(customWater_ && land_->hasCustomPolygons()))
+        meta.info += pd::tr(" ; plan d'eau absent du fond de carte : trait de côte OSM/GSHHG non appliqué");
+    }
     if (!interpolate(
             zs, keysZs, tileAt,
             [&](const TK& T, DepthTile& out) {
@@ -1577,6 +1614,67 @@ double DatumSampler::at(double lon, double lat, int* origin) {
   return w > 1e-9 ? sum / w : NAN;
 }
 
+// Sondes mesurées « en eau » (sous le niveau moyen ou le plan d'eau) de la
+// tuile, et parmi elles celles que le masque `m` désigne
+static void WetIn(const DepthTile& t, const std::vector<uint8_t>& m, long long& wet, long long& in) {
+  for (int k = 0; k < DepthTile::kN; ++k) {
+    const int32_t v = t.v[k];
+    if (v == DepthTile::kEmpty || v <= 0 || t.isInterp(k)) continue;
+    ++wet;
+    in += m[k] != 0;
+  }
+}
+
+bool BathyDb::landVote(int z, const std::vector<std::pair<int, int>>& keys,
+                       const std::function<const DepthTile*(const std::pair<int, int>&)>& get,
+                       std::string& err, const std::atomic<bool>* cancel) {
+  landUnknown_ = false;
+  customWater_ = false;
+  if (!land_ || !land_->isOpen()) return true;
+  long long wet = 0, onLand = 0, wetC = 0, inC = 0;
+  std::vector<uint8_t> m;
+  for (const auto& k : keys) {
+    if (cancel && *cancel) { err = "Annulé"; return false; }
+    const DepthTile* t = get(k);
+    if (!t) continue;
+    if (land_->hasBase()) {
+      if (!land_->tile(z, k.first, k.second, m, err)) return false;
+      WetIn(*t, m, wet, onLand);
+    }
+    if (land_->hasCustomPolygons()) {
+      if (!land_->customTile(z, k.first, k.second, m, err)) return false;
+      WetIn(*t, m, wetC, inC);
+    }
+  }
+  landUnknown_ = wet > 0 && onLand * 2 > wet;
+  customWater_ = wetC > 0 && inC * 2 > wetC;  // sondes dans les polygones : ils tracent l'eau
+  return true;
+}
+
+bool BathyDb::landTile(int z, int x, int y, const DepthTile* t, std::vector<uint8_t>& land,
+                       std::string& err) {
+  land.assign(DepthTile::kN, 0);
+  if (!land_ || !land_->isOpen()) return true;
+  if (land_->hasBase() && !(customWater_ && land_->hasCustomPolygons())) {
+    if (!land_->tile(z, x, y, land, err)) return false;
+    // Plan d'eau inconnu du fond de carte (petit lac, retenue, rivière :
+    // rangés en terre par OSM et GSHHG) : la plupart des sondes mesurées de la
+    // tuile tombent sur la « terre ». Fond ignoré ; tuile avec peu de sondes
+    // mesurées : décision prise sur toute la source (landVote).
+    long long wet = 0, onLand = 0;
+    if (t) WetIn(*t, land, wet, onLand);
+    if (wet >= kLandVoteMin ? onLand * 2 > wet : landUnknown_) std::fill(land.begin(), land.end(), 0);
+  }
+  if (land_->hasCustomPolygons()) {
+    std::vector<uint8_t> in;
+    if (!land_->customTile(z, x, y, in, err)) return false;
+    for (int k = 0; k < DepthTile::kN; ++k)
+      if (customWater_) land[k] = !in[k];  // polygones de l'eau (lac et ses îles)
+      else if (in[k]) land[k] = 1;         // polygones de terre (îles, côte)
+  }
+  return true;
+}
+
 bool BathyDb::maskLand(int z, int x, int y, DepthTile& t, long long& removed, std::string& err) {
   removed = 0;
   if (!land_ || !land_->isOpen() || t.interp.empty()) return true;
@@ -1584,7 +1682,7 @@ bool BathyDb::maskLand(int z, int x, int y, DepthTile& t, long long& removed, st
   for (int k = 0; k < DepthTile::kN && !any; ++k) any = t.interp[k] && t.v[k] != DepthTile::kEmpty;
   if (!any) return true;
   std::vector<uint8_t> land;
-  if (!land_->tile(z, x, y, land, err)) return false;
+  if (!landTile(z, x, y, &t, land, err)) return false;
   for (int k = 0; k < DepthTile::kN; ++k)
     if (land[k] && t.isInterp(k) && t.v[k] != DepthTile::kEmpty) {
       t.v[k] = DepthTile::kEmpty;
@@ -1609,6 +1707,17 @@ bool BathyDb::applyLandMask(const std::vector<int64_t>& ids, DbPriority prio, st
     if (progress) progress(0.f, pd::tr("Trait de côte : recherche des zones interpolées"));
     std::set<Key> keys;
     SourceKeys(cells, d->id, keys);
+    std::vector<std::pair<int, int>> native;
+    for (const Key& k : keys)
+      if (std::get<0>(k) == d->level) native.emplace_back(std::get<1>(k), std::get<2>(k));
+    DepthTile vt;
+    if (!landVote(d->level, native,
+                  [&](const std::pair<int, int>& k) -> const DepthTile* {
+                    return readSrc(d->id, d->level, k.first, k.second, vt) ? &vt : nullptr;
+                  },
+                  err, cancel))
+      return false;
+    landUnknownOf_[d->id] = {landUnknown_, customWater_};
     bool hit = false;
     for (const Key& k : keys) {
       if (std::get<0>(k) != d->level) continue;
@@ -1623,7 +1732,9 @@ bool BathyDb::applyLandMask(const std::vector<int64_t>& ids, DbPriority prio, st
   }
   if (todo.empty()) return true;
   long long total = 0;
-  auto fn = [&](const DbSource&, int z, int x, int y, DepthTile& t, std::string& e) {
+  auto fn = [&](const DbSource& src, int z, int x, int y, DepthTile& t, std::string& e) {
+    landUnknown_ = landUnknownOf_[src.id].first;
+    customWater_ = landUnknownOf_[src.id].second;
     long long g = 0;
     if (!maskLand(z, x, y, t, g, e)) return false;
     total += g;
@@ -1734,6 +1845,127 @@ bool BathyDb::ensureDatum(Datum k, double lonMin, double lonMax, double latMin, 
   for (auto& kv : got)
     if (!datum_.put(k, kv.first.first, kv.first.second, kv.second, err)) { datum_.rollback(); return false; }
   return datum_.commit(err);
+}
+
+bool BathyDb::syncDatum(std::string& err, int* adopted, int* copied) {
+  if (adopted) *adopted = 0;
+  if (copied) *copied = 0;
+  if (!flushWrites(err)) return false;
+  std::vector<DbCell*> cells = allCells(err);
+  struct Range { DbCell* c; int tx0, tx1, ty0, ty1; };
+  auto metaOf = [](DbCell* c) {
+    std::string v;
+    sqlite3_stmt* q = nullptr;
+    sqlite3_prepare_v2(c->db, "SELECT value FROM meta WHERE key='datum_stamp'", -1, &q, nullptr);
+    if (q && sqlite3_step(q) == SQLITE_ROW)
+      if (const unsigned char* t = sqlite3_column_text(q, 0)) v = (const char*)t;
+    sqlite3_finalize(q);
+    return v;
+  };
+  auto rangeOf = [&](DbCell* c, Range& r) {
+    double lonW, latS;
+    bool lg;
+    if (!ParseCellFileName(fs::u8path(c->path).filename().u8string(), lonW, latS, lg)) return false;
+    const double deg = lg ? 1.0 : cellDeg_;
+    r.c = c;
+    DatumStore::TileOf(lonW + 1e-9, latS + 1e-9, r.tx0, r.ty0);
+    DatumStore::TileOf(lonW + deg - 1e-9, latS + deg - 1e-9, r.tx1, r.ty1);
+    return true;
+  };
+  std::string st = datum_.stamp();
+  std::vector<Range> todo;
+  for (DbCell* c : cells) {
+    Range r;
+    if ((st.empty() || metaOf(c) != st) && rangeOf(c, r)) todo.push_back(r);
+  }
+  if (todo.empty()) return true;
+  const size_t N = (size_t)kDatumTileN * kDatumTileN;
+  // 1) surfaces des .pdb absentes du fichier du dossier (base copiée d'ailleurs)
+  int nAdopt = 0;
+  for (const Range& r : todo) {
+    sqlite3_stmt* q = nullptr;
+    sqlite3_prepare_v2(r.c->db, "SELECT kind, tx, ty, origin, model, data FROM datum_surf", -1, &q, nullptr);
+    while (q && sqlite3_step(q) == SQLITE_ROW) {
+      const int k = sqlite3_column_int(q, 0), tx = sqlite3_column_int(q, 1), ty = sqlite3_column_int(q, 2);
+      const void* b = sqlite3_column_blob(q, 5);
+      if (k < 0 || k >= kDatumSurfaces || !b || (size_t)sqlite3_column_bytes(q, 5) != N * sizeof(float) ||
+          datum_.has((Datum)k, tx, ty))
+        continue;
+      DatumStore::Tile T;
+      T.origin = sqlite3_column_int(q, 3);
+      const unsigned char* m = sqlite3_column_text(q, 4);
+      T.model = m ? (const char*)m : "";
+      T.v.resize(N);
+      std::memcpy(T.v.data(), b, N * sizeof(float));
+      if (!nAdopt && !datum_.begin(err)) { sqlite3_finalize(q); return false; }
+      if (!datum_.put((Datum)k, tx, ty, T, err)) { sqlite3_finalize(q); datum_.rollback(); return false; }
+      ++nAdopt;
+    }
+    sqlite3_finalize(q);
+  }
+  if (nAdopt) {
+    if (!datum_.commit(err)) return false;
+    st = datum_.stamp();
+    todo.clear();  // nouvelle révision : toutes les copies à vérifier
+    for (DbCell* c : cells) {
+      Range r;
+      if (rangeOf(c, r)) todo.push_back(r);
+    }
+  }
+  if (adopted) *adopted = nAdopt;
+  if (st.empty()) return true;  // aucune surface dans le dossier
+  // 2) copie dans chaque .pdb des surfaces de son emprise
+  int nCopy = 0;
+  for (const Range& r : todo) {
+    if (!r.c->begin(err)) return false;
+    sqlite3_stmt* get = nullptr;
+    sqlite3_stmt* put = nullptr;
+    sqlite3_prepare_v2(r.c->db, "SELECT origin, model, data FROM datum_surf WHERE kind=? AND tx=? AND ty=?", -1,
+                       &get, nullptr);
+    sqlite3_prepare_v2(r.c->db, "INSERT OR REPLACE INTO datum_surf VALUES(?,?,?,?,?,?)", -1, &put, nullptr);
+    bool ok = get && put;
+    for (int k = 0; k < kDatumSurfaces && ok; ++k)
+      for (int ty = r.ty0; ty <= r.ty1 && ok; ++ty)
+        for (int tx = r.tx0; tx <= r.tx1 && ok; ++tx) {
+          DatumStore::Tile T;
+          if (!datum_.get((Datum)k, tx, ty, T)) continue;
+          sqlite3_reset(get);
+          sqlite3_bind_int(get, 1, k);
+          sqlite3_bind_int(get, 2, tx);
+          sqlite3_bind_int(get, 3, ty);
+          bool same = false;
+          if (sqlite3_step(get) == SQLITE_ROW) {
+            const void* b = sqlite3_column_blob(get, 2);
+            const unsigned char* m = sqlite3_column_text(get, 1);
+            same = sqlite3_column_int(get, 0) == T.origin && T.model == (m ? (const char*)m : "") && b &&
+                   (size_t)sqlite3_column_bytes(get, 2) == N * sizeof(float) &&
+                   std::memcmp(b, T.v.data(), N * sizeof(float)) == 0;
+          }
+          sqlite3_reset(get);
+          if (same) continue;
+          sqlite3_reset(put);
+          sqlite3_bind_int(put, 1, k);
+          sqlite3_bind_int(put, 2, tx);
+          sqlite3_bind_int(put, 3, ty);
+          sqlite3_bind_int(put, 4, T.origin);
+          sqlite3_bind_text(put, 5, T.model.c_str(), -1, SQLITE_TRANSIENT);
+          sqlite3_bind_blob(put, 6, T.v.data(), (int)(N * sizeof(float)), SQLITE_TRANSIENT);
+          ok = sqlite3_step(put) == SQLITE_DONE;
+          ++nCopy;
+        }
+    sqlite3_finalize(get);
+    sqlite3_finalize(put);
+    if (ok) {
+      const std::string sql = "INSERT OR REPLACE INTO meta VALUES('datum_stamp', '" + st + "')";
+      ok = r.c->exec(sql.c_str(), err);
+    } else {
+      err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(r.c->db) + " (" + r.c->path + ")";
+    }
+    if (!ok) { r.c->rollback(); return false; }
+    if (!r.c->commit(err)) return false;
+  }
+  if (copied) *copied = nCopy;
+  return true;
 }
 
 bool BathyDb::ensureDatumForSources(Datum k, std::string& err, const DbProgress& progress,
@@ -2139,11 +2371,44 @@ int BathyDb::maxMergedLevel(double lonMin, double lonMax, double latMin, double 
   return best;
 }
 
+double ViewQuad::area() const {
+  double a = 0;
+  for (int k = 0; k < 4; ++k) {
+    const int n = (k + 1) & 3;
+    a += x[k] * y[n] - x[n] * y[k];
+  }
+  return 0.5 * std::fabs(a);
+}
+
+bool ViewQuad::contains(double px, double py) const {
+  int pos = 0, neg = 0;
+  for (int k = 0; k < 4; ++k) {
+    const int n = (k + 1) & 3;
+    const double c = (x[n] - x[k]) * (py - y[k]) - (y[n] - y[k]) * (px - x[k]);
+    if (c > 0) ++pos;
+    else if (c < 0) ++neg;
+  }
+  return !(pos && neg);
+}
+
+bool ViewQuad::row(double py, double& x0, double& x1) const {
+  x0 = 1e300; x1 = -1e300;
+  for (int k = 0; k < 4; ++k) {
+    const int n = (k + 1) & 3;
+    const double ya = y[k], yb = y[n];
+    if ((py < ya && py < yb) || (py > ya && py > yb)) continue;
+    if (ya == yb) { x0 = std::min({x0, x[k], x[n]}); x1 = std::max({x1, x[k], x[n]}); continue; }
+    const double xi = x[k] + (x[n] - x[k]) * (py - ya) / (yb - ya);
+    x0 = std::min(x0, xi); x1 = std::max(x1, xi);
+  }
+  return x0 <= x1;
+}
+
 bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latMax, int z,
                         size_t maxCells, PointCloud& out, double& dlon, double& dlat, int& usedLevel,
                         std::string& err, const std::atomic<bool>* cancel,
                         std::vector<int64_t>* srcIds, std::vector<uint8_t>* interp,
-                        bool skipInterp, Datum display, int* originMask) {
+                        bool skipInterp, Datum display, int* originMask, const ViewQuad* quad) {
   out.clear();
   if (originMask) *originMask = 0;
   if (srcIds) srcIds->clear();
@@ -2156,14 +2421,17 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   for (;;) {
     dlon = 360.0 / std::ldexp((double)kTileSize, zz);
     dlat = dlon * cosL;
-    const double cells = (lonMax - lonMin) / dlon * (latMax - latMin) / dlat;
+    // pixels carrés en (lon, y Mercator) : aire du quadrilatère / dlon²
+    const double cells = quad ? quad->area() / (dlon * dlon)
+                              : (lonMax - lonMin) / dlon * (latMax - latMin) / dlat;
     if (cells <= (double)maxCells || zz == kDbMinLevel) break;
     --zz;
   }
   usedLevel = zz;
   double latAnchor = 0;
   {  // vue très large : cellules plus grandes que les pixels du niveau le plus grossier
-    const double cells = (lonMax - lonMin) / dlon * (latMax - latMin) / dlat;
+    const double cells = quad ? quad->area() / (dlon * dlon)
+                              : (lonMax - lonMin) / dlon * (latMax - latMin) / dlat;
     if (cells > (double)maxCells) {
       const double f = std::ceil(std::sqrt(cells / (double)maxCells));
       dlon *= f;
@@ -2247,7 +2515,14 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   for (int j = 0; j < ny; ++j) {
     if (cancel && *cancel) { err = "Annulé"; return false; }
     const double lat = lat1 - (j + 0.5) * dlat;
-    for (int i = 0; i < nx; ++i) {
+    int i0 = 0, i1 = nx - 1;
+    if (quad) {  // colonnes de cette ligne dans l'écran (tourné)
+      double xa, xb;
+      if (!quad->row(std::log(std::tan(M_PI / 4 + lat * M_PI / 360.0)) * 180.0 / M_PI, xa, xb)) continue;
+      i0 = std::max(0, (int)std::floor((xa - lon0) / dlon - 0.5));
+      i1 = std::min(nx - 1, (int)std::ceil((xb - lon0) / dlon - 0.5));
+    }
+    for (int i = i0; i <= i1; ++i) {
       int32_t v;
       int64_t src;
       bool ip = false;

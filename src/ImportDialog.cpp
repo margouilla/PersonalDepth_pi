@@ -39,6 +39,7 @@
 
 #include "PersonalDepth_pi.h"
 #include "core/Projection.h"
+#include "core/Tracks.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -46,10 +47,12 @@
 using namespace pd;
 
 static const char* kBathyFilter =
-    "Bathymétrie (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|"
-    "*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|"
+    "Bathymétrie (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag;*.gpx;*.sl2;*.sl3)|"
+    "*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag;*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|"
+    "Traces de sondeur (*.gpx;*.sl2;*.sl3)|*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|"
     "Tous les fichiers|*";
-static const char* kBathyExt[] = {"xyz", "txt", "csv", "dat", "asc", "xml", "landxml", "tif", "tiff", "bag"};
+static const char* kBathyExt[] = {"xyz", "txt", "csv", "dat", "asc", "xml", "landxml", "tif", "tiff", "bag",
+                                  "gpx", "sl2", "sl3"};
 
 // libellé d'un système du catalogue dans la langue de l'interface
 static wxString CrsLabel(const CrsEntry& e) {
@@ -261,7 +264,7 @@ wxSizer* ImportDialog::BuildFiles(wxWindow* p) {
   auto* addD = new wxButton(sb, wxID_ANY, U8("Ajouter un dossier…"));
   auto* rem = new wxButton(sb, wxID_ANY, U8("Retirer"));
   addD->SetToolTip(U8("Tous les fichiers de bathymétrie du dossier et de ses sous-dossiers "
-                      "(.xyz .txt .csv .dat .asc .xml .tif .bag)"));
+                      "(.xyz .txt .csv .dat .asc .xml .tif .bag .gpx .sl2 .sl3)"));
   m_count = new wxStaticText(sb, wxID_ANY, "");
   r->Add(addF, 0, wxRIGHT, 4);
   r->Add(addD, 0, wxRIGHT, 4);
@@ -775,7 +778,7 @@ wxSizer* ImportDialog::BuildVref(wxWindow* p) {
   const DisplaySettings& st = m_init;
   // ordre : DisplaySettings::vrefMode (VrefModeDatum)
   wxString vrefs[kVrefModes] = {
-      U8("Zéro des cartes local (ZH, CD…) — profondeurs des cartes, sondeur corrigé"),
+      U8("Zéro des cartes local (ZH, CD, MLLW…) — profondeurs des cartes, sondeur corrigé"),
       U8("Niveau moyen (MSL) — ex. GEBCO"),
       U8("Plus basse mer astronomique (LAT) — ex. EMODnet"),
       U8("Hauteurs ellipsoïdales (WGS84 / RGF93, GNSS)"),
@@ -872,7 +875,8 @@ void ImportDialog::UpdateVrefControls() {
   static const char* help[kVrefModes] = {
       "Profondeurs rapportées au zéro des cartes du lieu (ZH du Shom en France, Chart Datum…), "
       "comme les sondes des cartes. La base les range sous le niveau moyen grâce à la surface du "
-      "zéro des cartes (BathyElli en France, sinon LAT FES2022) ; sans ces fichiers, l'écart est "
+      "zéro des cartes (BathyElli en France, fichiers des pays comme NOAA VDatum aux États-Unis, "
+      "sinon LAT FES2022) ; sans ces fichiers, l'écart est "
       "nul et la base garde les valeurs telles quelles.",
       "Profondeurs sous le niveau moyen (GEBCO, modèles océaniques) : rangées sans conversion.",
       "Profondeurs sous la plus basse mer astronomique (EMODnet) : rangées sous le niveau moyen "
@@ -1029,6 +1033,7 @@ void ImportDialog::OnOk(wxCommandEvent&) {
       int nm = 0;
       for (unsigned k = 0; k < m_files->GetCount() && !dateOn; ++k) {
         const std::string f = m_files->GetString(k).ToUTF8().data();
+        if (IsTrackFile(f)) continue;  // traces : heure de chaque sonde
         if (SurveyDateFromName(f).empty() && !(m_edit && k < m_srcs.size() && !m_srcs[k].date.empty()) &&
             nm++ < 8)
           missing += "\n  " + m_files->GetString(k);

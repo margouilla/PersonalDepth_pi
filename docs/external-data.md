@@ -25,6 +25,7 @@ plugin, en raison de leurs licences.
 | RAC23 | IGN | IGN78C (Corsica / Corse) | `RAC23.mnt` |
 | OSMSHP (OpenStreetMap land polygons) | OpenStreetMap contributors, via OpenCPN | Coastline: no interpolation on land / trait de côte : pas d'interpolation sur la terre | `basemap_*.shp` |
 | GSHHG | NOAA / SOEST, via OpenCPN | Coastline (coarser) / trait de côte (plus grossier) | `poly-*-1.dat` |
+| VDatum | NOAA | Official chart datum (MLLW) in the United States / zéro des cartes officiel (MLLW) aux États-Unis | `mllw.gtx` of each region / de chaque région |
 
 ---
 
@@ -146,7 +147,7 @@ converted with `--tp2wgs84`.
 the sources concerned. Cite: *CNES_CLS 2025 Mean Sea Surface (Version 2025),
 CNES, DOI 10.24400/527896/a01-2024.011*.
 
-### 4. Coastline (OSMSHP, GSHHG)
+### 4. Coastline (OSMSHP, GSHHG, own shorelines)
 
 Land polygons used so that the interpolated surface does not cover islands
 and the coast. Both are downloaded by OpenCPN itself: *Options › Charts ›
@@ -162,6 +163,90 @@ Chart Downloader*, catalogues **OSMSHP** (OpenStreetMap land polygons,
 **In PersonalDepth**: *Database* tab, *Coastline* box, **Folder**: choose that
 folder (or its `OSMSHP` / `GSHHG` subfolder). OSMSHP is preferred, in the
 best quality present.
+
+#### Own shorelines (KML, shapefile, GeoPackage)
+
+The basemaps miss small lakes, reservoirs and rivers (classed as land) and
+may be outdated. The *Own* row of the same box takes KML / KMZ, shapefile
+and GeoPackage files, in addition to the basemap or alone:
+
+- **Google Earth**: draw the outline of the lake (*Add › Polygon*), its
+  islands, or the shore as a path, then *Save place as…* `.kml` or `.kmz`.
+- **OpenStreetMap**, current data from a regional extract (e.g.
+  [Geofabrik](https://download.geofabrik.de/)): reading `.osm.pbf` inside
+  the plugin would need gigabytes of memory (impossible on a Raspberry Pi or
+  in 32 bits), so the extract is converted once on a PC with GDAL (QGIS
+  installs it) and, for large extracts, osmium:
+
+  ```
+  osmium tags-filter region-latest.osm.pbf nwr/natural=water nwr/landuse=reservoir -o water.osm.pbf
+  ogr2ogr -f GPKG water.gpkg water.osm.pbf multipolygons -where "natural='water' OR landuse='reservoir'" -spat 103.5 51.4 106.0 53.0
+  ```
+
+  `-spat lon_min lat_min lon_max lat_max` keeps the area of the surveys only
+  (smaller file, read faster). The polygons trace water: the plugin takes
+  the side of the soundings as water side, so lakes and their islands are
+  recognised without setting anything.
+- Any GIS layer (QGIS, ArcGIS): shapefile or GeoPackage, polygons or lines,
+  in WGS84 or in a projected system known to the plugin (`.prj` / layer
+  system).
+- **France**: the *Limite terre-mer* of the Shom and IGN (highest
+  astronomical tide line, much more accurate than OSM) is used as it is:
+  `Limite_terre-mer_France_metropolitaine_polygones.shp` (land polygons,
+  Lambert 93). Large shapefiles are read on demand, by 1° square: the
+  170 MB national file opens in a fraction of a second with a few MB of
+  memory, also on a Raspberry Pi.
+
+OSM data: © OpenStreetMap contributors, ODbL.
+
+### 5. Official chart datum of other countries
+
+Outside France, the plugin uses the FES2022 lowest astronomical tide (LAT) as
+chart datum. This is right wherever LAT **is** the official chart datum
+(Netherlands, Germany, Belgium, Australia… and close to it in the United
+Kingdom), but some countries define their own: the **United States** chart
+depths below MLLW (mean lower low water), **Canada** below LLWLT (lower low
+water, large tide). There, LAT FES can differ from the charts by several
+decimetres.
+
+**In PersonalDepth**: *Database* tab, *Vertical datum* box, **Countries**:
+choose one folder and put the official files in it (sub-folders allowed).
+The plugin recognises them and uses them where they exist; elsewhere it
+keeps LAT FES. The box says in plain words which one applies to the chart on
+screen ("✓ official chart datum" or "≈ approximate datum here"). Changing the
+folder recomputes the surfaces of the database.
+
+| Country | Chart datum | File | Access | In the plugin |
+|---|---|---|---|---|
+| United States | MLLW | NOAA VDatum regional grids | Free | Read directly (`mllw.gtx`) |
+| Netherlands | LAT (NLLAT2018) | NLLAT2018 | Free, "not for navigation" | After conversion (below); LAT FES is already close |
+| United Kingdom | CD ≈ LAT (VORF) | VORF | On request to the UKHO, licence | After conversion |
+| Canada | LLWLT (HyVSEPs) | CHS HyVSEPs | On request to the CHS | After conversion |
+
+**United States (NOAA VDatum)**
+
+1. Go to [vdatum.noaa.gov](https://vdatum.noaa.gov/), *Download*, accept the
+   agreement and download the transformation grids of the regions you sail
+   in (one archive per coastal region).
+2. Unzip them into the *Countries* folder. Each region folder holds a
+   `mllw.gtx` (MLLW relative to local mean sea level): it is the only file
+   the plugin reads. Neighbouring regions may overlap: they are averaged.
+
+**Other countries** — a file giving the chart datum relative to mean sea
+level, or above the ellipsoid, is converted once to `.pdgrid` (GDAL, then
+`tools/pdgrid_convert.py`):
+
+```
+gdal_translate -of netCDF chart_datum_grid.tif cd.nc
+python tools/pdgrid_convert.py cd.nc CD_country.pdgrid --var=Band1 --quantity=CD/WGS84 --name="VORF CD"
+```
+
+- `--quantity=CD/MSL`: values = chart datum − mean sea level (negative);
+- `--quantity=CD/WGS84`: chart datum height above the ellipsoid; mean sea
+  level then comes from BathyElli or from the MSS (section 3).
+
+Any `.pdgrid` of quantity `CD/MSL` or `CD/WGS84` in the *Countries* folder is
+used; its name (`--name`) is shown in the box and under the cursor.
 
 ---
 
@@ -285,7 +370,7 @@ choisir `MSS_CNES_CLS_2025.pdgrid`. Après un changement, **Mettre à jour les
 surfaces** corrige les sources concernées. Citer : *CNES_CLS 2025 Mean Sea
 Surface (Version 2025), CNES, DOI 10.24400/527896/a01-2024.011*.
 
-### 4. Trait de côte (OSMSHP, GSHHG)
+### 4. Trait de côte (OSMSHP, GSHHG, traits personnels)
 
 Polygones de terre servant à ce que la surface interpolée ne couvre pas les
 îles et la côte. Les deux se téléchargent dans OpenCPN : *Options › Cartes ›
@@ -302,3 +387,90 @@ d'enregistrement.
 **Dans PersonalDepth** : onglet *Base*, cadre *Trait de côte*, **Dossier** :
 choisir ce dossier (ou son sous-dossier `OSMSHP` / `GSHHG`). OSMSHP est
 préféré, dans la meilleure qualité présente.
+
+#### Traits de côte personnels (KML, shapefile, GeoPackage)
+
+Les fonds ignorent les petits lacs, retenues et rivières (rangés en terre) et
+peuvent être anciens. La ligne *Personnels* du même cadre prend des fichiers
+KML / KMZ, shapefile et GeoPackage, en plus du fond ou seuls :
+
+- **Google Earth** : dessiner le contour du lac (*Ajouter › Polygone*), ses
+  îles, ou le rivage en trajet, puis *Enregistrer le lieu sous…* `.kml` ou
+  `.kmz`.
+- **OpenStreetMap**, données à jour d'un extrait régional (ex.
+  [Geofabrik](https://download.geofabrik.de/)) : lire un `.osm.pbf` dans le
+  plugin demanderait des gigaoctets de mémoire (impossible sur Raspberry Pi
+  ou en 32 bits) ; l'extrait est converti une fois sur PC avec GDAL (installé
+  avec QGIS) et, pour les gros extraits, osmium :
+
+  ```
+  osmium tags-filter region-latest.osm.pbf nwr/natural=water nwr/landuse=reservoir -o eau.osm.pbf
+  ogr2ogr -f GPKG eau.gpkg eau.osm.pbf multipolygons -where "natural='water' OR landuse='reservoir'" -spat 103.5 51.4 106.0 53.0
+  ```
+
+  `-spat lon_min lat_min lon_max lat_max` ne garde que la zone des levés
+  (fichier plus petit, lu plus vite). Les polygones tracent l'eau : le
+  plugin prend le côté des sondes comme côté eau, lacs et îles sont reconnus
+  sans réglage.
+- Toute couche SIG (QGIS, ArcGIS) : shapefile ou GeoPackage, polygones ou
+  lignes, en WGS84 ou dans un système projeté connu du plugin (`.prj` /
+  système de la couche).
+- **France** : la *Limite terre-mer* du Shom et de l'IGN (laisse des plus
+  hautes mers astronomiques, bien plus précise qu'OSM) s'utilise telle
+  quelle : `Limite_terre-mer_France_metropolitaine_polygones.shp`
+  (polygones de terre, Lambert 93). Les gros shapefiles sont lus à la
+  demande, par carré de 1° : le fichier national de 170 Mo s'ouvre en une
+  fraction de seconde avec quelques Mo de mémoire, aussi sur Raspberry Pi.
+
+Données OSM : © contributeurs d'OpenStreetMap, ODbL.
+
+### 5. Zéro des cartes officiel des autres pays
+
+Hors de France, le plugin prend comme zéro des cartes la plus basse mer
+astronomique (LAT) de la marée FES2022. C'est juste partout où le LAT **est**
+le zéro officiel (Pays-Bas, Allemagne, Belgique, Australie… et presque au
+Royaume-Uni), mais certains pays ont le leur : les **États-Unis** sondent
+sous le MLLW (moyenne des plus basses mers quotidiennes), le **Canada** sous
+le LLWLT (plus basse mer, grande marée). Là, le LAT FES peut s'écarter des
+cartes de plusieurs décimètres.
+
+**Dans PersonalDepth** : onglet *Base*, cadre *Référence verticale*, **Pays** :
+choisir un dossier et y déposer les fichiers officiels (sous-dossiers
+acceptés). Le plugin les reconnaît et les utilise là où ils existent ;
+ailleurs il garde le LAT FES. Le cadre dit en clair lequel s'applique à la
+carte affichée (« ✓ zéro officiel du pays » ou « ≈ zéro approché ici »).
+Changer de dossier recalcule les surfaces de la base.
+
+| Pays | Zéro des cartes | Fichier | Accès | Dans le plugin |
+|---|---|---|---|---|
+| États-Unis | MLLW | Grilles régionales NOAA VDatum | Gratuit | Lu directement (`mllw.gtx`) |
+| Pays-Bas | LAT (NLLAT2018) | NLLAT2018 | Gratuit, « pas pour la navigation » | Après conversion (ci-dessous) ; le LAT FES en est déjà proche |
+| Royaume-Uni | CD ≈ LAT (VORF) | VORF | Sur demande à l'UKHO, licence | Après conversion |
+| Canada | LLWLT (HyVSEPs) | HyVSEPs du SHC | Sur demande au SHC | Après conversion |
+
+**États-Unis (NOAA VDatum)**
+
+1. Aller sur [vdatum.noaa.gov](https://vdatum.noaa.gov/), *Download*,
+   accepter les conditions et télécharger les grilles de transformation des
+   régions où l'on navigue (une archive par région côtière).
+2. Les décompresser dans le dossier *Pays*. Chaque dossier de région contient
+   un `mllw.gtx` (MLLW par rapport au niveau moyen local) : c'est le seul
+   fichier que lit le plugin. Les régions voisines peuvent se chevaucher :
+   elles sont moyennées.
+
+**Autres pays** — un fichier donnant le zéro des cartes par rapport au niveau
+moyen, ou au-dessus de l'ellipsoïde, est converti une fois en `.pdgrid` (GDAL,
+puis `tools/pdgrid_convert.py`) :
+
+```
+gdal_translate -of netCDF grille_zero_des_cartes.tif cd.nc
+python tools/pdgrid_convert.py cd.nc CD_pays.pdgrid --var=Band1 --quantity=CD/WGS84 --name="VORF CD"
+```
+
+- `--quantity=CD/MSL` : valeurs = zéro des cartes − niveau moyen (négatives) ;
+- `--quantity=CD/WGS84` : hauteur du zéro des cartes au-dessus de
+  l'ellipsoïde ; le niveau moyen vient alors de BathyElli ou de la MSS
+  (section 3).
+
+Tout `.pdgrid` de grandeur `CD/MSL` ou `CD/WGS84` du dossier *Pays* est
+utilisé ; son nom (`--name`) s'affiche dans le cadre et sous le curseur.

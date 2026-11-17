@@ -16,10 +16,15 @@
 #include "Datum.h"
 
 #include <algorithm>
+#include <cctype>
+#include <functional>
 #include <cmath>
 #include <cstring>
+#include <chrono>
 #include <filesystem>
+#include <random>
 
+#include "FileUtil.h"
 #include "GeoGrid.h"
 #include "Lang.h"
 #include "TideFES.h"
@@ -40,9 +45,10 @@ std::string DatumName(Datum d) {
   return std::string();
 }
 
-std::string DatumOriginText(Datum d, int mask, const std::string& mssModel) {
+std::string DatumOriginText(Datum d, int mask, const std::string& mssModel, const std::string& national) {
   std::vector<std::string> parts;
   if (mask & kOrigBathyElli) parts.push_back(d == Datum::Cd ? pd::tr("ZH BathyElli v2.1") : "BathyElli v2.1");
+  if (mask & kOrigNational) parts.push_back(national.empty() ? std::string(pd::tr("zéro national")) : national);
   if (mask & kOrigFes) parts.push_back(d == Datum::Cd ? pd::tr("LAT FES2022b") : "FES2022b");
   if (mask & kOrigMss) parts.push_back(mssModel.empty() ? std::string("MSS") : mssModel);
   if (mask & kOrigNone) parts.push_back(pd::tr("non défini"));
@@ -51,12 +57,138 @@ std::string DatumOriginText(Datum d, int mask, const std::string& mssModel) {
   return s;
 }
 
+// ================================================================ zéros nationaux
+std::vector<NationalDatum> ScanNationalDatums(const std::string& dir) {
+  std::vector<NationalDatum> out;
+  std::error_code ec;
+  const fs::path root = fs::u8path(dir);
+  if (dir.empty() || !fs::is_directory(root, ec)) return out;
+  for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+       !ec && it != end; it.increment(ec)) {
+    if (!it->is_regular_file(ec)) continue;
+    std::string fn = it->path().filename().u8string();
+    for (char& c : fn) c = (char)std::tolower((unsigned char)c);
+    NationalDatum d;
+    d.path = it->path().u8string();
+    // NOAA VDatum : <région>_mllw.gtx (MLLW − LMSL) ; incertitudes (_unc, _svu) écartées
+    const bool mllw = fn.size() >= 8 && fn.compare(fn.size() - 8, 8, "mllw.gtx") == 0 &&
+                      fn.find("unc") == std::string::npos && fn.find("svu") == std::string::npos;
+    if (mllw) {
+      FILE* f = OpenFile(d.path, "rb");
+      unsigned char h[40];
+      const bool ok = f && std::fread(h, 1, 40, f) == 40;
+      if (f) std::fclose(f);
+      if (!ok) continue;
+      auto be64 = [&](int o) {
+        uint64_t u = 0;
+        for (int i = 0; i < 8; ++i) u = (u << 8) | h[o + i];
+        double x;
+        std::memcpy(&x, &u, 8);
+        return x;
+      };
+      auto be32 = [&](int o) { return (int)((uint32_t)h[o] << 24 | (uint32_t)h[o + 1] << 16 | (uint32_t)h[o + 2] << 8 | h[o + 3]); };
+      const double lat0 = be64(0), lon0 = be64(8), dla = be64(16), dlo = be64(24);
+      const int nr = be32(32), nc = be32(36);
+      if (!(dla > 0 && dlo > 0 && nr > 1 && nc > 1)) continue;
+      d.kind = NationalDatum::CdBelowMsl;
+      d.name = "MLLW NOAA VDatum";
+      d.lonW = lon0 > 180 ? lon0 - 360 : lon0;
+      d.lonE = d.lonW + (nc - 1) * dlo;
+      d.latS = lat0;
+      d.latN = lat0 + (nr - 1) * dla;
+      out.push_back(d);
+    } else if (fn.size() > 7 && fn.compare(fn.size() - 7, 7, ".pdgrid") == 0) {
+      GeoGridFile g;
+      std::string e;
+      if (!g.open(d.path, e)) continue;
+      std::string q = g.quantity();
+      for (char& c : q) c = (char)std::toupper((unsigned char)c);
+      if (q == "CD/MSL") d.kind = NationalDatum::CdBelowMsl;
+      else if (q == "CD/WGS84" || q == "CD/ELL") d.kind = NationalDatum::CdEllipsoid;
+      else continue;  // MSS…
+      d.name = g.model().empty() ? it->path().stem().u8string() : g.model();
+      out.push_back(d);
+    }
+  }
+  std::sort(out.begin(), out.end(), [](const NationalDatum& a, const NationalDatum& b) { return a.path < b.path; });
+  return out;
+}
+
+std::string NationalNames(const std::vector<NationalDatum>& v) {
+  std::vector<std::string> n;
+  for (const auto& d : v)
+    if (std::find(n.begin(), n.end(), d.name) == n.end()) n.push_back(d.name);
+  std::string s;
+  for (size_t k = 0; k < n.size(); ++k) s += (k ? ", " : "") + n[k];
+  return s;
+}
+
+// Fenêtre [lonW, lonE] × [latS, latN] (+ un nœud) d'une grille .gtx, sans
+// lire tout le fichier (régions VDatum de 40 Mo et plus) ; Grid2D vide hors
+// de la grille. Longitudes du fichier en 0..360 ou −180..180.
+static bool LoadGtxWindow(const std::string& path, double lonW, double lonE, double latS, double latN,
+                          Grid2D& g, std::string& err) {
+  g = Grid2D();
+  FILE* f = OpenFile(path, "rb");
+  if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
+  unsigned char h[40];
+  if (std::fread(h, 1, 40, f) != 40) { std::fclose(f); err = pd::tr("Fichier .gtx tronqué"); return false; }
+  auto be64 = [&](int o) {
+    uint64_t u = 0;
+    for (int i = 0; i < 8; ++i) u = (u << 8) | h[o + i];
+    double x;
+    std::memcpy(&x, &u, 8);
+    return x;
+  };
+  auto be32 = [&](int o) { return (int)((uint32_t)h[o] << 24 | (uint32_t)h[o + 1] << 16 | (uint32_t)h[o + 2] << 8 | h[o + 3]); };
+  const double lat0 = be64(0), lon0 = be64(8), dla = be64(16), dlo = be64(24);
+  const int nr = be32(32), nc = be32(36);
+  if (!(dla > 0 && dlo > 0 && nr > 1 && nc > 1)) { std::fclose(f); err = pd::tr("Entête .gtx invalide"); return false; }
+  // longitudes de la fenêtre dans la convention du fichier
+  double a = lonW, b = lonE;
+  if (lon0 > 180 && a < 0) { a += 360; b += 360; }
+  long i0 = (long)std::floor((a - lon0) / dlo) - 1, i1 = (long)std::ceil((b - lon0) / dlo) + 1;
+  long j0 = (long)std::floor((latS - lat0) / dla) - 1, j1 = (long)std::ceil((latN - lat0) / dla) + 1;
+  i0 = std::max(0L, i0); j0 = std::max(0L, j0);
+  i1 = std::min((long)nc - 1, i1); j1 = std::min((long)nr - 1, j1);
+  if (i0 > i1 || j0 > j1) { std::fclose(f); return true; }
+  const long w = i1 - i0 + 1, hgt = j1 - j0 + 1;
+  g.nx = (int)w; g.ny = (int)hgt; g.dlon = dlo; g.dlat = dla;
+  g.lonW = lon0 + i0 * dlo;
+  if (g.lonW > 180) g.lonW -= 360;
+  g.latN = lat0 + j1 * dla;
+  g.v.assign((size_t)w * hgt, NAN);
+  std::vector<unsigned char> row((size_t)w * 4);
+  for (long j = j0; j <= j1; ++j) {
+    const long long off = 40 + ((long long)j * nc + i0) * 4;
+#if defined(_WIN32)
+    _fseeki64(f, off, SEEK_SET);
+#else
+    fseeko(f, (off_t)off, SEEK_SET);
+#endif
+    if (std::fread(row.data(), 1, row.size(), f) != row.size()) break;
+    float* dst = &g.v[(size_t)(j1 - j) * w];  // ligne 0 = nord
+    for (long i = 0; i < w; ++i) {
+      const unsigned char* p = &row[(size_t)i * 4];
+      const uint32_t u = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+      float x;
+      std::memcpy(&x, &u, 4);
+      dst[i] = (std::fabs(x + 88.8888f) < 1e-3f || !std::isfinite(x)) ? NAN : x;
+    }
+  }
+  std::fclose(f);
+  return true;
+}
+
 // ================================================================ calcul
 struct DatumProvider::Impl {
   TideAtlas atlas;
   bool atlasTried = false, atlasOk = false;
   GeoGridFile mss;
   bool mssTried = false, mssOk = false;
+  // zéros nationaux ouverts (gtx en mémoire, pdgrid par tuiles)
+  std::map<std::string, std::unique_ptr<Grid2D>> gtx;
+  std::map<std::string, std::unique_ptr<GeoGridFile>> pdg;
 };
 
 DatumProvider::DatumProvider(const DatumConfig& c) : cfg_(c), impl_(new Impl) {}
@@ -184,6 +316,71 @@ bool DatumProvider::compute(Datum k, double lonMin, double lonMax, double latMin
       if (std::isnan(v)) return true;
     return false;
   };
+  // zéro des cartes officiel d'un autre pays : moyenne des fichiers qui
+  // couvrent le nœud (régions VDatum voisines), prolongée de quelques nœuds
+  // vers la côte (grilles limitées à l'eau)
+  if (k == Datum::Cd && missing() && !cfg_.national.empty()) {
+    const double lonE = g.lonW + (g.nx - 1) * g.dlon, latS = g.latN - (g.ny - 1) * g.dlat;
+    std::vector<double> acc(n, 0.0);
+    std::vector<int> cnt(n, 0);
+    Grid2D msl;  // niveau moyen / ellipsoïde (fichiers « CD/WGS84 »)
+    bool mslDone = false;
+    for (const NationalDatum& f : cfg_.national) {
+      if (f.lonE < g.lonW - 0.1 || f.lonW > lonE + 0.1 || f.latN < latS - 0.1 || f.latS > g.latN + 0.1) continue;
+      if (cancel && *cancel) { err = "Annulé"; return false; }
+      std::function<double(double, double)> at;
+      if (f.path.size() > 4 && (f.path.compare(f.path.size() - 4, 4, ".gtx") == 0 ||
+                                f.path.compare(f.path.size() - 4, 4, ".GTX") == 0)) {
+        auto& G = impl_->gtx[f.path];
+        G.reset(new Grid2D);  // fenêtre de la zone seulement
+        std::string e;
+        if (!LoadGtxWindow(f.path, g.lonW, lonE, latS, g.latN, *G, e)) G->v.clear();
+        const Grid2D* gp = G.get();
+        at = [gp](double lo, double la) { return gp->sample(lo, la); };
+      } else {
+        auto& P = impl_->pdg[f.path];
+        if (!P) {
+          P.reset(new GeoGridFile);
+          std::string e;
+          P->open(f.path, e);
+        }
+        GeoGridFile* pp = P.get();
+        at = [pp](double lo, double la) { return pp->isOpen() ? pp->sample(lo, la) : NAN; };
+      }
+      if (f.kind == NationalDatum::CdEllipsoid && !mslDone) {
+        mslDone = true;
+        msl = g;
+        std::fill(msl.v.begin(), msl.v.end(), NAN);
+        if (!cfg_.nmFiles.empty() && !SampleSurfaces(cfg_.nmFiles, msl, err)) return false;
+        if (!cfg_.mssGrid.empty()) {
+          mssModel();
+          for (int j = 0; j < g.ny; ++j)
+            for (int i = 0; i < g.nx; ++i) {
+              float& m = msl.v[(size_t)j * g.nx + i];
+              if (std::isnan(m) && impl_->mssOk) m = (float)impl_->mss.sample(g.lonW + i * g.dlon, g.latN - j * g.dlat);
+            }
+        }
+      }
+      for (int j = 0; j < g.ny; ++j)
+        for (int i = 0; i < g.nx; ++i) {
+          const size_t q = (size_t)j * g.nx + i;
+          if (!std::isnan(g.v[q])) continue;
+          const double v = at(g.lonW + i * g.dlon, g.latN - j * g.dlat);
+          if (std::isnan(v)) continue;
+          double sv;
+          if (f.kind == NationalDatum::CdBelowMsl) sv = -v;  // NM au-dessus du zéro
+          else if (!std::isnan(msl.v[q])) sv = msl.v[q] - v;
+          else continue;
+          acc[q] += sv;
+          ++cnt[q];
+        }
+    }
+    Grid2D N = g;
+    for (size_t q = 0; q < n; ++q) N.v[q] = cnt[q] ? (float)(acc[q] / cnt[q]) : NAN;
+    ExtendGrid(N, 6);  // ~5 km vers la côte et les estuaires
+    for (size_t q = 0; q < n; ++q)
+      if (std::isnan(g.v[q]) && !std::isnan(N.v[q])) { g.v[q] = N.v[q]; origin[q] = kOrigNational; }
+  }
   if ((k == Datum::Cd || k == Datum::Lat) && missing() && !cfg_.fesAtlas.empty()) {
     std::vector<float> lat;
     if (!fesLat(g, lat, err, cancel)) return false;
@@ -249,6 +446,7 @@ bool DatumStore::ensureFile(std::string& err) {
                    "PRAGMA journal_mode=WAL;"
                    "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);"
                    "INSERT OR IGNORE INTO meta VALUES('format', 'PersonalDepth datum 1');"
+                   "INSERT OR IGNORE INTO meta VALUES('rev', '0');"
                    "CREATE TABLE IF NOT EXISTS surf(kind INTEGER, tx INTEGER, ty INTEGER,"
                    " origin INTEGER, model TEXT, data BLOB, PRIMARY KEY(kind, tx, ty));",
                    nullptr, nullptr, &msg) != SQLITE_OK) {
@@ -256,7 +454,34 @@ bool DatumStore::ensureFile(std::string& err) {
     sqlite3_free(msg);
     return false;
   }
+  // identifiant du fichier (copies des surfaces dans les .pdb : voir stamp())
+  std::mt19937_64 rng(std::random_device{}() ^
+                      (uint64_t)std::chrono::steady_clock::now().time_since_epoch().count());
+  char uid[64];
+  std::snprintf(uid, sizeof uid, "INSERT OR IGNORE INTO meta VALUES('uid', '%016llx');",
+                (unsigned long long)rng());
+  sqlite3_exec(db_, uid, nullptr, nullptr, nullptr);
   return true;
+}
+
+void DatumStore::bumpRev() {
+  if (db_) sqlite3_exec(db_, "UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='rev'", nullptr, nullptr, nullptr);
+  dirty_ = false;
+}
+
+std::string DatumStore::stamp() {
+  std::lock_guard<std::recursive_mutex> lk(mx_);
+  if (!db_) return std::string();
+  std::string uid, rev;
+  sqlite3_stmt* q = nullptr;
+  sqlite3_prepare_v2(db_, "SELECT key, value FROM meta WHERE key IN ('uid', 'rev')", -1, &q, nullptr);
+  while (q && sqlite3_step(q) == SQLITE_ROW) {
+    const char* k = (const char*)sqlite3_column_text(q, 0);
+    const char* v = (const char*)sqlite3_column_text(q, 1);
+    if (k && v) (std::strcmp(k, "uid") == 0 ? uid : rev) = v;
+  }
+  sqlite3_finalize(q);
+  return uid.empty() ? std::string() : uid + ":" + rev;
 }
 
 void DatumStore::TileOf(double lon, double lat, int& tx, int& ty) {
@@ -328,6 +553,8 @@ bool DatumStore::put(Datum k, int tx, int ty, const Tile& t, std::string& err) {
   sqlite3_finalize(q);
   if (!ok) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(db_) + " (" + path_ + ")"; return false; }
   cache_[std::make_tuple((int)k, tx, ty)] = t;
+  dirty_ = true;
+  if (!inTx_) bumpRev();
   return true;
 }
 
@@ -346,6 +573,7 @@ bool DatumStore::begin(std::string& err) {
 bool DatumStore::commit(std::string& err) {
   std::lock_guard<std::recursive_mutex> lk(mx_);
   if (!inTx_) return true;
+  if (dirty_) bumpRev();  // dans la transaction
   inTx_ = false;
   if (sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
     err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(db_);
@@ -358,6 +586,7 @@ void DatumStore::rollback() {
   std::lock_guard<std::recursive_mutex> lk(mx_);
   if (!inTx_) return;
   inTx_ = false;
+  dirty_ = false;
   sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
   cache_.clear();
 }

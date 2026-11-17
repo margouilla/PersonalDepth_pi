@@ -19,7 +19,8 @@
 //   profondeur_NM = profondeur_k + S_k        (import)
 //   profondeur_k  = profondeur_NM − S_k       (affichage)
 //   S_cd  : zéro des cartes local — France : ZH (BathyElli NM/ell − ZH/ell),
-//           ailleurs : plus basse mer astronomique FES2022b (LAT) ;
+//           ailleurs : zéro officiel du pays s'il est fourni (NOAA VDatum…),
+//           sinon plus basse mer astronomique FES2022b (LAT) ;
 //           sans référence disponible : 0, « non défini »
 //   S_lat : LAT FES2022b (19 ans)
 //   S_ell : ellipsoïde WGS84 — France : BathyElli NM/ell, ailleurs : MSS
@@ -60,14 +61,36 @@ inline bool DatumHasSurface(Datum d) { return (int)d >= 0 && (int)d < kDatumSurf
 std::string DatumName(Datum d);
 
 // Origine des nœuds d'une surface (bits)
-enum DatumOrigin : int { kOrigBathyElli = 1, kOrigFes = 2, kOrigMss = 4, kOrigNone = 8 };
-// « ZH BathyElli v2.1 + LAT FES2022b »… (traduit)
-std::string DatumOriginText(Datum d, int mask, const std::string& mssModel = std::string());
+enum DatumOrigin : int {
+  kOrigBathyElli = 1, kOrigFes = 2, kOrigMss = 4, kOrigNone = 8,
+  kOrigNational = 16  // zéro des cartes officiel d'un autre pays (VDatum…)
+};
+// « ZH BathyElli v2.1 + LAT FES2022b »… (traduit) ; `national` : noms des
+// zéros nationaux utilisés (« MLLW NOAA VDatum »)
+std::string DatumOriginText(Datum d, int mask, const std::string& mssModel = std::string(),
+                            const std::string& national = std::string());
+
+// Zéro des cartes officiel d'un pays, lu dans le dossier « Fichiers des pays »
+//   - mllw.gtx des régions NOAA VDatum (États-Unis) : MLLW sous le niveau
+//     moyen local (valeurs négatives) ;
+//   - .pdgrid de grandeur « CD/MSL » (zéro des cartes − niveau moyen) ou
+//     « CD/WGS84 » (zéro des cartes au-dessus de l'ellipsoïde, niveau moyen
+//     tiré de BathyElli ou de la MSS), convertis par tools/pdgrid_convert.py
+//     (VORF, HyVSEP, NLLAT2018… : voir docs/external-data.md).
+struct NationalDatum {
+  enum Kind { CdBelowMsl, CdEllipsoid } kind = CdBelowMsl;
+  std::string path, name;
+  double lonW = -180, lonE = 180, latS = -90, latN = 90;  // emprise (gtx)
+};
+std::vector<NationalDatum> ScanNationalDatums(const std::string& dir);
+// noms distincts, séparés par « , »
+std::string NationalNames(const std::vector<NationalDatum>& v);
 
 struct DatumConfig {
   std::vector<std::string> nmFiles, zhFiles;  // BathyElli v2.1 NM/ell et ZH/ell
   std::string fesAtlas;                       // FES2022b .pdtide
   std::string mssGrid;                        // MSS .pdgrid (niveau moyen / WGS84)
+  std::vector<NationalDatum> national;        // zéros des cartes officiels (hors France)
 };
 
 // Calcul des surfaces depuis les fichiers de référence
@@ -94,7 +117,10 @@ class DatumProvider {
   std::unique_ptr<Impl> impl_;
 };
 
-// Surfaces rangées dans le dossier de la base (fichier créé à la première écriture)
+// Surfaces rangées dans le dossier de la base (fichier créé à la première
+// écriture). Chaque fichier .pdb en garde une copie pour son emprise (table
+// datum_surf, voir BathyDb::syncDatum) : un .pdb copié seul dans un autre
+// dossier y apporte ses surfaces.
 class DatumStore {
  public:
   struct Tile {
@@ -119,8 +145,13 @@ class DatumStore {
   double at(Datum k, double lon, double lat, int* origin = nullptr);
   // tuiles rangées pour k
   std::vector<std::pair<int, int>> tiles(Datum k);
+  // « identifiant:révision » du fichier ("" s'il n'existe pas) : la révision
+  // augmente à chaque écriture ; les .pdb notent celle de leur copie
+  std::string stamp();
 
  private:
+  void bumpRev();
+  bool dirty_ = false;
   bool ensureFile(std::string& err);
   const Tile* cached(Datum k, int tx, int ty);
   std::string path_;

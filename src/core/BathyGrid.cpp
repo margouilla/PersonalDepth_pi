@@ -301,6 +301,45 @@ void BathyGrid::tinFill(GridLevel& g, const PointCloud* pc,
   }
 }
 
+// Cellules interpolées proches d'une cellule mesurée (écart de quelques
+// cellules entre sondes d'un levé dense) : marquées pour ne pas être
+// éclaircies, sinon un levé dense prend un aspect de grillage aux grands zooms
+void GridLevel::markInterpNear() {
+  if (interp.empty()) return;
+  const int R = kInterpNear;
+  std::vector<uint8_t> h((size_t)nx * ny, 0);
+  for (int j = 0; j < ny; ++j) {  // dilatation horizontale des cellules mesurées
+    const size_t r = (size_t)j * nx;
+    int last = -1000000;  // dernière cellule mesurée à gauche
+    for (int i = 0; i < nx; ++i) {
+      if (!std::isnan(z[r + i]) && !(interp[r + i] & 1)) last = i;
+      if (i - last <= R) h[r + i] = 1;
+    }
+    last = 1000000;
+    for (int i = nx - 1; i >= 0; --i) {
+      if (!std::isnan(z[r + i]) && !(interp[r + i] & 1)) last = i;
+      if (last - i <= R) h[r + i] = 1;
+    }
+  }
+  for (int i = 0; i < nx; ++i) {  // puis verticale
+    int last = -1000000;
+    std::vector<uint8_t> col(ny, 0);
+    for (int j = 0; j < ny; ++j) {
+      if (h[(size_t)j * nx + i]) last = j;
+      if (j - last <= R) col[j] = 1;
+    }
+    last = 1000000;
+    for (int j = ny - 1; j >= 0; --j) {
+      if (h[(size_t)j * nx + i]) last = j;
+      if (last - j <= R) col[j] = 1;
+    }
+    for (int j = 0; j < ny; ++j) {
+      uint8_t& v = interp[(size_t)j * nx + i];
+      v = (v & 1) ? (uint8_t)(col[j] ? 3 : 1) : 0;
+    }
+  }
+}
+
 void BathyGrid::buildPyramid() {
   const bool mean = (mode == GridMode::Mean);
   while (levels.back().nx > 256 || levels.back().ny > 256) {
@@ -334,6 +373,7 @@ void BathyGrid::buildPyramid() {
       }
     levels.push_back(std::move(d));
   }
+  for (GridLevel& g : levels) g.markInterpNear();
 }
 
 void BathyGrid::computeHillshade(float exag, float azimuth, float altitude) {

@@ -91,7 +91,7 @@ add_library(pd_core STATIC
   src/core/Projection.cpp src/core/VerticalRef.cpp src/core/Triangulate.cpp
   src/core/Inflate.cpp src/core/TideFES.cpp src/core/GeoGrid.cpp src/core/Datum.cpp src/core/LandMask.cpp
   src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp
-  src/core/WaterLevel.cpp src/core/SurveyShape.cpp)
+  src/core/WaterLevel.cpp src/core/SurveyShape.cpp src/core/Tracks.cpp src/core/Shoreline.cpp)
 target_include_directories(pd_core PUBLIC src third_party)
 # Triangulation (delaunator) : pas de fusion multiplication-addition (FMA,
 # active par défaut sur ARM) dans les tests géométriques

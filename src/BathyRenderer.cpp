@@ -15,6 +15,8 @@
 
 #include "BathyRenderer.h"
 
+#include <chrono>
+
 #include <unordered_map>
 #include "core/Lang.h"
 
@@ -346,7 +348,7 @@ void BathyRenderer::UploadDepthTile(Tile& t, const GridLevel& g, const BathyLaye
       float ip = 0.f;  // part de cellules interpolées (bord des données : voisines)
       if (valid) {
         if (sh) sv = g.shade[(size_t)j * g.nx + i];
-        ip = g.isInterp((size_t)j * g.nx + i) ? 1.f : 0.f;
+        ip = g.isInterpFar((size_t)j * g.nx + i) ? 1.f : 0.f;
       } else {
         double acc = 0, sacc = 0;
         int n = 0;
@@ -356,7 +358,7 @@ void BathyRenderer::UploadDepthTile(Tile& t, const GridLevel& g, const BathyLaye
             if (std::isnan(v)) continue;
             acc += v; ++n;
             sacc += sh ? g.shade[(size_t)(j + dj) * g.nx + (i + di)] : 160.f;
-            ip += g.isInterp((size_t)(j + dj) * g.nx + (i + di)) ? 1.f : 0.f;
+            ip += g.isInterpFar((size_t)(j + dj) * g.nx + (i + di)) ? 1.f : 0.f;
           }
         z = n ? (float)(acc / n) : z0;
         sv = n ? (float)(sacc / n) : 160.f;
@@ -419,7 +421,6 @@ bool BathyRenderer::FitMapper(PlugIn_ViewPort* vp, ScreenMapper& sm) {
     GetCanvasLLPix(vp, p[k], &lat[k], &lon[k]);
     x[k] = p[k].x; y[k] = p[k].y;
   }
-  if (lon[1] < lon[0]) lon[1] += 360.0;  // franchissement de l'antiméridien
   if (!sm.fit(lon, lat, x, y)) return false;
   m_ppd = sm.pixelsPerDegLon();
   return true;
@@ -605,15 +606,103 @@ void BathyRenderer::DrawGLText(float x, float y, const wxString& t, float scale,
   glEnd();
 }
 
+namespace {
+using PerfClock = std::chrono::steady_clock;
+double MsSince(PerfClock::time_point t) {
+  return std::chrono::duration<double, std::milli>(PerfClock::now() - t).count();
+}
+struct PerfFrame {  // durée totale d'une image du plugin
+  BathyRenderer::Perf& p;
+  PerfClock::time_point t0 = PerfClock::now();
+  explicit PerfFrame(BathyRenderer::Perf& q) : p(q) {}
+  ~PerfFrame() {
+    const double ms = MsSince(t0);
+    ++p.frames;
+    p.totalMs += ms;
+    p.maxMs = std::max(p.maxMs, ms);
+  }
+};
+}  // namespace
+
+// Texture d'une tuile prête (envoyée à la carte graphique si besoin)
+bool BathyRenderer::EnsureTile(Tile& t, const GridLevel& g, const BathyLayer& l, int ti, int tj,
+                               bool shader, const DisplaySettings& s, std::vector<uint32_t>& buf) {
+  t.used = m_frame;
+  t.w = std::min(kTile, g.nx - ti * kTile);
+  t.h = std::min(kTile, g.ny - tj * kTile);
+  if (shader) {
+    if (t.dtex) return false;
+    const auto tu = PerfClock::now();
+    UploadDepthTile(t, g, l, ti, tj);
+    m_perf.uploadMs += MsSince(tu);
+    ++m_perf.uploads;
+    return true;
+  }
+  if (t.tex && t.stamp == m_lutStamp) return false;
+  // (re)coloration : LUT seulement
+  const auto tu = PerfClock::now();
+  buf.resize((size_t)t.w * t.h);
+  Colorize(g, ti * kTile, tj * kTile, t.w, t.h, m_lut, s.hillshade ? s.shadeStrength : 0.f, buf.data(), t.w,
+           &TideOf(s), s.interpDistinct ? kInterpLighten : 0.f);
+  if (!t.tex) glGenTextures(1, &t.tex);
+  glBindTexture(GL_TEXTURE_2D, t.tex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, t.w, t.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf.data());
+  t.stamp = m_lutStamp;
+  m_perf.uploadMs += MsSince(tu);
+  ++m_perf.uploads;
+  return true;
+}
+
+// Nouvelle vue en attente : ses textures (zone de l'écran) et ses isobathes
+// sont préparées par petits lots, quelques millisecondes par image, pendant
+// que la vue actuelle reste affichée ; elle remplace la vue actuelle une fois
+// prête, sans à-coup.
+void BathyRenderer::PrewarmPending(PlugIn_ViewPort* vp, const DisplaySettings& s, bool shader,
+                                   std::vector<uint32_t>& buf) {
+  if (!m_pending || m_pendingDone) return;
+  const BathyLayer& l = *m_pending;
+  if (l.state() != BathyLayer::Ready || l.grid.levels.empty()) { m_pendingDone = true; return; }
+  const auto t0 = PerfClock::now();
+  const int lev = l.grid.levelFor(m_ppd, 1.0);
+  const GridLevel& g = l.grid.levels[lev];
+  const int i0 = std::max(0, (int)std::floor((vp->lon_min - g.lonW) / g.dlon));
+  const int i1 = std::min(g.nx - 1, (int)std::floor((vp->lon_max - g.lonW) / g.dlon));
+  const int j0 = std::max(0, (int)std::floor((g.latN - vp->lat_max) / g.dlat));
+  const int j1 = std::min(g.ny - 1, (int)std::floor((g.latN - vp->lat_min) / g.dlat));
+  bool all = true;
+  for (int tj = j0 / kTile; i0 <= i1 && tj <= j1 / kTile; ++tj)
+    for (int ti = i0 / kTile; ti <= i1 / kTile; ++ti) {
+      auto& slot = m_tiles[std::make_tuple((const void*)&l, lev, ti, tj)];
+      if (!slot) slot = std::make_unique<Tile>();
+      const bool ready = shader ? slot->dtex != 0 : (slot->tex && slot->stamp == m_lutStamp);
+      if (ready) { slot->used = m_frame; continue; }
+      if (MsSince(t0) > 8.0) { all = false; continue; }  // la suite à l'image suivante
+      EnsureTile(*slot, g, l, ti, tj, shader, s, buf);
+    }
+  if (!all) return;
+  if (s.contours && MsSince(t0) > 4.0) return;  // isobathes : image suivante
+  if (s.contours) Contours(l, s);
+  m_pendingDone = true;
+}
+
 void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& layers,
                              const DisplaySettings& s, const wxString& cursorText) {
+  PerfFrame perfFrame(m_perf);
   ++m_frame;
   if (m_purgedEpoch != m_epoch) {  // couches retirées : on vide le cache de textures
-    for (auto& kv : m_tiles) {
-      if (kv.second->tex) glDeleteTextures(1, &kv.second->tex);
-      if (kv.second->dtex) glDeleteTextures(1, &kv.second->dtex);
+    // sauf la vue qui vient d'être adoptée (préparée d'avance) et celle en attente
+    const void* pend = m_pending.get();
+    for (auto it = m_tiles.begin(); it != m_tiles.end();) {
+      const void* lp = std::get<0>(it->first);
+      if (lp && (lp == m_keepLayer || lp == pend)) { ++it; continue; }
+      if (it->second->tex) glDeleteTextures(1, &it->second->tex);
+      if (it->second->dtex) glDeleteTextures(1, &it->second->dtex);
+      it = m_tiles.erase(it);
     }
-    m_tiles.clear();
+    m_keepLayer = nullptr;
     m_purgedEpoch = m_epoch;
   }
   if (!PrepareLUT(layers, s)) return;
@@ -712,26 +801,8 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
         auto& slot = m_tiles[std::make_tuple((const void*)l.get(), lev, ti, tj)];
         if (!slot) slot = std::make_unique<Tile>();
         Tile& t = *slot;
-        t.used = m_frame;
-        t.w = std::min(kTile, g.nx - ti * kTile);
-        t.h = std::min(kTile, g.ny - tj * kTile);
-        if (shader) {
-          if (!t.dtex) UploadDepthTile(t, g, *l, ti, tj);
-          glBindTexture(GL_TEXTURE_2D, t.dtex);
-        } else if (!t.tex || t.stamp != m_lutStamp) {  // (re)coloration : LUT seulement
-          buf.resize((size_t)t.w * t.h);
-          Colorize(g, ti * kTile, tj * kTile, t.w, t.h, m_lut,
-                   s.hillshade ? s.shadeStrength : 0.f, buf.data(), t.w, &TideOf(s),
-                   s.interpDistinct ? kInterpLighten : 0.f);
-          if (!t.tex) glGenTextures(1, &t.tex);
-          glBindTexture(GL_TEXTURE_2D, t.tex);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-          glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, t.w, t.h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                       buf.data());
-          t.stamp = m_lutStamp;
-        }
+        EnsureTile(t, g, *l, ti, tj, shader, s, buf);
+        if (shader) glBindTexture(GL_TEXTURE_2D, t.dtex);
         if (!shader) {
           glBindTexture(GL_TEXTURE_2D, t.tex);
           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filt);
@@ -770,6 +841,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
       }
   }
   if (shader) m_sgl->useProgram(0);  // retour au pipeline fixe (lignes, texte)
+  PrewarmPending(vp, s, shader, buf);
   // Libère les tuiles inutilisées si le cache grossit
   if (m_tiles.size() > 160)
     for (auto it = m_tiles.begin(); it != m_tiles.end();) {
@@ -780,14 +852,27 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
       } else ++it;
     }
 
+  m_perf.tileMs += MsSince(perfFrame.t0);
   // Isobathes
+  const auto tc = PerfClock::now();
   DrawContoursGL(vp, sm, layers, s);
+  m_perf.contourMs += MsSince(tc);
 
   // Sondes chiffrées et valeurs d'isobathes
   BuildGlyphs(s.fontSize);
   wxString ip, dp;
   const wxString key = LabelKey(vp, layers, s, 'G');
+  const wxString skey = LabelKey(vp, layers, s, 'G', false);
+  if (key != m_labelKey && skey == m_labelStatic && m_labelLon.size() == m_labels.size()) {
+    // carte seulement déplacée : mêmes étiquettes, décalées ; nouvelle
+    // sélection quand la carte s'arrête (RefreshLabels)
+    for (size_t k = 0; k < m_labels.size(); ++k) sm.map(m_labelLon[k], m_labelLat[k], m_labels[k].x, m_labels[k].y);
+    m_labelKey = key;
+    m_labelsShifted = true;
+  }
   if (key != m_labelKey) {  // vue ou réglages changés : nouvelle sélection
+    const auto tl = PerfClock::now();
+    ++m_perf.labelRuns;
     m_labels = CollectLabels(vp, sm, layers, s);
     AddContourLabels(vp, sm, layers, s, m_labels);
     for (Label& L : m_labels) {
@@ -797,6 +882,20 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
     }
     Declutter(m_labels, (float)m_glyphs->lineH, 4.f);
     m_labelKey = key;
+    m_labelStatic = skey;
+    m_labelsShifted = false;
+    // position géographique de chaque étiquette (inverse de la transformation affine)
+    m_labelLon.resize(m_labels.size());
+    m_labelLat.resize(m_labels.size());
+    const double det = sm.a * sm.e - sm.b * sm.d;
+    for (size_t k = 0; k < m_labels.size(); ++k) {
+      const double dx = m_labels[k].x - sm.c, dy = m_labels[k].y - sm.f;
+      const double lon = std::fabs(det) > 0 ? (sm.e * dx - sm.b * dy) / det : 0.0;
+      const double my = std::fabs(det) > 0 ? (-sm.d * dx + sm.a * dy) / det : 0.0;
+      m_labelLon[k] = lon;
+      m_labelLat[k] = std::atan(std::sinh(my * M_PI / 180.0)) * 180.0 / M_PI;
+    }
+    m_perf.labelMs += MsSince(tl);
   }
   for (const Label& L : m_labels) {
     if (L.contour) {  // valeur d'isobathe : teinte des lignes, centrée sur la ligne
@@ -900,8 +999,49 @@ const std::vector<Isoline>& BathyRenderer::Isolines(const BathyLayer& l, int lev
     if (s.contourSmooth)
       for (auto& il : c.lines) SmoothIsoline(il, 2);
     c.key = key;
+    // coordonnées projetées une fois pour toutes
+    c.uv.clear();
+    c.runs.clear();
+    c.ox = c.lines.empty() || c.lines[0].pts.empty() ? 0.0 : c.lines[0].pts[0];
+    c.oy = c.lines.empty() || c.lines[0].pts.empty() ? 0.0 : ScreenMapper::mercY(c.lines[0].pts[1]);
+    size_t n = 0;
+    for (const Isoline& il : c.lines) n += il.size();
+    c.uv.reserve(2 * n);
+    for (const Isoline& il : c.lines) {
+      if (il.size() < 2) continue;
+      ContourRun r{(uint32_t)(c.uv.size() / 2), (uint32_t)il.size(), 1e30f, 1e30f, -1e30f, -1e30f, il.level};
+      for (size_t k = 0; k < il.size(); ++k) {
+        const float u = (float)(il.pts[2 * k] - c.ox);
+        const float v = (float)(ScreenMapper::mercY(il.pts[2 * k + 1]) - c.oy);
+        c.uv.push_back(u);
+        c.uv.push_back(v);
+        r.x0 = std::min(r.x0, u); r.x1 = std::max(r.x1, u);
+        r.y0 = std::min(r.y0, v); r.y1 = std::max(r.y1, v);
+      }
+      c.runs.push_back(r);
+    }
   }
   return c.lines;
+}
+
+const BathyRenderer::ContourCache& BathyRenderer::Contours(const BathyLayer& l, const DisplaySettings& s) {
+  const int lev = ContourLevelIndex(l);
+  Isolines(l, lev, s);
+  return m_contours[std::make_pair((const void*)&l, lev)];
+}
+
+// Emprise d'un tracé à l'écran (transformation affine des 4 coins)
+static void RunScreenBox(const ScreenMapper& sm, double ox, double oy, float x0, float y0, float x1,
+                         float y1, float& sx0, float& sy0, float& sx1, float& sy1) {
+  sx0 = sy0 = 1e30f; sx1 = sy1 = -1e30f;
+  const float xs[2] = {x0, x1}, ys[2] = {y0, y1};
+  for (float u : xs)
+    for (float v : ys) {
+      const float x = (float)(sm.a * (ox + u) + sm.b * (oy + v) + sm.c);
+      const float y = (float)(sm.d * (ox + u) + sm.e * (oy + v) + sm.f);
+      sx0 = std::min(sx0, x); sx1 = std::max(sx1, x);
+      sy0 = std::min(sy0, y); sy1 = std::max(sy1, y);
+    }
 }
 
 // Valeurs posées sur les isobathes assez longues à l'écran (une tous les ~450 px)
@@ -912,17 +1052,24 @@ void BathyRenderer::AddContourLabels(PlugIn_ViewPort* vp, const ScreenMapper& sm
   const float W = (float)vp->pix_width, H = (float)vp->pix_height;
   for (auto& lp : layers) {
     if (!lp->visible || lp->state() != BathyLayer::Ready) continue;
-    for (const Isoline& il : Isolines(*lp, ContourLevelIndex(*lp), s)) {
+    const ContourCache& c = Contours(*lp, s);
+    const double ax = sm.a, bx = sm.b, ay = sm.d, by = sm.e;
+    const double tx = sm.a * c.ox + sm.b * c.oy + sm.c, ty = sm.d * c.ox + sm.e * c.oy + sm.f;
+    for (const ContourRun& r : c.runs) {
+      float bx0, by0, bx1, by1;
+      RunScreenBox(sm, c.ox, c.oy, r.x0, r.y0, r.x1, r.y1, bx0, by0, bx1, by1);
+      if (bx1 < 0 || by1 < 0 || bx0 > W || by0 > H) continue;  // hors écran
+      const float* uv = &c.uv[2 * (size_t)r.first];
       float px = 0, py = 0, acc = 0, next = 225.f;
       bool havePrev = false;
-      for (size_t k = 0; k < il.size(); ++k) {
-        float x, y;
-        sm.map(il.pts[2 * k], il.pts[2 * k + 1], x, y);
+      for (size_t k = 0; k < r.count; ++k) {
+        const float x = (float)(ax * uv[2 * k] + bx * uv[2 * k + 1] + tx);
+        const float y = (float)(ay * uv[2 * k] + by * uv[2 * k + 1] + ty);
         const bool in = x >= 0 && y >= 0 && x < W && y < H;
         if (havePrev && in) {
           acc += std::hypot(x - px, y - py);
           if (acc >= next) {
-            out.push_back(Label{x, y, il.level, false, 0.f, true});
+            out.push_back(Label{x, y, r.level, false, 0.f, true});
             next += 450.f;
           }
         }
@@ -940,29 +1087,42 @@ void BathyRenderer::DrawContoursGL(PlugIn_ViewPort* vp, const ScreenMapper& sm,
   glEnable(GL_LINE_SMOOTH);
   glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
   const float W = (float)vp->pix_width, H = (float)vp->pix_height;
-  std::vector<float> xy;
+  glMatrixMode(GL_MODELVIEW);
+  // tracé direct (glBegin) : les tableaux de sommets liraient aussi les
+  // tableaux laissés actifs par OpenCPN (textures, couleurs) -> plantage
   for (auto& lp : layers) {
     if (!lp->visible || lp->state() != BathyLayer::Ready) continue;
-    for (const Isoline& il : Isolines(*lp, ContourLevelIndex(*lp), s)) {
-      xy.resize(il.size() * 2);
-      float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
-      for (size_t k = 0; k < il.size(); ++k) {
-        sm.map(il.pts[2 * k], il.pts[2 * k + 1], xy[2 * k], xy[2 * k + 1]);
-        x0 = std::min(x0, xy[2 * k]); x1 = std::max(x1, xy[2 * k]);
-        y0 = std::min(y0, xy[2 * k + 1]); y1 = std::max(y1, xy[2 * k + 1]);
+    const ContourCache& c = Contours(*lp, s);
+    if (c.runs.empty()) continue;
+    // (u, v) relatifs -> pixels : x = a·u + b·v + tx ; y = d·u + e·v + ty
+    const GLdouble M[16] = {sm.a, sm.d, 0, 0, sm.b, sm.e, 0, 0, 0, 0, 1, 0,
+                            sm.a * c.ox + sm.b * c.oy + sm.c, sm.d * c.ox + sm.e * c.oy + sm.f, 0, 1};
+    glPushMatrix();
+    glMultMatrixd(M);
+    for (int style = 0; style < 3; ++style) {  // fines, maîtresses, sécurité : un état GL par passe
+      bool set = false;
+      for (const ContourRun& r : c.runs) {
+        const int st = IsSafety(s, r.level) ? 2 : IsMajor(s, r.level) ? 1 : 0;
+        if (st != style) continue;
+        float x0, y0, x1, y1;
+        RunScreenBox(sm, c.ox, c.oy, r.x0, r.y0, r.x1, r.y1, x0, y0, x1, y1);
+        if (x1 < 0 || y1 < 0 || x0 > W || y0 > H) continue;  // hors écran
+        if (x1 - x0 < 3 && y1 - y0 < 3) continue;           // bruit sous le pixel
+        if (!set) {
+          uint32_t col = style == 2 ? s.ramp.safetyColor : s.contourColor;
+          const float width = style == 2 ? 2.6f : style == 1 ? 2.0f : 1.1f;
+          const float alpha = style == 2 ? 1.f : style == 1 ? 0.95f : 0.8f;
+          glColor4ub(R_(col), G_(col), B_(col), (GLubyte)(255 * alpha));
+          glLineWidth(width);
+          set = true;
+        }
+        const float* uv = &c.uv[2 * (size_t)r.first];
+        glBegin(GL_LINE_STRIP);
+        for (uint32_t k = 0; k < r.count; ++k) glVertex2f(uv[2 * k], uv[2 * k + 1]);
+        glEnd();
       }
-      if (x1 < 0 || y1 < 0 || x0 > W || y0 > H) continue;  // hors écran
-      if (x1 - x0 < 3 && y1 - y0 < 3) continue;           // bruit sous le pixel
-      uint32_t c = s.contourColor;
-      float width = 1.1f, alpha = 0.8f;
-      if (IsSafety(s, il.level)) { c = s.ramp.safetyColor; width = 2.6f; alpha = 1.f; }
-      else if (IsMajor(s, il.level)) { width = 2.0f; alpha = 0.95f; }
-      glColor4ub(R_(c), G_(c), B_(c), (GLubyte)(255 * alpha));
-      glLineWidth(width);
-      glBegin(GL_LINE_STRIP);
-      for (size_t k = 0; k < il.size(); ++k) glVertex2f(xy[2 * k], xy[2 * k + 1]);
-      glEnd();
     }
+    glPopMatrix();
   }
   glDisable(GL_LINE_SMOOTH);
   glEnable(GL_TEXTURE_2D);
@@ -999,11 +1159,11 @@ void BathyRenderer::DrawContoursDC(wxDC& dc, PlugIn_ViewPort* vp, const ScreenMa
 }
 
 wxString BathyRenderer::LabelKey(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& layers,
-                                 const DisplaySettings& s, char mode) const {
+                                 const DisplaySettings& s, char mode, bool center) const {
   int ready = 0;
   for (auto& l : layers) ready += (l->visible && l->state() == BathyLayer::Ready);
   return wxString::Format("%c %.9f %.9f %.6g %.6f %d %d %u %d %d %d %d %d %d %u %d %d %u",
-                          mode, vp->clat, vp->clon, vp->view_scale_ppm,
+                          mode, center ? vp->clat : 0.0, center ? vp->clon : 0.0, vp->view_scale_ppm,
                           vp->rotation + vp->skew, vp->pix_width, vp->pix_height, m_epoch,
                           ready, (int)layers.size(), s.soundings ? 1 : 0, s.spacingPx,
                           s.decimals, s.fontSize, s.version, s.contours ? 1 : 0,
@@ -1445,7 +1605,7 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
           uint32_t col = m_lut(z + (TT.gridded() ? TT.at(lon, lat) : TT.h0));
           float f = sh ? 1.f + k * (shv / 160.f - 1.f) : 1.f;
           size_t o = (size_t)y * W + x;
-          const float li = (s.interpDistinct && g.isInterp(c)) ? kInterpLighten : 0.f;
+          const float li = (s.interpDistinct && g.isInterpFar(c)) ? kInterpLighten : 0.f;
           auto L = [li](float v) { return v + (255.f - v) * li; };  // zones interpolées éclaircies
           rgb[3 * o] = (unsigned char)L(std::min(255.f, R_(col) * f));
           rgb[3 * o + 1] = (unsigned char)L(std::min(255.f, G_(col) * f));
@@ -1495,6 +1655,7 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
     }
     Declutter(m_labels, (float)lineH, 4.f);
     m_labelKey = labelKey;
+    m_labelStatic.clear();  // pas de décalage en rendu DC
   }
   for (const Label& L : m_labels) {
     if (L.contour) {

@@ -69,6 +69,11 @@ class BathyDialog : public wxDialog {
   wxButton *m_landBtn = nullptr, *m_landApply = nullptr;
   wxCheckBox* m_landOn = nullptr;
   wxStaticText* m_landInfo = nullptr;
+  wxTextCtrl* m_national = nullptr;
+  wxButton* m_nationalBtn = nullptr;
+  wxTextCtrl* m_shore = nullptr;
+  wxButton* m_shoreBtn = nullptr;
+  wxCheckBox* m_shoreZero = nullptr;
   wxChoice* m_dispDatum = nullptr;
   wxTextCtrl* m_mss = nullptr;
   wxButton *m_mssBtn = nullptr, *m_datumUpdate = nullptr, *m_datumMigrate = nullptr;

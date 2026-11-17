@@ -298,7 +298,7 @@ void Colorize(const GridLevel& g, int i0, int j0, int w, int h,
         auto M = [f](int v) { int q = (int)(v * f); return q > 255 ? 255 : q; };
         c = RGBA(M(R_(c)), M(G_(c)), M(B_(c)), A_(c));
       }
-      if (fl && g.interp[(size_t)j * g.nx + i]) {
+      if (fl && g.isInterpFar((size_t)j * g.nx + i)) {
         auto W = [li](int v) { return (int)(v + (255 - v) * li); };
         c = RGBA(W(R_(c)), W(G_(c)), W(B_(c)), A_(c));
       }

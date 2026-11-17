@@ -4,6 +4,77 @@
 
 ## English
 
+### 0.1.0-beta.12 (2026-11-17)
+
+- **Echo sounder tracks**: import of GPX files (Garmin and others: track,
+  route and waypoints carrying a depth extension, `gpxx:Depth`,
+  `gpxtpx:depth`…) and of Lowrance / Simrad / B&G sonar logs `.sl2` / `.sl3`
+  (depth under the transducer of each ping; sonar image skipped; primary
+  channel, else DownScan, else secondary; pings at the same GPS fix reduced
+  to their median). Soundings keep their time: observed water levels apply;
+  the import *Z offset* adds the transducer depth. A 1 GB log is read in a
+  few seconds on a PC (reading the file dominates, also on a Raspberry Pi).
+- **Own shorelines** (*Database* tab, *Coastline* box, *Own*): KML / KMZ
+  (Google Earth polygons and lines), generic shapefiles (polygons and
+  polylines, 2D/Z/M, `.prj` system) and GeoPackage (`.gpkg`, all feature
+  tables, table system), in addition to the OSMSHP / GSHHG basemap. The
+  water side is that of the soundings: a polygon around the soundings
+  outlines water (a lake and its islands), a polygon without soundings
+  outlines land (islands, coast). Large shapefiles are read on demand by
+  1° square (the 170 MB *Limite terre-mer* of France: 0.3 s, a few MB).
+- **Shoreline as the 0 m contour** (*unreferenced* sources: lakes,
+  reservoirs): at import the interpolated surface slopes down to 0 at the
+  shoreline instead of stopping at the last sounding line. The shoreline is
+  used by the interpolation only: no sounding is added, and the
+  interpolation distance D remains the limit.
+- **Vertical reference surfaces kept in each `.pdb`**: every database file
+  keeps a copy of the surfaces over its area. A `.pdb` copied alone to
+  another folder, or shared without `PersonalDepth_datum.sqlite`, brings its
+  surfaces back when the database is opened and is shown at the same chart
+  datum. Existing databases get their copies at the first opening (quick
+  afterwards: nothing is rewritten while the surfaces do not change).
+- **Official chart datum of other countries** (*Database* tab, *Vertical
+  datum* box, *Countries*): one folder for the official files, recognised
+  automatically and used where they exist, LAT FES elsewhere. NOAA VDatum
+  regional grids (`mllw.gtx`, MLLW of the United States) are read directly;
+  other countries (VORF, HyVSEPs, NLLAT2018…) through `.pdgrid` files of
+  quantity `CD/MSL` or `CD/WGS84` (`tools/pdgrid_convert.py --quantity`). The
+  box says in plain words whether the chart datum shown is official (✓) or
+  approximate (≈ LAT FES). The default display is renamed *Official chart
+  datum of the country, like nautical charts*.
+- Fixed: with the chart rotated (course up or head up, or rotation keys),
+  for some headings the bathymetry switched to a very coarse level (blurred,
+  no contours): the screen corners were taken for an antimeridian crossing,
+  which falsified the display scale. Reported by Baikal.
+- Chart rotated (course up, head up): only the cells of the rotated screen
+  and its margin are computed, no longer the whole rectangle around it
+  (up to twice as many cells), so the view no longer drops to a coarser
+  level after a rebuild; the margin shrinks (down to 10 %) when needed.
+- Zooming is more responsive: a database view still being computed is
+  stopped as soon as the zoom or position makes it useless, instead of
+  chaining outdated views.
+- Smoother panning and zooming with depth contours: contours are projected
+  once when computed, then placed on screen by the graphics card (a single
+  transformation per frame) instead of being reprojected point by point at
+  every frame; their labels are placed the same way.
+- Zoomed in beyond the resolution of the data, the view keeps a full margin
+  around the screen: fewer rebuilds when dragging the chart.
+- No more jolt when a new database view arrives (OpenGL): its textures and
+  contours are prepared a few milliseconds per frame while the current view
+  stays on screen, then it replaces it. While the chart is dragged, soundings
+  and contour values are shifted with it and selected again when it stops.
+- Diagnostics: `PerfLog=1` in the `[PlugIns/PersonalDepth]` section of
+  `opencpn.ini` writes the display timings of the plugin to the OpenCPN log
+  every 3 seconds of activity (frames per second, time per frame, textures,
+  contours, view rebuilds).
+- *Show interpolated areas lighter*: small gaps between soundings of a dense
+  survey (up to 2 cells from a measured cell) are no longer lightened, which
+  gave a mesh look at large scales.
+- Fixed: small lakes, reservoirs and rivers are classed as land by OSMSHP
+  and GSHHG, so the land mask erased the whole interpolation of their
+  surveys. When most measured soundings of a tile (or of the survey) fall on
+  "land", the basemap does not know this water body and is not applied.
+
 ### 0.1.0-beta.11 (2026-11-16)
 
 - Fixed: tide station and FES2022 tide area chosen from **all** the visible
@@ -11,14 +82,6 @@
   "centre" fell in mid-ocean (Azores station shown at Le Conquet). The tide
   now uses the sources shown on the chart, or the chart itself, and follows
   the chart when it moves to another area.
-
-### 0.1.0-beta.11 (2026-11-16)
-
-- Corrigé : station de marée et zone de la marée FES2022 choisies d'après
-  **toutes** les sources visibles de la base. Avec des levés des deux côtés
-  de l'Atlantique, le « centre » tombait en plein océan (station des Açores
-  affichée au Conquet). La marée utilise maintenant les sources affichées à
-  l'écran, ou la carte elle-même, et suit la carte quand elle change de zone.
 
 ### 0.1.0-beta.10 (2026-11-13)
 
@@ -266,6 +329,92 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.12 (2026-11-17)
+
+- **Traces de sondeur** : import des fichiers GPX (Garmin et autres : traces,
+  routes et waypoints portant une profondeur en extension, `gpxx:Depth`,
+  `gpxtpx:depth`…) et des journaux sonar Lowrance / Simrad / B&G `.sl2` /
+  `.sl3` (profondeur sous le transducteur de chaque ping ; image sonar
+  sautée ; canal primaire, sinon DownScan, sinon secondaire ; pings d'une
+  même position GPS réduits à leur médiane). Les sondes gardent leur heure :
+  les hauteurs d'eau observées s'appliquent ; le *décalage Z* de l'import
+  ajoute l'enfoncement du transducteur. Un journal de 1 Go se lit en
+  quelques secondes sur PC (la lecture du fichier domine, aussi sur
+  Raspberry Pi).
+- **Traits de côte personnels** (onglet *Base*, cadre *Trait de côte*,
+  *Personnels*) : KML / KMZ (polygones et lignes de Google Earth),
+  shapefiles quelconques (polygones et polylignes, 2D/Z/M, système du
+  `.prj`) et GeoPackage (`.gpkg`, toutes les tables d'entités, système de la
+  table), en plus du fond OSMSHP / GSHHG. Le côté eau est celui des sondes :
+  un polygone qui entoure les sondes trace l'eau (un lac et ses îles), un
+  polygone sans sondes trace la terre (îles, côte). Les gros shapefiles sont
+  lus à la demande par carré de 1° (*Limite terre-mer* de la France,
+  170 Mo : 0,3 s, quelques Mo).
+- **Rivage = isobathe 0** (sources *non rattachées* : lacs, retenues) : à
+  l'import, la surface interpolée descend vers 0 au rivage au lieu de
+  s'arrêter à la dernière ligne de sondes. Le rivage ne sert qu'à
+  l'interpolation : aucune sonde n'est ajoutée, et la distance D
+  d'interpolation reste la limite.
+- **Surfaces de référence verticale gardées dans chaque `.pdb`** : chaque
+  fichier de base garde une copie des surfaces de son emprise. Un `.pdb`
+  copié seul dans un autre dossier, ou partagé sans
+  `PersonalDepth_datum.sqlite`, rapporte ses surfaces à l'ouverture de la
+  base et s'affiche au même zéro des cartes. Les bases existantes reçoivent
+  leurs copies à la première ouverture (rapide ensuite : rien n'est réécrit
+  tant que les surfaces ne changent pas).
+- **Zéro des cartes officiel des autres pays** (onglet *Base*, cadre
+  *Référence verticale*, *Pays*) : un dossier pour les fichiers officiels,
+  reconnus tout seuls et utilisés là où ils existent, LAT FES ailleurs. Les
+  grilles régionales NOAA VDatum (`mllw.gtx`, MLLW des États-Unis) sont lues
+  directement ; les autres pays (VORF, HyVSEPs, NLLAT2018…) par des fichiers
+  `.pdgrid` de grandeur `CD/MSL` ou `CD/WGS84` (`tools/pdgrid_convert.py
+  --quantity`). Le cadre dit en clair si le zéro affiché est officiel (✓) ou
+  approché (≈ LAT FES). L'affichage par défaut s'appelle maintenant *Zéro des
+  cartes officiel du pays, comme les cartes marines*.
+- Corrigé : carte tournée (route ou cap en haut, ou touches de rotation) :
+  pour certains caps, la bathymétrie passait à un niveau très grossier (floue,
+  sans isobathes) ; les coins de l'écran étaient pris pour un franchissement
+  de l'antiméridien, ce qui faussait l'échelle d'affichage. Signalé par Baikal.
+- Carte tournée (route ou cap en haut) : seules les cellules de l'écran
+  tourné et de sa marge sont calculées, et non plus tout le rectangle qui
+  l'englobe (jusqu'à deux fois plus de cellules) ; la vue ne descend plus à
+  un niveau plus grossier à son rechargement ; la marge se réduit (jusqu'à
+  10 %) si nécessaire.
+- Zoom plus réactif : une vue de la base en cours de calcul est arrêtée dès
+  que le zoom ou le déplacement la rend inutile, au lieu d'enchaîner des
+  vues périmées.
+- Déplacement et zoom plus fluides avec les isobathes : elles sont projetées
+  une fois à leur calcul, puis placées à l'écran par la carte graphique (une
+  seule transformation par image) au lieu d'être reprojetées point par point
+  à chaque image ; leurs valeurs sont placées de la même façon.
+- Zoom au-delà de la résolution des données : la vue garde une marge pleine
+  autour de l'écran, d'où moins de rechargements en faisant glisser la carte.
+- Plus d'à-coup à l'arrivée d'une nouvelle vue de la base (OpenGL) : ses
+  textures et ses isobathes sont préparées quelques millisecondes par image
+  pendant que la vue actuelle reste affichée, puis elle la remplace. Pendant
+  qu'on fait glisser la carte, les sondes et les valeurs d'isobathes suivent
+  le mouvement et sont choisies à nouveau à l'arrêt.
+- Diagnostic : `PerfLog=1` dans la section `[PlugIns/PersonalDepth]` de
+  `opencpn.ini` écrit les temps d'affichage du plugin dans le journal
+  d'OpenCPN toutes les 3 s d'activité (images par seconde, temps par image,
+  textures, isobathes, recalculs de la vue).
+- *Zones interpolées plus claires* : les petits trous entre les sondes d'un
+  levé dense (jusqu'à 2 cellules d'une cellule mesurée) ne sont plus
+  éclaircis ; aux grandes échelles cela donnait un aspect de grillage.
+- Corrigé : petits lacs, retenues et rivières sont rangés en terre par OSMSHP
+  et GSHHG ; le masque terre effaçait toute l'interpolation de leurs levés.
+  Quand la plupart des sondes mesurées d'une tuile (ou du levé) tombent sur
+  la « terre », le fond de carte ne connaît pas ce plan d'eau et n'est pas
+  appliqué.
+
+### 0.1.0-beta.11 (2026-11-16)
+
+- Corrigé : station de marée et zone de la marée FES2022 choisies d'après
+  **toutes** les sources visibles de la base. Avec des levés des deux côtés
+  de l'Atlantique, le « centre » tombait en plein océan (station des Açores
+  affichée au Conquet). La marée utilise maintenant les sources affichées à
+  l'écran, ou la carte elle-même, et suit la carte quand elle change de zone.
 
 ### 0.1.0-beta.10 (2026-11-13)
 

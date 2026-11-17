@@ -29,6 +29,7 @@
 #include <sstream>
 
 #include "Projection.h"
+#include "Tracks.h"
 
 namespace pd {
 namespace fs = std::filesystem;
@@ -80,7 +81,7 @@ bool BathyLayer::IsStreamable(const LayerParams& p) {
   if (p.custom) return false;
   const std::string ext = lowerExt(p.path);
   return !(ext == ".asc" || ext == ".xml" || ext == ".landxml" || ext == ".tif" || ext == ".tiff" ||
-           ext == ".bag" || ext == ".nc" || ext == ".grd" || ext == ".pdpc");
+           ext == ".bag" || ext == ".nc" || ext == ".grd" || ext == ".pdpc" || IsTrackFile(p.path));
 }
 
 bool BathyLayer::streamXYZ(size_t blockN, const std::function<bool(PointCloud&)>& sink,
@@ -172,6 +173,10 @@ void BathyLayer::run() {
       }
     } else if (ext == ".xml" || ext == ".landxml") {
       ok = LoadLandXMLTin(params.path, lo, cloud, tris, err);
+    } else if (IsTrackFile(params.path)) {  // traces : toujours en WGS84
+      TrackInfo ti;
+      ok = LoadTrack(params.path, lo, cloud, err, [this](float f) { progress_ = 0.6f * f; }, stopFlag(), &ti);
+      crsUsed_.clear();
     } else if (ext == ".tif" || ext == ".tiff" || ext == ".bag" || ext == ".nc" ||
                ext == ".grd") {
 #ifdef PD_HAVE_GDAL

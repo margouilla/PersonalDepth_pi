@@ -715,10 +715,6 @@ msgstr "Съёмки с "
 msgid " to "
 msgstr " по "
 
-#. fr: Bathymétrie (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|Tous les fichiers|*
-msgid "Bathymetry (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|All files|*"
-msgstr "Батиметрия (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag|Все файлы|*"
-
 #. fr: Modifier les sources
 msgid "Edit sources"
 msgstr "Изменить источники"
@@ -3346,9 +3342,9 @@ msgstr "Обновление высотных систем"
 msgid " source(s) corrected"
 msgstr " источник(ов) исправлено"
 
-#. fr: Zéro des cartes local (ZH, CD…) — profondeurs des cartes, sondeur corrigé
-msgid "Local chart datum (CD) — chart depths, corrected echo sounder"
-msgstr "Местный нуль глубин — глубины карт, исправленный эхолот"
+#. fr: Zéro des cartes local (ZH, CD, MLLW…) — profondeurs des cartes, sondeur corrigé
+msgid "Local chart datum (CD, MLLW…) — chart depths, corrected echo sounder"
+msgstr "Местный нуль глубин (ZH, CD, MLLW…) — глубины карт, исправленный эхолот"
 
 #. fr: Niveau moyen (MSL) — ex. GEBCO
 msgid "Mean sea level (MSL) — e.g. GEBCO"
@@ -3374,9 +3370,9 @@ msgstr "Другая → нуль глубин: сетка разностей с
 msgid "Not tied (lake, reservoir, non-tidal water)"
 msgstr "Без привязки (озеро, водохранилище, водоём без приливов)"
 
-#. fr: Profondeurs rapportées au zéro des cartes du lieu (ZH du Shom en France, Chart Datum…), comme les sondes des cartes. La base les range sous le niveau moyen grâce à la surface du zéro des cartes (BathyElli en France, sinon LAT FES2022) ; sans ces fichiers, l'écart est nul et la base garde les valeurs telles quelles.
-msgid "Depths referred to the local chart datum (Shom ZH in France, Chart Datum…), like chart soundings. The database stores them below mean sea level with the chart datum surface (BathyElli in France, otherwise LAT FES2022); without these files the offset is zero and the database keeps the values as they are."
-msgstr "Глубины от местного нуля глубин (ZH Shom во Франции, Chart Datum…), как отметки карт. База хранит их от среднего уровня моря по поверхности нуля глубин (BathyElli во Франции, иначе LAT FES2022); без этих файлов разность равна нулю и значения сохраняются как есть."
+#. fr: Profondeurs rapportées au zéro des cartes du lieu (ZH du Shom en France, Chart Datum…), comme les sondes des cartes. La base les range sous le niveau moyen grâce à la surface du zéro des cartes (BathyElli en France, fichiers des pays comme NOAA VDatum aux États-Unis, sinon LAT FES2022) ; sans ces fichiers, l'écart est nul et la base garde les valeurs telles quelles.
+msgid "Depths referred to the local chart datum (Shom ZH in France, Chart Datum…), like chart soundings. The database stores them below mean sea level with the chart datum surface (BathyElli in France, country files such as NOAA VDatum in the United States, otherwise LAT FES2022); without these files the offset is zero and the database keeps the values as they are."
+msgstr "Глубины от местного нуля глубин (ZH Shom во Франции, Chart Datum…), как отметки карт. База хранит их от среднего уровня моря по поверхности нуля глубин (BathyElli во Франции, файлы стран, например NOAA VDatum в США, иначе LAT FES2022); без этих файлов разность равна нулю и значения сохраняются как есть."
 
 #. fr: Profondeurs sous le niveau moyen (GEBCO, modèles océaniques) : rangées sans conversion.
 msgid "Depths below mean sea level (GEBCO, ocean models): stored without conversion."
@@ -3442,9 +3438,9 @@ msgstr " (базу нужно перенести)"
 msgid " (to migrate)"
 msgstr " (перенести)"
 
-#. fr: Zéro des cartes local (ZH en France), comme les cartes
-msgid "Local chart datum (ZH in France), like charts"
-msgstr "Местный нуль глубин (ZH во Франции), как на картах"
+#. fr: Zéro des cartes officiel du pays, comme les cartes marines
+msgid "Official chart datum of the country, like nautical charts"
+msgstr "Официальный нуль глубин страны, как на морских картах"
 
 #. fr: Plus basse mer astronomique (LAT)
 msgid "Lowest astronomical tide (LAT)"
@@ -3482,9 +3478,9 @@ msgstr "MSS"
 msgid "Update surfaces"
 msgstr "Обновить поверхности"
 
-#. fr: Recalcule les surfaces de référence de la base avec les fichiers actuels (BathyElli, FES2022, MSS) et corrige les sources concernées. À lancer après avoir ajouté ou changé un de ces fichiers.
-msgid "Recomputes the database reference surfaces with the current files (BathyElli, FES2022, MSS) and corrects the sources concerned. Run it after adding or changing one of these files."
-msgstr "Пересчитывает опорные поверхности базы по текущим файлам (BathyElli, FES2022, MSS) и исправляет затронутые источники. Запускайте после добавления или замены одного из этих файлов."
+#. fr: Recalcule les surfaces de référence de la base avec les fichiers actuels (BathyElli, FES2022, MSS, pays) et corrige les sources concernées. À lancer après avoir ajouté ou changé un de ces fichiers.
+msgid "Recomputes the database reference surfaces with the current files (BathyElli, FES2022, MSS, countries) and corrects the sources concerned. Run it after adding or changing one of these files."
+msgstr "Пересчитывает опорные поверхности базы по текущим файлам (BathyElli, FES2022, MSS, страны) и исправляет затронутые источники. Запускайте после добавления или замены одного из этих файлов."
 
 #. fr: Migrer la base…
 msgid "Migrate database…"
@@ -3501,4 +3497,244 @@ msgstr "Средняя поверхность океана (MSS)"
 #. fr: Grille PersonalDepth (*.pdgrid)|*.pdgrid|Tous|*
 msgid "PersonalDepth grid (*.pdgrid)|*.pdgrid|All|*"
 msgstr "Сетка PersonalDepth (*.pdgrid)|*.pdgrid|Все|*"
+
+#. fr: Trait de côte introuvable (basemap_*.shp ou poly-*-1.dat) dans 
+msgid "No coastline found (basemap_*.shp or poly-*-1.dat) in "
+msgstr "Береговая линия не найдена (basemap_*.shp или poly-*-1.dat) в "
+
+#. fr: Shapefile de polygones attendu : 
+msgid "Polygon shapefile expected: "
+msgstr "Ожидается shapefile с полигонами: "
+
+#. fr: Fichier .dbf illisible
+msgid "Unreadable .dbf file"
+msgstr "Не удаётся прочитать файл .dbf"
+
+#. fr: Shapefile sans emprise des polygones (xmin, xmax, ymin, ymax) : 
+msgid "Shapefile without polygon extents (xmin, xmax, ymin, ymax): "
+msgstr "Shapefile без границ полигонов (xmin, xmax, ymin, ymax): "
+
+#. fr: Fichier GSHHG d'OpenCPN invalide : 
+msgid "Invalid OpenCPN GSHHG file: "
+msgstr "Неверный файл GSHHG OpenCPN: "
+
+#. fr: Shapefile illisible
+msgid "Unreadable shapefile"
+msgstr "Не удаётся прочитать shapefile"
+
+#. fr: Fichier GSHHG illisible
+msgid "Unreadable GSHHG file"
+msgstr "Не удаётся прочитать файл GSHHG"
+
+#. fr: Trait de côte non choisi
+msgid "No coastline chosen"
+msgstr "Береговая линия не выбрана"
+
+#. fr: Trait de côte : recherche des zones interpolées
+msgid "Coastline: looking for interpolated areas"
+msgstr "Береговая линия: поиск интерполированных зон"
+
+#. fr: Trait de côte
+msgid "Coastline"
+msgstr "Береговая линия"
+
+#. fr: Trait de côte : interpolation retirée sur la terre
+msgid "Coastline: interpolation removed on land"
+msgstr "Береговая линия: интерполяция на суше удалена"
+
+#. fr:  pixel(s) retiré(s)
+msgid " pixel(s) removed"
+msgstr " пикс. удалено"
+
+#. fr: Pas de surface interpolée sur la terre (îles, côte)
+msgid "No interpolated surface on land (islands, coast)"
+msgstr "Без интерполированной поверхности на суше (острова, берег)"
+
+#. fr: À l'import, les pixels interpolés situés sur la terre sont retirés ; les sondes mesurées sont toujours gardées.
+msgid "At import, interpolated pixels on land are removed; measured soundings are always kept."
+msgstr "При импорте интерполированные пиксели на суше удаляются; измеренные отметки всегда сохраняются."
+
+#. fr: dossier des fonds de carte OSMSHP ou GSHHG d'OpenCPN
+msgid "folder of OpenCPN's OSMSHP or GSHHG basemaps"
+msgstr "папка базовых карт OSMSHP или GSHHG OpenCPN"
+
+#. fr: Polygones de terre téléchargés par le gestionnaire de cartes d'OpenCPN : OSMSHP (basemap_*.shp, OpenStreetMap, conseillé) ou GSHHG (poly-*-1.dat, plus grossier). La meilleure qualité présente est prise.
+msgid "Land polygons downloaded by OpenCPN's chart downloader: OSMSHP (basemap_*.shp, OpenStreetMap, recommended) or GSHHG (poly-*-1.dat, coarser). The best quality present is used."
+msgstr "Полигоны суши, загруженные менеджером карт OpenCPN: OSMSHP (basemap_*.shp, OpenStreetMap, рекомендуется) или GSHHG (poly-*-1.dat, грубее). Используется лучшее доступное качество."
+
+#. fr: Appliquer aux sources
+msgid "Apply to sources"
+msgstr "Применить к источникам"
+
+#. fr: Retire des sources déjà importées les pixels interpolés situés sur la terre. Pour revenir en arrière : réimporter la source.
+msgid "Removes interpolated pixels on land from the sources already imported. To undo: re-import the source."
+msgstr "Удаляет интерполированные пиксели на суше из уже импортированных источников. Чтобы отменить: импортируйте источник заново."
+
+#. fr: Dossier des fonds de carte OSMSHP ou GSHHG
+msgid "Folder of the OSMSHP or GSHHG basemaps"
+msgstr "Папка базовых карт OSMSHP или GSHHG"
+
+#. fr: Retirer de toutes les sources les pixels interpolés situés sur la terre ?\nLes sondes mesurées sont gardées. Pour retrouver l'interpolation retirée, il faudra réimporter la source.
+msgid "Remove interpolated pixels on land from all sources?\nMeasured soundings are kept. To get the removed interpolation back, the source must be re-imported."
+msgstr "Удалить из всех источников интерполированные пиксели на суше?\nИзмеренные отметки сохраняются. Чтобы вернуть удалённую интерполяцию, источник нужно импортировать заново."
+
+#. fr: désactivé
+msgid "off"
+msgstr "выключено"
+
+#. fr: aucun dossier choisi
+msgid "no folder chosen"
+msgstr "папка не выбрана"
+
+#. fr: aucun trait de côte reconnu
+msgid "no coastline recognised"
+msgstr "береговая линия не распознана"
+
+#. fr: utilisé : 
+msgid "used: "
+msgstr "используется: "
+
+#. fr: Lecture impossible : 
+msgid "Cannot read: "
+msgstr "Невозможно прочитать: "
+
+#. fr: Fichier GPX sans point (trkpt, rtept, wpt)
+msgid "GPX file without points (trkpt, rtept, wpt)"
+msgstr "GPX-файл без точек (trkpt, rtept, wpt)"
+
+#. fr: Journal sonar non reconnu (formats SL2 et SL3)
+msgid "Sonar log not recognised (SL2 and SL3 formats)"
+msgstr "Журнал эхолота не распознан (форматы SL2 и SL3)"
+
+#. fr: Journal sonar sans canal de profondeur (primaire, DownScan, secondaire)
+msgid "Sonar log without a depth channel (primary, DownScan, secondary)"
+msgstr "Журнал эхолота без канала глубины (основной, DownScan, вторичный)"
+
+#. fr: %s : aucune profondeur dans le fichier (%lld points lus)
+msgid "%s: no depth in the file (%lld points read)"
+msgstr "%s: в файле нет глубин (прочитано точек: %lld)"
+
+#. fr: Système de coordonnées non pris en charge : EPSG:
+msgid "Unsupported coordinate system: EPSG:"
+msgstr "Система координат не поддерживается: EPSG:"
+
+#. fr:  (convertir le fichier en WGS84, EPSG:4326)
+msgid " (convert the file to WGS84, EPSG:4326)"
+msgstr " (преобразуйте файл в WGS84, EPSG:4326)"
+
+#. fr: KMZ : aucun polygone ni ligne lisible
+msgid "KMZ: no readable polygon or line"
+msgstr "KMZ: нет читаемых полигонов или линий"
+
+#. fr: Système du .prj non reconnu (convertir le fichier en WGS84, EPSG:4326) : 
+msgid "Unrecognised .prj coordinate system (convert the file to WGS84, EPSG:4326): "
+msgstr "Система координат .prj не распознана (преобразуйте файл в WGS84, EPSG:4326): "
+
+#. fr: Shapefile illisible : 
+msgid "Unreadable shapefile: "
+msgstr "Нечитаемый shapefile: "
+
+#. fr: Shapefile sans polygone ni polyligne : 
+msgid "Shapefile without polygons or polylines: "
+msgstr "Shapefile без полигонов и полилиний: "
+
+#. fr: GeoPackage sans table d'entités : 
+msgid "GeoPackage without a feature table: "
+msgstr "GeoPackage без таблицы объектов: "
+
+#. fr: GeoPackage sans polygone ni ligne : 
+msgid "GeoPackage without polygons or lines: "
+msgstr "GeoPackage без полигонов и линий: "
+
+#. fr: KML : aucun polygone ni ligne lisible : 
+msgid "KML: no readable polygon or line: "
+msgstr "KML: нет читаемых полигонов или линий: "
+
+#. fr: Trait de côte : format non pris en charge (.kml .kmz .shp .gpkg) : 
+msgid "Coastline: unsupported format (.kml .kmz .shp .gpkg): "
+msgstr "Береговая линия: формат не поддерживается (.kml .kmz .shp .gpkg): "
+
+#. fr: Trait de côte illisible
+msgid "Unreadable coastline"
+msgstr "Береговая линия не читается"
+
+#. fr:  ; plan d'eau absent du fond de carte : trait de côte OSM/GSHHG non appliqué
+msgid "; water body missing from the base map: OSM/GSHHG coastline not applied"
+msgstr "; водоём отсутствует на базовой карте: береговая линия OSM/GSHHG не применена"
+
+#. fr: traits personnels .kml .kmz .shp .gpkg (séparer par ;)
+msgid "own shorelines .kml .kmz .shp .gpkg (separate with ;)"
+msgstr "свои береговые линии .kml .kmz .shp .gpkg (разделять ;)"
+
+#. fr: Rivages dessinés ou extraits par l'utilisateur, en plus du fond de carte : polygones (lac et ses îles, îles, côte) ou lignes. Le côté eau des polygones est celui des sondes : un polygone qui entoure les sondes trace l'eau, un polygone sans sondes trace la terre.
+msgid "Shorelines drawn or extracted by the user, in addition to the base map: polygons (a lake and its islands, islands, coast) or lines. The water side of the polygons is the side of the soundings: a polygon around the soundings outlines water, a polygon without soundings outlines land."
+msgstr "Береговые линии, нарисованные или извлечённые пользователем, в дополнение к базовой карте: полигоны (озеро и его острова, острова, берег) или линии. Водная сторона полигонов определяется по промерам: полигон вокруг промеров обозначает воду, полигон без промеров — сушу."
+
+#. fr: Personnels
+msgid "Own"
+msgstr "Свои"
+
+#. fr: Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation
+msgid "Unreferenced water bodies: shoreline = 0 m contour for interpolation"
+msgstr "Непривязанные водоёмы: берег = изобата 0 для интерполяции"
+
+#. fr: Sources « non rattachées » (lac, retenue) : à l'import, la surface interpolée descend vers 0 m au rivage au lieu de s'arrêter à la dernière sonde. Aucune sonde n'est ajoutée ; la distance D d'interpolation reste la limite.
+msgid "“Unreferenced” sources (lake, reservoir): on import, the interpolated surface slopes down to 0 m at the shoreline instead of stopping at the last sounding. No sounding is added; the interpolation distance D remains the limit."
+msgstr "«Непривязанные» источники (озеро, водохранилище): при импорте интерполированная поверхность сходит к 0 м у берега, а не обрывается на последнем промере. Промеры не добавляются; предел — расстояние интерполяции D."
+
+#. fr: Traits de côte personnels
+msgid "Own shorelines"
+msgstr "Свои береговые линии"
+
+#. fr: Traits de côte (*.kml;*.kmz;*.shp;*.gpkg)|*.kml;*.KML;*.kmz;*.KMZ;*.shp;*.SHP;*.gpkg;*.GPKG|Tous les fichiers|*
+msgid "Shorelines (*.kml;*.kmz;*.shp;*.gpkg)|*.kml;*.KML;*.kmz;*.KMZ;*.shp;*.SHP;*.gpkg;*.GPKG|All files|*"
+msgstr "Береговые линии (*.kml;*.kmz;*.shp;*.gpkg)|*.kml;*.KML;*.kmz;*.KMZ;*.shp;*.SHP;*.gpkg;*.GPKG|Все файлы|*"
+
+#. fr: %d trait(s) personnel(s)
+msgid "%d own shoreline(s)"
+msgstr "своих линий: %d"
+
+#. fr: Tous les fichiers de bathymétrie du dossier et de ses sous-dossiers (.xyz .txt .csv .dat .asc .xml .tif .bag .gpx .sl2 .sl3)
+msgid "All bathymetry files in the folder and its subfolders (.xyz .txt .csv .dat .asc .xml .tif .bag .gpx .sl2 .sl3)"
+msgstr "Все файлы батиметрии в папке и её подпапках (.xyz .txt .csv .dat .asc .xml .tif .bag .gpx .sl2 .sl3)"
+
+#. fr: Bathymétrie (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag;*.gpx;*.sl2;*.sl3)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag;*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|Traces de sondeur (*.gpx;*.sl2;*.sl3)|*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|Tous les fichiers|*
+msgid "Bathymetry (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag;*.gpx;*.sl2;*.sl3)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag;*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|Echo sounder tracks (*.gpx;*.sl2;*.sl3)|*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|All files|*"
+msgstr "Батиметрия (*.xyz;*.txt;*.csv;*.dat;*.asc;*.xml;*.tif;*.tiff;*.bag;*.gpx;*.sl2;*.sl3)|*.xyz;*.XYZ;*.txt;*.csv;*.dat;*.asc;*.xml;*.landxml;*.tif;*.tiff;*.bag;*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|Треки эхолота (*.gpx;*.sl2;*.sl3)|*.gpx;*.GPX;*.sl2;*.SL2;*.sl3;*.SL3|Все файлы|*"
+
+#. fr: zéro national
+msgid "national chart datum"
+msgstr "национальный нуль глубин"
+
+#. fr: dossier des fichiers officiels (NOAA VDatum…)
+msgid "folder of official files (NOAA VDatum…)"
+msgstr "папка официальных файлов (NOAA VDatum…)"
+
+#. fr: Zéro des cartes officiel des autres pays : déposer dans ce dossier les fichiers téléchargés (régions NOAA VDatum des États-Unis…), le plugin les reconnaît et les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. Liens et licences : docs/external-data.md.
+msgid "Official chart datum of other countries: put the downloaded files in this folder (NOAA VDatum regions of the United States…); the plugin recognises them and uses them where they exist; elsewhere, lowest astronomical tide of the FES tide. Links and licences: docs/external-data.md."
+msgstr "Официальный нуль глубин других стран: положите загруженные файлы в эту папку (регионы NOAA VDatum в США…); плагин распознаёт их и использует там, где они есть; в остальных местах — наинизший астрономический уровень по приливу FES. Ссылки и лицензии: docs/external-data.md."
+
+#. fr: Pays
+msgid "Countries"
+msgstr "Страны"
+
+#. fr: Fichiers officiels des pays
+msgid "Official country files"
+msgstr "Официальные файлы стран"
+
+#. fr: ⚠ Zone sans zéro des cartes connu : profondeurs telles qu'importées.
+msgid "⚠ Area without a known chart datum: depths as imported."
+msgstr "⚠ Район без известного нуля глубин: глубины как при импорте."
+
+#. fr: ≈ Zéro approché ici (plus basse mer de la marée FES) : écart possible de quelques décimètres avec les cartes officielles. Fichiers des pays : docs/external-data.md.
+msgid "≈ Approximate datum here (lowest astronomical tide of the FES tide): may differ by a few decimetres from official charts. Country files: docs/external-data.md."
+msgstr "≈ Здесь приближённый нуль (наинизший уровень прилива FES): возможна разница в несколько дециметров с официальными картами. Файлы стран: docs/external-data.md."
+
+#. fr: ✓ Zéro officiel du pays, comme sur les cartes marines.
+msgid "✓ Official chart datum of the country, as on nautical charts."
+msgstr "✓ Официальный нуль глубин страны, как на морских картах."
+
+#. fr: , pays 
+msgid ", countries "
+msgstr ", страны "
 

@@ -26,6 +26,10 @@ Options :
     --var=mssh            variable à convertir (défaut : mssh)
     --name=...            nom du modèle (défaut : attribut OriginalName / title)
     --period=1993-2012    période de référence (défaut : lue dans long_name)
+    --quantity=MSS/WGS84  grandeur (défaut MSS/WGS84) ; zéros des cartes nationaux :
+                          CD/MSL (zéro des cartes − niveau moyen) ou CD/WGS84
+                          (zéro des cartes au-dessus de l'ellipsoïde), lus dans le
+                          dossier « Pays » du plugin
     --tp2wgs84            la grille est au-dessus de l'ellipsoïde TOPEX/Poseidon :
                           conversion vers WGS84
     --max-seconds=N       s'arrêter après N s ; relancer la même commande pour
