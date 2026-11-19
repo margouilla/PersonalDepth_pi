@@ -16,6 +16,7 @@
 #include "core/Lang.h"
 #include "BathyDialog.h"
 
+#include <wx/display.h>
 #include <wx/colordlg.h>
 #include <wx/dir.h>
 #include <wx/dirdlg.h>
@@ -53,13 +54,13 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
                wxDefaultPosition, wxDefaultSize,
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER),
       m_pi(pi) {
-  // onglets : Base / Marée / Palette / Isobathes / Affichage ; chaque page
-  // défile si la fenêtre est petite ; lecture au curseur sous les onglets
+  // onglets : Données / Marée / Affichage ; chaque page défile si la fenêtre
+  // est petite ; lecture au curseur sous les onglets
   m_tabs = new wxNotebook(this, wxID_ANY);
   using Builder = wxSizer* (BathyDialog::*)(wxWindow*);
   const std::pair<const char*, Builder> pages[] = {
-      {"Base", &BathyDialog::BuildDbBox},          {"Marée", &BathyDialog::BuildTideBox},
-      {"Palette", &BathyDialog::BuildPaletteBox},  {"Isobathes et sondes", &BathyDialog::BuildChartTextBox},
+      {"Données", &BathyDialog::BuildDataBox},
+      {"Marée", &BathyDialog::BuildTideBox},
       {"Affichage", &BathyDialog::BuildDisplayBox}};
   for (const auto& pg : pages) {
     auto* page = new wxScrolledWindow(m_tabs, wxID_ANY);
@@ -79,14 +80,17 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
   top->Add(m_cursor, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
   SetSizer(top);
   SetSize(FromDIP(wxSize(480, 640)));
-  const int tab = m_pi->Settings().panelTab;
-  if (tab >= 0 && tab < (int)m_tabs->GetPageCount()) m_tabs->SetSelection(tab);
+  int tab = m_pi->Settings().panelTab;
+  if (tab >= (int)m_tabs->GetPageCount()) tab = (int)m_tabs->GetPageCount() - 1;  // onglets d'avant
+  if (tab >= 0) m_tabs->SetSelection(tab);
+  FitPages();
   // largeur changée : textes longs recoupés à la nouvelle largeur
   Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
     e.Skip();
     CallAfter([this] {
       if (m_tideInfo && !m_tideRaw.empty()) SetWrapped(m_tideInfo, m_tideRaw);
       if (m_dbStatus && !m_dbRaw.empty()) SetWrapped(m_dbStatus, m_dbRaw);
+      if (m_imgStatus && !m_imgRaw.empty()) SetWrapped(m_imgStatus, m_imgRaw);
       if (m_datumInfo && !m_datumRaw.empty()) SetWrapped(m_datumInfo, m_datumRaw);
     });
   });
@@ -97,6 +101,26 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
   Bind(wxEVT_CLOSE_WINDOW, &BathyDialog::OnClose, this);
   RefreshUnits();  // libellés d'unité, puis valeurs
   RefreshDb();
+}
+
+// Taille du panneau : assez grande pour que chaque onglet (Données, Affichage…)
+// tienne sans défilement, dans les limites de l'écran
+void BathyDialog::FitPages() {
+  wxSize need(0, 0);
+  for (size_t k = 0; k < m_tabs->GetPageCount(); ++k) {
+    wxWindow* page = m_tabs->GetPage(k);
+    if (page->GetSizer()) need.IncTo(page->GetSizer()->GetMinSize() + FromDIP(wxSize(8, 8)));
+  }
+  const wxSize nb = m_tabs->CalcSizeFromPage(need);
+  wxSize target = ClientToWindowSize(wxSize(nb.x + FromDIP(8), nb.y + m_cursor->GetBestSize().y + FromDIP(20)));
+  target.IncTo(GetSize());
+  const int d = wxDisplay::GetFromWindow(this);
+  const wxRect area = wxDisplay(d == wxNOT_FOUND ? 0 : (unsigned)d).GetClientArea();
+  target.DecTo(area.GetSize());
+  wxPoint pos = GetPosition();
+  if (pos.x + target.x > area.GetRight()) pos.x = std::max(area.GetLeft(), area.GetRight() - target.x);
+  if (pos.y + target.y > area.GetBottom()) pos.y = std::max(area.GetTop(), area.GetBottom() - target.y);
+  SetSize(wxRect(pos, target));
 }
 
 // -------------------------------------------------------------------- marée
@@ -244,7 +268,10 @@ void BathyDialog::OnTide(wxCommandEvent&) {
 void BathyDialog::SetWrapped(wxStaticText* w, const wxString& t) {
   wxWindow* page = w->GetParent();
   while (page && !wxDynamicCast(page, wxScrolledWindow)) page = page->GetParent();
-  const int width = page ? page->GetClientSize().x - FromDIP(40) : FromDIP(400);
+  int width = page ? page->GetClientSize().x - FromDIP(40) : FromDIP(400);
+  // onglet Affichage : le cadre est à droite des couches affichées (largeur
+  // tirée de la page, pas du cadre, qui suit lui-même son texte)
+  if (w == m_datumInfo && m_layersBox) width -= m_layersBox->GetSize().x + FromDIP(8);
   w->SetLabel(t);
   w->Wrap(std::max(FromDIP(200), width));
   RelayoutPage(w);
@@ -277,22 +304,48 @@ wxString CellBytes(long long b) {
 }
 }  // namespace
 
-wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
+// Onglet Données : en haut le dossier de la base (bathymétrie et imagerie),
+// l'état et l'arrêt de l'opération en cours ; à gauche la bathymétrie et le
+// trait de côte ; à droite l'imagerie et les surfaces de référence verticale
+wxSizer* BathyDialog::BuildDataBox(wxWindow* p) {
   auto* col = new wxBoxSizer(wxVERTICAL);
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Base de bathymétrie"));
-  col->Add(box, 0, wxEXPAND | wxBOTTOM, 6);
-  col->Add(BuildDatumBox(p), 0, wxEXPAND | wxBOTTOM, 6);
-  col->Add(BuildLandBox(p), 0, wxEXPAND);
-  wxWindow* sb = box->GetStaticBox();
+  wxSizer* bathy = BuildDbBox(p);  // crée aussi le cadre du dossier (m_dbTopBox)
+  col->Add(m_dbTopBox, 0, wxEXPAND | wxALL, 2);
+  auto* cols = new wxBoxSizer(wxHORIZONTAL);
+  auto* left = new wxBoxSizer(wxVERTICAL);
+  auto* right = new wxBoxSizer(wxVERTICAL);
+  left->Add(bathy, 1, wxEXPAND | wxALL, 2);
+  left->Add(BuildLandBox(p), 0, wxEXPAND | wxALL, 2);
+  right->Add(BuildImageryBox(p), 1, wxEXPAND);
+  right->Add(BuildDatumBox(p), 0, wxEXPAND | wxALL, 2);
+  cols->Add(left, 1, wxEXPAND);
+  cols->Add(right, 1, wxEXPAND);
+  col->Add(cols, 1, wxEXPAND);
+  return col;
+}
+
+wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
+  // dossier de la base, commun à la bathymétrie et à l'imagerie
+  auto* top = new wxStaticBoxSizer(wxVERTICAL, p, U8("Dossier de la base (bathymétrie .pdb, imagerie .pdi)"));
+  m_dbTopBox = top;
+  wxWindow* tb = top->GetStaticBox();
   auto* r1 = new wxBoxSizer(wxHORIZONTAL);
-  m_dbFolder = new wxTextCtrl(sb, wxID_ANY, W8(m_pi->Settings().dbFolder.c_str()), wxDefaultPosition,
+  m_dbFolder = new wxTextCtrl(tb, wxID_ANY, W8(m_pi->Settings().dbFolder.c_str()), wxDefaultPosition,
                               wxDefaultSize, wxTE_PROCESS_ENTER);
-  m_dbFolder->SetHint(U8("dossier de la base (fichiers PD_*.pdb)"));
-  m_dbFolderBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
-  r1->Add(new wxStaticText(sb, wxID_ANY, U8("Dossier")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  r1->Add(m_dbFolder, 1, wxRIGHT, 2);
-  r1->Add(m_dbFolderBtn, 0);
-  box->Add(r1, 0, wxEXPAND | wxALL, 4);
+  m_dbFolder->SetHint(U8("dossier de la base (fichiers PD_*.pdb, PD_*.pdi)"));
+  m_dbFolderBtn = new wxButton(tb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
+  m_dbStop = new wxButton(tb, wxID_ANY, U8("Arrêter"));
+  m_dbStop->SetToolTip(U8("Arrêter l'opération en cours sur la base (import, nettoyage…). "
+                          "Pour un import, les fichiers déjà terminés restent dans la base."));
+  r1->Add(m_dbFolder, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 2);
+  r1->Add(m_dbFolderBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r1->Add(m_dbStop, 0, wxALIGN_CENTER_VERTICAL);
+  top->Add(r1, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  m_dbStatus = new wxStaticText(tb, wxID_ANY, "");
+  top->Add(m_dbStatus, 0, wxEXPAND | wxALL, 4);
+
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Bathymétrie"));
+  wxWindow* sb = box->GetStaticBox();
 
   // fichiers .pdb (cellules géographiques) : affichés ou non
   m_cells = new wxTreeListCtrl(sb, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(150)),
@@ -303,10 +356,10 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
   m_cells->SetToolTip(U8("Case : afficher ou masquer la bathymétrie de ce fichier (sa cellule "
                          "géographique). Les sources et leur import se gèrent dans "
                          "« Gestion des données »."));
-  box->Add(m_cells, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  box->Add(m_cells, 1, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
 
   auto* r3 = new wxBoxSizer(wxHORIZONTAL);
-  m_dbManage = new wxButton(sb, wxID_ANY, U8("Gestion des données…"));
+  m_dbManage = new wxButton(sb, wxID_ANY, U8("Gestion des données (import)…"));
   m_dbManage->SetToolTip(U8("Importer des fichiers, voir les sources importées et leurs "
                             "métadonnées, priorités, classes, nettoyage, découpage des fichiers."));
   m_cellAll = new wxButton(sb, wxID_ANY, U8("Tout"), wxDefaultPosition, wxSize(FromDIP(44), -1));
@@ -314,18 +367,11 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
   m_cellZoom = new wxButton(sb, wxID_ANY, U8("Centrer"));
   m_cellZoom->SetToolTip(U8("Centrer la carte sur les fichiers sélectionnés"));
   r3->Add(m_dbManage, 0, wxRIGHT, 8);
+  r3->AddStretchSpacer();
   r3->Add(m_cellAll, 0, wxRIGHT, 2);
   r3->Add(m_cellNone, 0, wxRIGHT, 8);
   r3->Add(m_cellZoom, 0);
-  box->Add(r3, 0, wxALL, 4);
-  auto* r4 = new wxBoxSizer(wxHORIZONTAL);
-  m_dbStatus = new wxStaticText(sb, wxID_ANY, "");
-  m_dbStop = new wxButton(sb, wxID_ANY, U8("Arrêter"));
-  m_dbStop->SetToolTip(U8("Arrêter l'opération en cours sur la base (import, nettoyage…). "
-                          "Pour un import, les fichiers déjà terminés restent dans la base."));
-  r4->Add(m_dbStatus, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  r4->Add(m_dbStop, 0, wxALIGN_CENTER_VERTICAL);
-  box->Add(r4, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+  box->Add(r3, 0, wxEXPAND | wxALL, 4);
 
   auto setFolder = [this]() {
     const std::string f = m_dbFolder->GetValue().Trim().Trim(false).ToUTF8().data();
@@ -376,12 +422,13 @@ wxSizer* BathyDialog::BuildDbBox(wxWindow* p) {
     m_pi->DbSetCellsVisible(names, on);
     RefreshCells();
   });
-  return col;
+  return box;
 }
 
 // ------------------------------------------------------ référence verticale
-wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale"));
+// Référence verticale des profondeurs affichées (onglet Affichage)
+wxSizer* BathyDialog::BuildDispDatumBox(wxWindow* p) {
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Référence verticale des profondeurs"));
   wxWindow* sb = box->GetStaticBox();
   const DisplaySettings& s = m_pi->Settings();
   wxString refs[] = {U8("Zéro des cartes officiel du pays, comme les cartes marines"),
@@ -393,10 +440,25 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
                              "La base range les profondeurs sous le niveau moyen ; chaque source est "
                              "ramenée à la référence choisie. Avec la marée : hauteur d'eau réelle "
                              "(zéro des cartes + marée)."));
-  auto* r1 = new wxBoxSizer(wxHORIZONTAL);
-  r1->Add(new wxStaticText(sb, wxID_ANY, U8("Profondeurs")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  r1->Add(m_dispDatum, 1);
-  box->Add(r1, 0, wxEXPAND | wxALL, 4);
+  // liste sans largeur imposée par le libellé le plus long : le cadre suit la fenêtre
+  m_dispDatum->SetMinSize(wxSize(FromDIP(200), -1));
+  box->Add(m_dispDatum, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  m_datumInfo = new wxStaticText(sb, wxID_ANY, "");
+  box->Add(m_datumInfo, 0, wxEXPAND | wxALL, 4);
+  m_dispDatum->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    m_pi->Settings().dispDatum = m_dispDatum->GetSelection();
+    m_pi->DatumChanged();
+    RefreshDatum();
+  });
+  return box;
+}
+
+wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
+  // fichiers des surfaces de référence (la référence affichée se choisit dans
+  // l'onglet Affichage)
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Surfaces de référence verticale"));
+  wxWindow* sb = box->GetStaticBox();
+  const DisplaySettings& s = m_pi->Settings();
   auto* r2 = new wxBoxSizer(wxHORIZONTAL);
   m_mss = new wxTextCtrl(sb, wxID_ANY, W8(s.mssGrid.c_str()), wxDefaultPosition, wxDefaultSize,
                          wxTE_PROCESS_ENTER);
@@ -423,8 +485,6 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   r4->Add(m_national, 1, wxRIGHT, 2);
   r4->Add(m_nationalBtn, 0);
   box->Add(r4, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
-  m_datumInfo = new wxStaticText(sb, wxID_ANY, "");
-  box->Add(m_datumInfo, 0, wxEXPAND | wxALL, 4);
   auto* r3 = new wxBoxSizer(wxHORIZONTAL);
   m_datumUpdate = new wxButton(sb, wxID_ANY, U8("Mettre à jour les surfaces"));
   m_datumUpdate->SetToolTip(U8("Recalcule les surfaces de référence de la base avec les fichiers "
@@ -437,11 +497,6 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   r3->Add(m_datumMigrate, 0);
   box->Add(r3, 0, wxALL, 4);
 
-  m_dispDatum->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
-    m_pi->Settings().dispDatum = m_dispDatum->GetSelection();
-    m_pi->DatumChanged();
-    RefreshDatum();
-  });
   auto setMss = [this]() {
     const std::string f = m_mss->GetValue().Trim().Trim(false).ToUTF8().data();
     if (f == m_pi->Settings().mssGrid) return;
@@ -489,9 +544,9 @@ wxSizer* BathyDialog::BuildLandBox(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Trait de côte"));
   wxWindow* sb = box->GetStaticBox();
   const DisplaySettings& s = m_pi->Settings();
-  m_landOn = new wxCheckBox(sb, wxID_ANY, U8("Pas de surface interpolée sur la terre (îles, côte)"));
+  m_landOn = new wxCheckBox(sb, wxID_ANY, U8("Pas d'interpolation sur la terre"));
   m_landOn->SetValue(s.landMaskOn);
-  m_landOn->SetToolTip(U8("À l'import, les pixels interpolés situés sur la terre sont retirés ; les "
+  m_landOn->SetToolTip(U8("Pas de surface interpolée sur la terre (îles, côte) : à l'import, les pixels interpolés situés sur la terre sont retirés ; les "
                           "sondes mesurées sont toujours gardées."));
   box->Add(m_landOn, 0, wxALL, 4);
   auto* r = new wxBoxSizer(wxHORIZONTAL);
@@ -520,9 +575,9 @@ wxSizer* BathyDialog::BuildLandBox(wxWindow* p) {
   r3->Add(m_shore, 1, wxRIGHT, 2);
   r3->Add(m_shoreBtn, 0);
   box->Add(r3, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
-  m_shoreZero = new wxCheckBox(sb, wxID_ANY, U8("Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation"));
+  m_shoreZero = new wxCheckBox(sb, wxID_ANY, U8("Lacs : rivage = isobathe 0"));
   m_shoreZero->SetValue(s.shoreZero);
-  m_shoreZero->SetToolTip(U8("Sources « non rattachées » (lac, retenue) : à l'import, la surface "
+  m_shoreZero->SetToolTip(U8("Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation. Sources « non rattachées » (lac, retenue) : à l'import, la surface "
                              "interpolée descend vers 0 m au rivage au lieu de s'arrêter à la dernière "
                              "sonde. Aucune sonde n'est ajoutée ; la distance D d'interpolation reste "
                              "la limite."));
@@ -666,12 +721,15 @@ void BathyDialog::RefreshDb() {
   RefreshDatum();
   RefreshLand();
   SetDbStatus(m_pi->DbStatus());
+  RefreshImagery();
   if (m_data) m_data->RefreshDb();
 }
 
 void BathyDialog::SetDbStatus(const wxString& t) {
   if (m_dbStatus && m_dbRaw != t) { m_dbRaw = t; SetWrapped(m_dbStatus, t); }
   if (m_dbStop) UpdateDbButtons();
+  if (m_imgStatus && m_imgRaw != t) { m_imgRaw = t; SetWrapped(m_imgStatus, t); }
+  if (m_imgStop) UpdateImgButtons();
   if (m_data && m_data->IsShown()) m_data->SetDbStatus(t);
 }
 
@@ -690,8 +748,8 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
 
   // Palette automatique : seuils d'après les profondeurs présentes
   auto* ar = new wxBoxSizer(wxHORIZONTAL);
-  m_autoOn = new wxCheckBox(sb, wxID_ANY, U8("Automatique"));
-  m_autoOn->SetToolTip(U8("Seuils répartis entre la profondeur minimale et maximale, couleurs "
+  m_autoOn = new wxCheckBox(sb, wxID_ANY, U8("Auto"));
+  m_autoOn->SetToolTip(U8("Palette automatique : seuils répartis entre la profondeur minimale et maximale, couleurs "
                           "reprises de la palette choisie. Modifier un seuil à la main "
                           "désactive le mode automatique."));
   wxString srcs[] = {U8("toutes les données"), U8("zone affichée")};
@@ -700,8 +758,8 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
                            "recalculé quand la carte se déplace."));
   m_autoCount = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(60), -1),
                                wxSP_ARROW_KEYS, 2, 40, 10);
-  m_autoNice = new wxCheckBox(sb, wxID_ANY, U8("valeurs rondes"));
-  m_autoNice->SetToolTip(U8("Seuils multiples de 1, 2, 2,5 ou 5 × 10ⁿ (sinon répartis exactement)"));
+  m_autoNice = new wxCheckBox(sb, wxID_ANY, U8("arrondis"));
+  m_autoNice->SetToolTip(U8("Valeurs rondes : seuils multiples de 1, 2, 2,5 ou 5 × 10ⁿ (sinon répartis exactement)"));
   ar->Add(m_autoOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
   ar->Add(m_autoSrc, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
   ar->Add(new wxStaticText(sb, wxID_ANY, U8("seuils")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
@@ -709,14 +767,14 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   ar->Add(m_autoNice, 0, wxALIGN_CENTER_VERTICAL);
   box->Add(ar, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
   auto* br = new wxBoxSizer(wxHORIZONTAL);
-  m_autoMinOn = new wxCheckBox(sb, wxID_ANY, U8("min imposé"));
-  m_autoMinOn->SetToolTip(U8("Premier seuil fixé (ex. 0 m : palette sur la seule bathymétrie, "
+  m_autoMinOn = new wxCheckBox(sb, wxID_ANY, U8("min"));
+  m_autoMinOn->SetToolTip(U8("Min imposé : premier seuil fixé (ex. 0 m : palette sur la seule bathymétrie, "
                              "les altitudes gardent une seule couleur)"));
   m_autoMin = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1),
                                    wxSP_ARROW_KEYS, -500, 11000, 0, 0.5);
   m_autoMin->SetDigits(1);
-  m_autoMaxOn = new wxCheckBox(sb, wxID_ANY, U8("max imposé"));
-  m_autoMaxOn->SetToolTip(U8("Dernier seuil fixé : les fonds plus profonds gardent la dernière couleur"));
+  m_autoMaxOn = new wxCheckBox(sb, wxID_ANY, U8("max"));
+  m_autoMaxOn->SetToolTip(U8("Max imposé : dernier seuil fixé : les fonds plus profonds gardent la dernière couleur"));
   m_autoMax = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1),
                                    wxSP_ARROW_KEYS, -500, 11000, 50, 0.5);
   m_autoMax->SetDigits(1);
@@ -729,7 +787,10 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   m_autoMaxU = new wxStaticText(sb, wxID_ANY, "m");
   br->Add(m_autoMaxU, 0, wxALIGN_CENTER_VERTICAL);
   box->Add(br, 0, wxLEFT | wxRIGHT | wxTOP, 4);
-  m_autoInfo = new wxStaticText(sb, wxID_ANY, "");
+  // résumé de la palette automatique : une ligne, texte complet en bulle
+  m_autoInfo = new wxStaticText(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+                                wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
+  m_autoInfo->SetMinSize(wxSize(FromDIP(100), -1));
   box->Add(m_autoInfo, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
   {
     const DisplaySettings& ds = m_pi->Settings();
@@ -749,7 +810,8 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   m_autoNice->Bind(wxEVT_CHECKBOX, &BathyDialog::OnAuto, this);
   m_autoCount->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnAuto(e); });
 
-  m_stops = new wxGrid(sb, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(200)));
+  // ~5 lignes visibles : le tableau défile seul
+  m_stops = new wxGrid(sb, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(130)));
   m_stops->CreateGrid(0, 2);
   m_stops->SetColLabelValue(0, U8("Seuil (m)"));
   m_stops->SetColLabelValue(1, U8("Couleur (double-clic)"));
@@ -758,31 +820,39 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
   m_stops->SetColSize(1, FromDIP(170));
   box->Add(m_stops, 1, wxEXPAND | wxALL, 4);
 
+  // boutons courts (texte complet en bulle) : deux lignes, la seconde
+  // finie par la zone dangereuse
   auto* b = new wxBoxSizer(wxHORIZONTAL);
-  auto* plus = new wxButton(sb, wxID_ANY, U8("+ seuil"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  auto* minus = new wxButton(sb, wxID_ANY, U8("− seuil"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  auto* imp = new wxButton(sb, wxID_ANY, U8("Importer .cpt…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  auto* exp = new wxButton(sb, wxID_ANY, U8("Exporter .cpt…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-  b->Add(plus, 0, wxRIGHT, 4); b->Add(minus, 0, wxRIGHT, 12);
-  b->Add(imp, 0, wxRIGHT, 4); b->Add(exp);
-  box->Add(b, 0, wxALL, 4);
+  auto* plus = new wxButton(sb, wxID_ANY, U8("+"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  plus->SetToolTip(U8("Ajouter un seuil"));
+  auto* minus = new wxButton(sb, wxID_ANY, U8("−"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  minus->SetToolTip(U8("Retirer le seuil sélectionné"));
+  auto* imp = new wxButton(sb, wxID_ANY, U8("Importer…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  imp->SetToolTip(U8("Importer une palette GMT (.cpt)"));
+  auto* exp = new wxButton(sb, wxID_ANY, U8("Exporter…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  exp->SetToolTip(U8("Exporter la palette en GMT (.cpt)"));
+  b->Add(plus, 0, wxRIGHT, 2); b->Add(minus, 0, wxRIGHT, 8);
+  b->Add(imp, 0, wxRIGHT, 2); b->Add(exp, 0, wxRIGHT, 8);
+  box->Add(b, 0, wxLEFT | wxRIGHT | wxTOP, 4);
   // Palettes de l'utilisateur : un fichier .cpt par palette dans un dossier
   auto* pb = new wxBoxSizer(wxHORIZONTAL);
-  auto* psave = new wxButton(sb, wxID_ANY, U8("Enregistrer la palette…"), wxDefaultPosition,
+  auto* psave = new wxButton(sb, wxID_ANY, U8("Enregistrer…"), wxDefaultPosition,
                              wxDefaultSize, wxBU_EXACTFIT);
   psave->SetToolTip(U8("Enregistre la palette affichée (seuils, couleurs, mode, zone dangereuse) "
                        "dans le dossier de palettes : elle apparaît ensuite dans la liste et dans "
                        "le menu du bandeau."));
-  auto* pdir = new wxButton(sb, wxID_ANY, U8("Dossier de palettes…"), wxDefaultPosition,
+  auto* pdir = new wxButton(sb, wxID_ANY, U8("Dossier…"), wxDefaultPosition,
                             wxDefaultSize, wxBU_EXACTFIT);
-  pdir->SetToolTip(U8("Choisir le dossier des palettes (.cpt) : toutes les palettes proposées (sauf "
+  pdir->SetToolTip(U8("Dossier de palettes : choisir le dossier des palettes (.cpt) : toutes les palettes proposées (sauf "
                       "ENC S-52) sont les fichiers de ce dossier, palettes d'origine comprises. On "
                       "peut les modifier, les renommer, les supprimer, y déposer des palettes GMT."));
-  auto* prest = new wxButton(sb, wxID_ANY, U8("Restaurer les palettes d'origine"), wxDefaultPosition,
+  auto* prest = new wxButton(sb, wxID_ANY, U8("Restaurer"), wxDefaultPosition,
                              wxDefaultSize, wxBU_EXACTFIT);
-  prest->SetToolTip(U8("Réécrit dans le dossier les palettes livrées avec le plugin (remplace les "
+  prest->SetToolTip(U8("Restaurer les palettes d'origine : réécrit dans le dossier les palettes livrées avec le plugin (remplace les "
                        "fichiers du même nom)."));
-  pb->Add(psave, 0, wxRIGHT, 4); pb->Add(pdir, 0, wxRIGHT, 4); pb->Add(prest);
+  b->Add(psave, 0);
+  pb->Add(pdir, 0, wxRIGHT, 2); pb->Add(prest, 0, wxRIGHT, 8);
+  pb->AddStretchSpacer();
   prest->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     if (wxMessageBox(U8("Réécrire les palettes d'origine dans le dossier de palettes ? Les fichiers "
                         "du même nom sont remplacés."),
@@ -792,22 +862,23 @@ wxSizer* BathyDialog::BuildPaletteBox(wxWindow* p) {
     if (!m_pi->WriteBuiltinPalettes(true, &e)) wxMessageBox(e, "PersonalDepth", wxICON_WARNING, this);
     RefreshPresetList();
   });
-  box->Add(pb, 0, wxLEFT | wxRIGHT | wxBOTTOM, 4);
   psave->Bind(wxEVT_BUTTON, &BathyDialog::OnSavePalette, this);
   pdir->Bind(wxEVT_BUTTON, &BathyDialog::OnPaletteDir, this);
 
-  auto* s = new wxBoxSizer(wxHORIZONTAL);
-  m_safeOn = new wxCheckBox(sb, wxID_ANY, U8("Zone dangereuse si prof. <"));
-  m_safeDepth = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1),
+  wxSizer* s = pb;
+  m_safeOn = new wxCheckBox(sb, wxID_ANY, U8("Danger <"));
+  m_safeOn->SetToolTip(U8("Zone dangereuse : surcouche des fonds moins profonds que cette valeur "
+                          "(tirant d'eau et marge). L'isobathe de sécurité (rouge) la suit."));
+  m_safeDepth = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(70), -1),
                                      wxSP_ARROW_KEYS, -20, 200, 2, 0.1);
   m_safeDepth->SetDigits(1);
   m_safeColour = new wxColourPickerCtrl(sb, wxID_ANY, *wxRED);
   s->Add(m_safeOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
-  s->Add(m_safeDepth, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  s->Add(m_safeDepth, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 2);
   m_safeU = new wxStaticText(sb, wxID_ANY, "m");
-  s->Add(m_safeU, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  s->Add(m_safeU, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   s->Add(m_safeColour, 0, wxALIGN_CENTER_VERTICAL);
-  box->Add(s, 0, wxALL, 4);
+  box->Add(pb, 0, wxEXPAND | wxALL, 4);
 
   m_preset->Bind(wxEVT_CHOICE, &BathyDialog::OnPreset, this);
   m_mode->Bind(wxEVT_RADIOBOX, &BathyDialog::OnMode, this);
@@ -859,7 +930,7 @@ void BathyDialog::RefreshUnits() {
   for (wxStaticText* t : {m_autoMinU, m_autoMaxU, m_safeU})
     if (t) t->SetLabel(u);
   if (m_ctStepL) m_ctStepL->SetLabel(U8("Intervalle (") + u + ")");
-  if (m_ctMajorL) m_ctMajorL->SetLabel(U8("Maîtresse tous les (") + u + ")");
+  if (m_ctMajorL) m_ctMajorL->SetLabel(U8("Maîtresse (") + u + ")");
   m_autoMin->SetRange(-500 * k, 11000 * k);
   m_autoMax->SetRange(-500 * k, 11000 * k);
   m_safeDepth->SetRange(-20 * k, 200 * k);
@@ -890,7 +961,10 @@ void BathyDialog::RefreshPalette() {
     m_autoMin->Enable(ds.autoPalette && ds.autoMinOn);
     m_autoMax->Enable(ds.autoPalette && ds.autoMaxOn);
     const wxString info = ds.autoPalette ? m_pi->AutoPaletteInfo() : wxString();
-    if (m_autoInfo->GetLabel() != info) { m_autoInfo->SetLabel(info); RelayoutPage(m_autoInfo); }
+    if (m_autoInfo->GetLabel() != info) {
+      m_autoInfo->SetLabel(info);
+      m_autoInfo->SetToolTip(info);
+    }
   }
   m_safeOn->SetValue(r.safetyOn);
   m_safeDepth->SetValue(r.safetyDepth * K());
@@ -1157,37 +1231,45 @@ void BathyDialog::OnSafety(wxCommandEvent&) {
 }
 
 // ---------------------------------------------------------------- Isobathes
-wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Isobathes"));
+// Isobathes et sondes chiffrées (onglet Affichage) : un cadre compact
+wxSizer* BathyDialog::BuildChartTextBox(wxWindow* p) {
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Isobathes et sondes"));
   wxWindow* sb = box->GetStaticBox();
-  auto* g = new wxFlexGridSizer(2, 4, 8);
-  g->AddGrowableCol(1);
   auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
-  m_ctOn = new wxCheckBox(sb, wxID_ANY, U8("Afficher les isobathes"));
+  const wxSize spinW(FromDIP(64), -1);
+  m_ctOn = new wxCheckBox(sb, wxID_ANY, U8("Isobathes"));
+  m_ctOn->SetToolTip(U8("Afficher les isobathes. L'isobathe de sécurité (rouge) suit la zone dangereuse."));
   m_ctColour = new wxColourPickerCtrl(sb, wxID_ANY, wxColour(25, 45, 95));
+  m_ctColour->SetToolTip(U8("Couleur des isobathes"));
   wxString modes[] = {U8("Intervalle régulier"), U8("Seuils de la palette")};
   m_ctMode = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, modes);
-  m_ctStep = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+  m_ctMode->SetToolTip(U8("Niveaux des isobathes"));
+  m_ctStep = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, spinW,
                                   wxSP_ARROW_KEYS, 0.1, 100, 1, 0.5);
   m_ctStep->SetDigits(1);
-  m_ctMajor = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+  m_ctMajor = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, spinW,
                                    wxSP_ARROW_KEYS, 0, 500, 5, 1);
   m_ctMajor->SetDigits(1);
   m_ctMajor->SetToolTip(U8("Ligne épaisse toutes les N unités de profondeur (0 = aucune)"));
-  m_ctLabels = new wxCheckBox(sb, wxID_ANY, U8("Valeurs sur les lignes"));
+  m_ctLabels = new wxCheckBox(sb, wxID_ANY, U8("Valeurs"));
+  m_ctLabels->SetToolTip(U8("Valeurs sur les lignes"));
   m_ctSmooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage des lignes"));
   m_ctSmooth->SetToolTip(U8("Arrondit les angles du tracé (purement graphique)"));
-  g->Add(m_ctOn, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctColour, 0);
-  g->Add(L("Niveaux"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMode, 0, wxEXPAND);
   m_ctStepL = L("Intervalle (m)");
-  m_ctMajorL = L("Maîtresse tous les (m)");
-  g->Add(m_ctStepL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctStep, 0, wxEXPAND);
-  g->Add(m_ctMajorL, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_ctMajor, 0, wxEXPAND);
-  g->Add(m_ctLabels, 0); g->Add(m_ctSmooth, 0);
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
-  box->Add(new wxStaticText(sb, wxID_ANY,
-                            U8("L'isobathe de sécurité (rouge) suit la zone dangereuse.")),
-           0, wxALL, 4);
+  m_ctMajorL = L("Maîtresse (m)");
+  auto* r1 = new wxBoxSizer(wxHORIZONTAL);
+  r1->Add(m_ctOn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r1->Add(m_ctColour, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  r1->Add(m_ctMode, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  r1->Add(m_ctLabels, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(r1, 0, wxEXPAND | wxALL, 4);
+  auto* r2 = new wxBoxSizer(wxHORIZONTAL);
+  r2->Add(m_ctStepL, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_ctStep, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r2->Add(m_ctMajorL, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_ctMajor, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r2->Add(m_ctSmooth, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(r2, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
 
   for (wxCheckBox* c : {m_ctOn, m_ctLabels, m_ctSmooth})
     c->Bind(wxEVT_CHECKBOX, &BathyDialog::OnContours, this);
@@ -1197,6 +1279,31 @@ wxSizer* BathyDialog::BuildContourBox(wxWindow* p) {
   m_ctColour->Bind(wxEVT_COLOURPICKER_CHANGED, [this](wxColourPickerEvent&) {
     wxCommandEvent e; OnContours(e);
   });
+
+  // sondes chiffrées
+  m_sound = new wxCheckBox(sb, wxID_ANY, U8("Sondes"));
+  m_sound->SetToolTip(U8("Afficher les sondes chiffrées (la plus faible par case d'écran, jamais "
+                         "prise dans les zones interpolées)."));
+  m_spacing = new wxSlider(sb, wxID_ANY, 34, 16, 120);
+  m_spacing->SetToolTip(U8("Écart minimal entre deux sondes affichées (pixels d'écran)."));
+  m_decimals = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, spinW, wxSP_ARROW_KEYS, 0, 2, 1);
+  m_font = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, spinW, wxSP_ARROW_KEYS, 6, 20, 9);
+  m_font->SetToolTip(U8("Taille des sondes et des valeurs des isobathes."));
+  auto* r3 = new wxBoxSizer(wxHORIZONTAL);
+  r3->Add(m_sound, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r3->Add(L("Espacement"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r3->Add(m_spacing, 1, wxALIGN_CENTER_VERTICAL);
+  box->Add(r3, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
+  auto* r4 = new wxBoxSizer(wxHORIZONTAL);
+  r4->Add(L("Décimales"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r4->Add(m_decimals, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r4->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r4->Add(m_font, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(r4, 0, wxALL, 4);
+  m_spacing->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
+  m_sound->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
+  for (wxSpinCtrl* c : {m_decimals, m_font})
+    c->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnDisplay(e); });
   return box;
 }
 
@@ -1216,83 +1323,95 @@ void BathyDialog::OnContours(wxCommandEvent&) {
 }
 
 // ---------------------------------------------------------------- Affichage
-// onglet « Isobathes et sondes » : cadre des isobathes, puis cadre des sondes
-wxSizer* BathyDialog::BuildChartTextBox(wxWindow* p) {
-  auto* col = new wxBoxSizer(wxVERTICAL);
-  col->Add(BuildContourBox(p), 0, wxEXPAND | wxBOTTOM, 6);
-  col->Add(BuildSoundingsBox(p), 0, wxEXPAND);
-  return col;
-}
-
-wxSizer* BathyDialog::BuildSoundingsBox(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Sondes chiffrées"));
-  wxWindow* sb = box->GetStaticBox();
-  auto* g = new wxFlexGridSizer(2, 4, 8);
-  g->AddGrowableCol(1);
-  auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
-  m_sound = new wxCheckBox(sb, wxID_ANY, U8("Afficher les sondes"));
-  m_spacing = new wxSlider(sb, wxID_ANY, 34, 16, 120);
-  m_spacing->SetToolTip(U8("Écart minimal entre deux sondes affichées (pixels d'écran)."));
-  m_decimals = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-                              wxSP_ARROW_KEYS, 0, 2, 1);
-  m_font = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-                          wxSP_ARROW_KEYS, 6, 20, 9);
-  m_font->SetToolTip(U8("Taille des sondes et des valeurs des isobathes."));
-  g->Add(m_sound, 0, wxALIGN_CENTER_VERTICAL); g->AddSpacer(0);
-  g->Add(L("Espacement"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_spacing, 0, wxEXPAND);
-  g->Add(L("Décimales"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_decimals, 0);
-  g->Add(L("Taille du texte"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_font, 0);
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
-  m_spacing->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
-  m_sound->Bind(wxEVT_CHECKBOX, &BathyDialog::OnDisplay, this);
-  for (wxSpinCtrl* c : {m_decimals, m_font})
-    c->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { wxCommandEvent e; OnDisplay(e); });
-  return box;
-}
-
+// Onglet Affichage, sans défilement à sa taille normale : en haut, couches et
+// référence verticale (communes) ; à gauche palette, isobathes et sondes ; à
+// droite relief, imagerie, bandeau et curseur
 wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
-  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Affichage"));
+  auto* col = new wxBoxSizer(wxVERTICAL);
+  BuildImageryDisplay(p);
+  auto* top = new wxBoxSizer(wxHORIZONTAL);
+  top->Add(m_layersBox, 0, wxEXPAND | wxALL, 2);
+  top->Add(BuildDispDatumBox(p), 1, wxEXPAND | wxALL, 2);
+  col->Add(top, 0, wxEXPAND);
+  auto* cols = new wxBoxSizer(wxHORIZONTAL);
+  auto* left = new wxBoxSizer(wxVERTICAL);
+  auto* right = new wxBoxSizer(wxVERTICAL);
+  cols->Add(left, 1, wxEXPAND);
+  cols->Add(right, 1, wxEXPAND);
+  col->Add(cols, 1, wxEXPAND);
+  left->Add(BuildPaletteBox(p), 1, wxEXPAND | wxALL, 2);
+  left->Add(BuildChartTextBox(p), 0, wxEXPAND | wxALL, 2);
+
+  auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Bathymétrie : relief et lissage"));
   wxWindow* sb = box->GetStaticBox();
-  auto* g = new wxFlexGridSizer(2, 4, 8);
-  g->AddGrowableCol(1);
   auto L = [&](const char* t) { return new wxStaticText(sb, wxID_ANY, U8(t)); };
+  const wxSize spinW(FromDIP(64), -1);
   m_opacity = new wxSlider(sb, wxID_ANY, 85, 10, 100);
-  m_shade = new wxCheckBox(sb, wxID_ANY, U8("Ombrage du relief"));
+  m_opacity->SetToolTip(U8("Opacité de la surface colorée sur la carte"));
+  m_shade = new wxCheckBox(sb, wxID_ANY, U8("Ombrage"));
+  m_shade->SetToolTip(U8("Ombrage du relief et son intensité"));
   m_shadeStrength = new wxSlider(sb, wxID_ANY, 60, 0, 100);
-  m_exag = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+  m_exag = new wxSpinCtrlDouble(sb, wxID_ANY, "", wxDefaultPosition, spinW,
                                 wxSP_ARROW_KEYS, 0.5, 50, 3, 0.5);
-  m_smooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage (interpolation)"));
-  m_legend = new wxCheckBox(sb, wxID_ANY, U8("Lecture au curseur"));
-  m_banner = new wxCheckBox(sb, wxID_ANY, U8("Bandeau de palette sur la carte"));
-  m_banner->SetToolTip(U8("A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée "
-                          "ou toutes les données ; clic sur une profondeur : "
-                          "borne de la palette ; clic sur les couleurs : préréglages ; "
-                          "petite rampe : bandeau horizontal ou vertical ; roue : ce panneau."));
-  g->Add(L("Opacité"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_opacity, 0, wxEXPAND);
-  g->Add(m_shade, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeStrength, 0, wxEXPAND);
-  g->Add(L("Exagération verticale"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_exag, 0, wxEXPAND);
-  m_shadeSmooth = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-                                 wxSP_ARROW_KEYS, 0, 8, 1);
+  m_exag->SetToolTip(U8("Exagération verticale : accentue le relief de l'ombrage"));
+  m_shadeSmooth = new wxSpinCtrl(sb, wxID_ANY, "", wxDefaultPosition, spinW, wxSP_ARROW_KEYS, 0, 8, 1);
   m_shadeSmooth->SetToolTip(U8("Adoucit le relief ombré (rayon en cellules, 0 = aucun). "
                                "Les couleurs, isobathes et sondes gardent les vraies profondeurs."));
-  g->Add(L("Adoucir le relief"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeSmooth, 0);
-  g->Add(m_smooth, 0); g->Add(m_legend, 0);
-  m_bannerPos = new wxChoice(sb, wxID_ANY);
-  for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche", "libre (déplacé à la souris)"})
-    m_bannerPos->Append(U8(t));
-  m_bannerPos->SetToolTip(U8("Le bandeau se déplace aussi en le faisant glisser sur la carte."));
-  g->Add(m_banner, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_bannerPos, 0, wxEXPAND);
-  m_bannerLock = new wxCheckBox(sb, wxID_ANY, U8("Verrouiller la position du bandeau"));
-  g->Add(m_bannerLock, 0); g->AddSpacer(0);
+  m_smooth = new wxCheckBox(sb, wxID_ANY, U8("Lissage"));
+  m_smooth->SetToolTip(U8("Lissage (interpolation) : couleurs fondues entre les mailles"));
   m_interpShow = new wxCheckBox(sb, wxID_ANY, U8("Zones interpolées de la base"));
   m_interpShow->SetToolTip(U8("Surface calculée entre les sondes d'un nuage de points à l'import "
                               "(levés en lignes, sondes de carte…). Décoché : seules les cases "
                               "mesurées sont affichées."));
-  m_interpDistinct = new wxCheckBox(sb, wxID_ANY, U8("les distinguer (plus claires)"));
+  m_interpDistinct = new wxCheckBox(sb, wxID_ANY, U8("plus claires"));
   m_interpDistinct->SetToolTip(U8("Couleur des zones interpolées éclaircie pour les distinguer des "
                                   "zones mesurées. Les sondes affichées ne sont jamais interpolées."));
-  g->Add(m_interpShow, 0); g->Add(m_interpDistinct, 0);
-  box->Add(g, 0, wxEXPAND | wxALL, 4);
+  auto* g = new wxFlexGridSizer(2, 4, 8);
+  g->AddGrowableCol(1);
+  g->Add(L("Opacité"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_opacity, 0, wxEXPAND);
+  g->Add(m_shade, 0, wxALIGN_CENTER_VERTICAL); g->Add(m_shadeStrength, 0, wxEXPAND);
+  box->Add(g, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  auto* r = new wxBoxSizer(wxHORIZONTAL);
+  r->Add(L("Exagération"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r->Add(m_exag, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r->Add(L("Adoucir"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r->Add(m_shadeSmooth, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r->Add(m_smooth, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(r, 0, wxLEFT | wxRIGHT | wxTOP, 4);
+  auto* ri = new wxBoxSizer(wxHORIZONTAL);
+  ri->Add(m_interpShow, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  ri->Add(m_interpDistinct, 0, wxALIGN_CENTER_VERTICAL);
+  box->Add(ri, 0, wxALL, 4);
+  right->Add(box, 0, wxEXPAND | wxALL, 2);
+  right->Add(m_imgRenderBox, 0, wxEXPAND | wxALL, 2);
+
+  auto* com = new wxStaticBoxSizer(wxVERTICAL, p, U8("Bandeau et curseur"));
+  wxWindow* cb = com->GetStaticBox();
+  m_legend = new wxCheckBox(cb, wxID_ANY, U8("Lecture au curseur"));
+  m_legend->SetToolTip(U8("Profondeur et source à côté du curseur"));
+  m_banner = new wxCheckBox(cb, wxID_ANY, U8("Bandeau"));
+  m_banner->SetToolTip(U8("Bandeau de palette sur la carte. "
+                          "A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée "
+                          "ou toutes les données ; clic sur une profondeur : "
+                          "borne de la palette ; clic sur les couleurs : préréglages ; "
+                          "petite rampe : bandeau horizontal ou vertical ; roue : ce panneau. "
+                          "Imagerie affichée : seconde rampe (gris), bornes en % de l'étirement, A / M "
+                          "et Vue / Tout du contraste, clic sur la rampe : palette et inversion."));
+  m_bannerPos = new wxChoice(cb, wxID_ANY);
+  for (const char* t : {"en bas, centré", "en haut, centré", "en bas à gauche", "libre (déplacé à la souris)"})
+    m_bannerPos->Append(U8(t));
+  m_bannerPos->SetToolTip(U8("Le bandeau se déplace aussi en le faisant glisser sur la carte."));
+  m_bannerLock = new wxCheckBox(cb, wxID_ANY, U8("Verrouiller"));
+  m_bannerLock->SetToolTip(U8("Verrouiller la position du bandeau"));
+  auto* b1 = new wxBoxSizer(wxHORIZONTAL);
+  b1->Add(m_banner, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  b1->Add(m_bannerPos, 1, wxALIGN_CENTER_VERTICAL);
+  com->Add(b1, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  auto* b2 = new wxBoxSizer(wxHORIZONTAL);
+  b2->Add(m_bannerLock, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  b2->Add(m_legend, 0, wxALIGN_CENTER_VERTICAL);
+  com->Add(b2, 0, wxALL, 4);
+  right->Add(com, 0, wxEXPAND | wxALL, 2);
 
   for (wxSlider* s : {m_opacity, m_shadeStrength})
     s->Bind(wxEVT_SLIDER, &BathyDialog::OnDisplay, this);
@@ -1307,7 +1426,7 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   m_exag->Bind(wxEVT_SPINCTRLDOUBLE, [this](wxSpinDoubleEvent&) {
     wxCommandEvent e; OnExaggeration(e);
   });
-  return box;
+  return col;
 }
 
 void BathyDialog::OnDisplay(wxCommandEvent&) {
@@ -1337,6 +1456,403 @@ void BathyDialog::OnDisplay(wxCommandEvent&) {
   if (interpChanged) m_pi->InterpDisplayChanged();
   else if (colors) m_pi->ColorsChanged();
   else m_pi->ViewChanged();
+}
+
+// ---------------------------------------------------------------- Imagerie
+// Réflectivité / rétrodiffusion / mosaïques de sonar : base .pdi du dossier de
+// la base, rendu en niveaux de gris réglable sans relire les fichiers
+// Réglages d'affichage de l'imagerie (onglet Affichage) : couches affichées,
+// ordre, rendu ; m_layersBox et m_imgRenderBox sont placés par BuildDisplayBox
+void BathyDialog::BuildImageryDisplay(wxWindow* p) {
+  DisplaySettings& s = m_pi->Settings();
+  // Couches affichées et ordre
+  auto* lay = new wxStaticBoxSizer(wxVERTICAL, p, U8("Couches affichées"));
+  wxWindow* lb = lay->GetStaticBox();
+  auto* lr = new wxBoxSizer(wxHORIZONTAL);
+  m_bathyShow = new wxCheckBox(lb, wxID_ANY, U8("Bathymétrie"));
+  m_imgShow = new wxCheckBox(lb, wxID_ANY, U8("Imagerie"));
+  m_bathyShow->SetToolTip(U8("Couleurs de profondeur et ombrage (base et fichiers). Isobathes et sondes, si elles "
+                              "sont cochées, restent affichées au-dessus de toutes les couches, même "
+                              "couleurs masquées."));
+  m_imgShow->SetToolTip(U8("Réflectivité, rétrodiffusion, mosaïques de sonar (fichiers .pdi de la base)."));
+  lr->Add(m_bathyShow, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  lr->Add(m_imgShow, 0, wxALIGN_CENTER_VERTICAL);
+  lay->Add(lr, 0, wxLEFT | wxRIGHT | wxTOP, 4);
+  m_imgOrder = new wxChoice(lb, wxID_ANY);
+  m_imgOrder->Append(U8("Imagerie sous la bathymétrie"));
+  m_imgOrder->Append(U8("Imagerie au-dessus de la bathymétrie"));
+  m_imgOrder->SetToolTip(U8("Couche du dessus : son opacité règle la transparence de la superposition. "
+                            "Isobathes et sondes restent toujours au-dessus."));
+  lay->Add(m_imgOrder, 0, wxEXPAND | wxALL, 4);
+  m_layersBox = lay;
+
+  // Rendu
+  auto* ren = new wxStaticBoxSizer(wxVERTICAL, p, U8("Imagerie"));
+  wxWindow* rb = ren->GetStaticBox();
+  auto LR = [&](const char* t) { return new wxStaticText(rb, wxID_ANY, U8(t)); };
+  m_imgPalette = new wxChoice(rb, wxID_ANY);
+  for (const char* t : {"Niveaux de gris", "Cuivre", "Sépia"}) m_imgPalette->Append(U8(t));
+  m_imgInvert = new wxCheckBox(rb, wxID_ANY, U8("Inverser"));
+  m_imgInvert->SetToolTip(U8("Réflectivité forte en sombre"));
+  m_imgOpacity = new wxSlider(rb, wxID_ANY, 100, 0, 100);
+  m_imgMin = new wxSlider(rb, wxID_ANY, 0, 0, 99);
+  m_imgMax = new wxSlider(rb, wxID_ANY, 100, 1, 100);
+  m_imgMinV = new wxStaticText(rb, wxID_ANY, "100", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
+  m_imgMaxV = new wxStaticText(rb, wxID_ANY, "100", wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT);
+  for (wxStaticText* t : {m_imgMinV, m_imgMaxV}) t->SetMinSize(t->GetBestSize());
+  const wxString stretchTip = U8("En % de l'étirement de chaque image (0 % et 100 % : valeurs à 2 % et 98 % "
+                                 "de l'image, mesurées à l'import). Les valeurs d'origine (dB, niveaux) "
+                                 "sont conservées et lues au curseur.");
+  m_imgMin->SetToolTip(stretchTip);
+  m_imgMax->SetToolTip(stretchTip);
+  m_imgGamma = new wxSpinCtrlDouble(rb, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(64), -1),
+                                    wxSP_ARROW_KEYS, 0.2, 5, 1, 0.1);
+  m_imgGamma->SetDigits(1);
+  m_imgGamma->SetToolTip(U8("Plus de 1 : tons moyens éclaircis ; moins de 1 : assombris."));
+  m_imgSmooth = new wxCheckBox(rb, wxID_ANY, U8("Lissage"));
+  m_imgSmooth->SetToolTip(U8("Interpolation entre pixels"));
+  // contraste automatique (comme la palette automatique de la bathymétrie)
+  m_imgAuto = new wxCheckBox(rb, wxID_ANY, U8("Contraste auto"));
+  m_imgAuto->SetToolTip(U8("Contraste automatique : noir et blanc placés aux valeurs à 2 % et 98 % de la "
+                           "zone affichée, ou étirement de chaque image mesuré à l'import (toutes les "
+                           "images). Saisir une borne repasse en manuel. Aussi par les boutons A / M et "
+                           "Vue / Tout du bandeau."));
+  m_imgAutoSrc = new wxChoice(rb, wxID_ANY);
+  m_imgAutoSrc->Append(U8("toutes les images"));
+  m_imgAutoSrc->Append(U8("zone affichée"));
+  auto* r1 = new wxBoxSizer(wxHORIZONTAL);
+  r1->Add(LR("Palette"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r1->Add(m_imgPalette, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r1->Add(m_imgInvert, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r1->Add(m_imgSmooth, 0, wxALIGN_CENTER_VERTICAL);
+  ren->Add(r1, 0, wxLEFT | wxRIGHT | wxTOP, 4);
+  auto* g = new wxFlexGridSizer(3, 4, 6);
+  g->AddGrowableCol(1);
+  g->Add(LR("Opacité"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_imgOpacity, 0, wxEXPAND); g->AddSpacer(0);
+  g->Add(LR("Noir à (%)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_imgMin, 0, wxEXPAND);
+  g->Add(m_imgMinV, 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(LR("Blanc à (%)"), 0, wxALIGN_CENTER_VERTICAL); g->Add(m_imgMax, 0, wxEXPAND);
+  g->Add(m_imgMaxV, 0, wxALIGN_CENTER_VERTICAL);
+  ren->Add(g, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 4);
+  auto* r2 = new wxBoxSizer(wxHORIZONTAL);
+  r2->Add(LR("Gamma"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_imgGamma, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  r2->Add(m_imgAuto, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  r2->Add(m_imgAutoSrc, 1, wxALIGN_CENTER_VERTICAL);
+  ren->Add(r2, 0, wxEXPAND | wxALL, 4);
+  m_imgRenderBox = ren;
+
+  m_bathyShow->SetValue(s.bathyShow);
+  m_imgShow->SetValue(s.imgShow);
+  m_imgOrder->SetSelection(s.imgOnTop ? 1 : 0);
+  m_imgPalette->SetSelection(s.imgPalette);
+  m_imgInvert->SetValue(s.imgInvert);
+  m_imgOpacity->SetValue(s.imgOpacity);
+  m_imgMin->SetValue(s.imgMin);
+  m_imgMax->SetValue(s.imgMax);
+  m_imgGamma->SetValue(s.imgGamma);
+  m_imgSmooth->SetValue(s.imgSmooth);
+  RefreshImageryDisplay();
+  auto shown = [this](wxCommandEvent&) {
+    DisplaySettings& d = m_pi->Settings();
+    d.bathyShow = m_bathyShow->GetValue();
+    d.imgShow = m_imgShow->GetValue();
+    d.imgOnTop = m_imgOrder->GetSelection() == 1;
+    m_pi->LayersShownChanged();
+  };
+  m_bathyShow->Bind(wxEVT_CHECKBOX, shown);
+  m_imgShow->Bind(wxEVT_CHECKBOX, shown);
+  m_imgOrder->Bind(wxEVT_CHOICE, shown);
+  for (wxSlider* sl : {m_imgOpacity, m_imgMin, m_imgMax})
+    sl->Bind(wxEVT_SLIDER, [this](wxCommandEvent&) { OnImgDisplay(); });
+  for (wxCheckBox* c : {m_imgInvert, m_imgSmooth})
+    c->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { OnImgDisplay(); });
+  m_imgPalette->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnImgDisplay(); });
+  m_imgGamma->Bind(wxEVT_SPINCTRLDOUBLE, [this](wxSpinDoubleEvent&) { OnImgDisplay(); });
+  m_imgAuto->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+    DisplaySettings& d = m_pi->Settings();
+    d.imgAuto = m_imgAuto->GetValue();
+    m_pi->UpdateImgAuto(true);
+    m_pi->ImageryChanged();
+  });
+  m_imgAutoSrc->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    DisplaySettings& d = m_pi->Settings();
+    d.imgAutoSource = m_imgAutoSrc->GetSelection();
+    m_pi->UpdateImgAuto(true);
+    m_pi->ImageryChanged();
+  });
+}
+
+// Valeurs affichées du rendu de l'imagerie (bandeau, contraste automatique)
+void BathyDialog::RefreshImageryDisplay() {
+  if (!m_imgPalette) return;
+  const DisplaySettings& s = m_pi->Settings();
+  m_updating = true;
+  m_bathyShow->SetValue(s.bathyShow);
+  m_imgShow->SetValue(s.imgShow);
+  m_imgOrder->SetSelection(s.imgOnTop ? 1 : 0);
+  m_imgPalette->SetSelection(s.imgPalette);
+  m_imgInvert->SetValue(s.imgInvert);
+  m_imgOpacity->SetValue(s.imgOpacity);
+  m_imgMin->SetValue(s.imgMin);
+  m_imgMax->SetValue(s.imgMax);
+  m_imgMinV->SetLabel(wxString::Format("%d", (int)s.imgMin));
+  m_imgMaxV->SetLabel(wxString::Format("%d", (int)s.imgMax));
+  m_imgGamma->SetValue(s.imgGamma);
+  m_imgSmooth->SetValue(s.imgSmooth);
+  m_imgAuto->SetValue(s.imgAuto);
+  m_imgAutoSrc->SetSelection(s.imgAutoSource == 1 ? 1 : 0);
+  m_imgAutoSrc->Enable(s.imgAuto);
+  m_updating = false;
+  UpdateSonarOffsetFields();
+}
+
+// Décalage sonde / antenne : estimé -> champs grisés, valeurs du dernier
+// journal importé ; saisi -> champs modifiables
+void BathyDialog::UpdateSonarOffsetFields() {
+  if (!m_imgOffAuto) return;
+  const DisplaySettings& s = m_pi->Settings();
+  const bool est = m_imgOffAuto->GetValue();
+  m_imgOffFwd->Enable(!est);
+  m_imgOffStbd->Enable(!est);
+  if (est) {
+    m_imgOffFwd->SetValue(s.imgSonarOffsetEstOk ? s.imgSonarOffsetEstFwd : 0.0);
+    m_imgOffStbd->SetValue(s.imgSonarOffsetEstOk ? s.imgSonarOffsetEstStbd : 0.0);
+  } else {
+    m_imgOffFwd->SetValue(s.imgSonarOffsetFwd);
+    m_imgOffStbd->SetValue(s.imgSonarOffsetStbd);
+  }
+  m_imgOffAuto->SetToolTip(
+      U8("Estimé sur les lignes parcourues en sens opposés : une même tache du fond vue des deux sens est "
+         "décalée de deux fois l'écart entre la sonde et l'antenne GPS. Les champs avant / tribord montrent "
+         "alors le décalage obtenu sur le dernier journal importé ; sans allers-retours ni fond "
+         "reconnaissable, ce sont les valeurs saisies (case décochée) qui s'appliquent.") +
+      "\n" +
+      (s.imgSonarOffsetEstOk
+           ? wxString::Format(U8("Dernière estimation : %+.1f m vers l'avant, %+.1f m vers tribord."),
+                              s.imgSonarOffsetEstFwd, s.imgSonarOffsetEstStbd)
+           : U8("Pas encore d'estimation réussie.")));
+}
+
+wxSizer* BathyDialog::BuildImageryBox(wxWindow* p) {
+  DisplaySettings& s = m_pi->Settings();
+  auto* box = new wxBoxSizer(wxVERTICAL);
+
+  // Images de la base (l'affichage se règle dans l'onglet Affichage)
+  auto* src = new wxStaticBoxSizer(wxVERTICAL, p, U8("Imagerie"));
+  wxWindow* ib = src->GetStaticBox();
+  m_imgList = new wxListCtrl(ib, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(110)),
+                             wxLC_REPORT);
+  m_imgList->AppendColumn(U8("Image"), wxLIST_FORMAT_LEFT, FromDIP(150));
+  m_imgList->AppendColumn(U8("Affichée"), wxLIST_FORMAT_LEFT, FromDIP(55));
+  m_imgList->AppendColumn(U8("Valeurs"), wxLIST_FORMAT_LEFT, FromDIP(110));
+  m_imgList->AppendColumn(U8("Pixel"), wxLIST_FORMAT_RIGHT, FromDIP(55));
+  m_imgList->AppendColumn(U8("Date"), wxLIST_FORMAT_LEFT, FromDIP(75));
+  src->Add(m_imgList, 1, wxEXPAND | wxALL, 4);
+  auto* br = new wxBoxSizer(wxHORIZONTAL);
+  m_imgAdd = new wxButton(ib, wxID_ANY, U8("Importer…"));
+  m_imgAdd->SetToolTip(U8("GeoTIFF de réflectivité ou de rétrodiffusion (dB, niveaux de gris 8/16 bits, "
+                          "palette) : mosaïques Ifremer, Infomar, EMODnet… Système de coordonnées lu "
+                          "dans le fichier.\nJournaux Lowrance / Simrad / B&G .sl2 / .sl3 : sonar latéral "
+                          "(StructureScan, SideImaging) assemblé en mosaïque."));
+  m_imgVis = new wxButton(ib, wxID_ANY, U8("Afficher / masquer"));
+  m_imgZoom = new wxButton(ib, wxID_ANY, U8("Zoom"));
+  m_imgDel = new wxButton(ib, wxID_ANY, U8("Retirer"));
+  br->Add(m_imgAdd, 0, wxRIGHT, 8);
+  br->AddStretchSpacer();
+  for (wxButton* b : {m_imgVis, m_imgZoom}) br->Add(b, 0, wxRIGHT, 2);
+  br->Add(m_imgDel, 0);
+  src->Add(br, 0, wxEXPAND | wxALL, 4);
+  auto* bg = new wxBoxSizer(wxHORIZONTAL);
+  bg->Add(new wxStaticText(ib, wxID_ANY, U8("Fond hors levé")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  m_imgBg = new wxChoice(ib, wxID_ANY);
+  for (const char* t : {"détection automatique", "aucun", "valeur :"}) m_imgBg->Append(U8(t));
+  m_imgBg->SetToolTip(U8("Mosaïques sur fond uniforme (blanc 255 ou noir 0 autour du levé) : ces pixels "
+                         "sont écartés. Automatique : valeur extrême présente sur une grande partie "
+                         "du bord de l'image."));
+  m_imgBgValue = new wxSpinCtrlDouble(ib, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(90), -1),
+                                      wxSP_ARROW_KEYS, -1e6, 1e6, 255, 1);
+  bg->Add(m_imgBg, 0, wxRIGHT, 4);
+  bg->Add(m_imgBgValue, 0);
+  src->Add(bg, 0, wxLEFT | wxRIGHT, 4);
+  // journaux de sondeur : mosaïque du sonar latéral
+  auto* ss = new wxBoxSizer(wxHORIZONTAL);
+  ss->Add(new wxStaticText(ib, wxID_ANY, U8("Sonar : pixel (m)")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  m_imgSonarPix = new wxSpinCtrlDouble(ib, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1),
+                                       wxSP_ARROW_KEYS, 0, 5, 0, 0.05);
+  m_imgSonarPix->SetDigits(2);
+  m_imgSonarPix->SetToolTip(U8("Pas de la mosaïque des journaux .sl2 / .sl3. 0 = automatique (portée / 400, "
+                               "de 0,1 à 1 m). Élargi tout seul si le levé est très étendu (mémoire)."));
+  m_imgSonarEq = new wxCheckBox(ib, wxID_ANY, U8("Égaliser"));
+  m_imgSonarEq->SetToolTip(U8("Même luminosité moyenne du centre au bord de la fauchée, malgré les changements "
+                              "de gain ou de portée ; le bruit au-delà de la portée utile est coupé."));
+  ss->Add(m_imgSonarPix, 0, wxRIGHT, 8);
+  ss->Add(m_imgSonarEq, 0, wxALIGN_CENTER_VERTICAL);
+  src->Add(ss, 0, wxLEFT | wxRIGHT | wxTOP, 4);
+  // position de la sonde par rapport à l'antenne GPS
+  auto* so = new wxBoxSizer(wxHORIZONTAL);
+  m_imgOffAuto = new wxCheckBox(ib, wxID_ANY, U8("Sonde / GPS estimé"));
+  m_imgOffFwd = new wxSpinCtrlDouble(ib, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(70), -1),
+                                     wxSP_ARROW_KEYS, -30, 30, 0, 0.1);
+  m_imgOffFwd->SetDigits(1);
+  m_imgOffFwd->SetToolTip(U8("Sonde par rapport à l'antenne GPS, vers l'avant (m). Négatif : sonde en "
+                             "arrière, cas habituel d'une sonde au tableau arrière et d'un GPS intégré à "
+                             "l'écran."));
+  m_imgOffStbd = new wxSpinCtrlDouble(ib, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(70), -1),
+                                      wxSP_ARROW_KEYS, -10, 10, 0, 0.1);
+  m_imgOffStbd->SetDigits(1);
+  m_imgOffStbd->SetToolTip(U8("Sonde par rapport à l'antenne GPS, vers tribord (m). Négatif : vers bâbord."));
+  so->Add(m_imgOffAuto, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  so->Add(new wxStaticText(ib, wxID_ANY, U8("avant")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  so->Add(m_imgOffFwd, 0, wxRIGHT, 6);
+  so->Add(new wxStaticText(ib, wxID_ANY, U8("tribord")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  so->Add(m_imgOffStbd, 0);
+  src->Add(so, 0, wxALL, 4);
+  box->Add(src, 1, wxEXPAND | wxALL, 2);
+
+  // valeurs
+  m_imgBg->SetSelection(s.imgBgMode);
+  m_imgBgValue->SetValue(s.imgBgValue);
+  m_imgBgValue->Enable(s.imgBgMode == 2);
+  m_imgSonarPix->SetValue(s.imgSonarPixel);
+  m_imgSonarEq->SetValue(s.imgSonarEqualize);
+  m_imgOffAuto->SetValue(s.imgSonarOffsetAuto);
+  UpdateSonarOffsetFields();
+
+  // événements
+  auto bgChanged = [this](wxCommandEvent&) {
+    DisplaySettings& d = m_pi->Settings();
+    d.imgBgMode = m_imgBg->GetSelection();
+    d.imgBgValue = m_imgBgValue->GetValue();
+    m_imgBgValue->Enable(d.imgBgMode == 2);
+    m_pi->SaveConfig();
+  };
+  m_imgBg->Bind(wxEVT_CHOICE, bgChanged);
+  auto sonarChanged = [this]() {
+    DisplaySettings& d = m_pi->Settings();
+    d.imgSonarPixel = m_imgSonarPix->GetValue();
+    d.imgSonarEqualize = m_imgSonarEq->GetValue();
+    d.imgSonarOffsetAuto = m_imgOffAuto->GetValue();
+    if (!d.imgSonarOffsetAuto) {  // champs affichant les valeurs saisies
+      d.imgSonarOffsetFwd = m_imgOffFwd->GetValue();
+      d.imgSonarOffsetStbd = m_imgOffStbd->GetValue();
+    }
+    m_pi->SaveConfig();
+  };
+  m_imgSonarPix->Bind(wxEVT_SPINCTRLDOUBLE, [sonarChanged](wxSpinDoubleEvent&) { sonarChanged(); });
+  m_imgSonarEq->Bind(wxEVT_CHECKBOX, [sonarChanged](wxCommandEvent&) { sonarChanged(); });
+  m_imgOffAuto->Bind(wxEVT_CHECKBOX, [this, sonarChanged](wxCommandEvent&) {
+    m_pi->Settings().imgSonarOffsetAuto = m_imgOffAuto->GetValue();
+    UpdateSonarOffsetFields();  // avant la lecture des champs
+    sonarChanged();
+  });
+  for (wxSpinCtrlDouble* sp : {m_imgOffFwd, m_imgOffStbd})
+    sp->Bind(wxEVT_SPINCTRLDOUBLE, [sonarChanged](wxSpinDoubleEvent&) { sonarChanged(); });
+  m_imgBgValue->Bind(wxEVT_SPINCTRLDOUBLE, [bgChanged](wxSpinDoubleEvent&) {
+    wxCommandEvent e;
+    bgChanged(e);
+  });
+  m_imgList->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent&) { UpdateImgButtons(); });
+  m_imgList->Bind(wxEVT_LIST_ITEM_DESELECTED, [this](wxListEvent&) { UpdateImgButtons(); });
+  m_imgList->Bind(wxEVT_LIST_ITEM_ACTIVATED, [this](wxListEvent&) { m_pi->ImgZoomTo(SelectedImages()); });
+  m_imgAdd->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    if (m_pi->Settings().dbFolder.empty()) {
+      wxMessageBox(U8("Choisissez d'abord le dossier de la base (onglet Données)."), "PersonalDepth",
+                   wxOK | wxICON_INFORMATION, this);
+      return;
+    }
+    wxFileDialog dlg(this, U8("Imagerie du fond (GeoTIFF, journaux de sondeur)"), "", "",
+                     U8("Imagerie (*.tif;*.tiff;*.sl2;*.sl3)|*.tif;*.tiff;*.TIF;*.TIFF;*.sl2;*.sl3;*.SL2;*.SL3|"
+                        "GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|"
+                        "Journaux de sondeur (*.sl2;*.sl3)|*.sl2;*.sl3;*.SL2;*.SL3|Tous les fichiers (*.*)|*.*"),
+                     wxFD_OPEN | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE);
+    if (dlg.ShowModal() != wxID_OK) return;
+    wxArrayString paths;
+    dlg.GetPaths(paths);
+    std::vector<std::string> files;
+    for (const auto& f : paths) files.push_back(f.ToUTF8().data());
+    m_pi->ImgImport(files, std::string());
+    UpdateImgButtons();
+  });
+  m_imgDel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    const auto ids = SelectedImages();
+    if (ids.empty()) return;
+    if (wxMessageBox(wxString::Format(U8("Retirer %d image(s) de la base ? Les fichiers d'origine ne sont "
+                                         "pas modifiés."), (int)ids.size()),
+                     "PersonalDepth", wxYES_NO | wxICON_QUESTION, this) != wxYES)
+      return;
+    m_pi->ImgRemove(ids);
+    UpdateImgButtons();
+  });
+  m_imgVis->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    const auto ids = SelectedImages();
+    if (ids.empty()) return;
+    bool anyHidden = false;
+    for (const auto& d : m_pi->ImgSources())
+      if (std::find(ids.begin(), ids.end(), d.id) != ids.end() && !d.visible) anyHidden = true;
+    m_pi->ImgSetVisible(ids, anyHidden);
+    UpdateImgButtons();
+  });
+  m_imgZoom->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { m_pi->ImgZoomTo(SelectedImages()); });
+  return box;
+}
+
+void BathyDialog::OnImgDisplay() {
+  if (m_updating) return;
+  DisplaySettings& d = m_pi->Settings();
+  d.imgPalette = m_imgPalette->GetSelection();
+  d.imgInvert = m_imgInvert->GetValue();
+  d.imgOpacity = m_imgOpacity->GetValue();
+  if (d.imgMin != m_imgMin->GetValue() || d.imgMax != m_imgMax->GetValue()) d.imgAuto = false;  // borne réglée : manuel
+  d.imgMin = m_imgMin->GetValue();
+  d.imgMax = m_imgMax->GetValue();
+  if (d.imgMax <= d.imgMin) {  // bornes croisées : l'autre curseur suit
+    if (wxWindow::FindFocus() == m_imgMin) { d.imgMax = d.imgMin + 1; m_imgMax->SetValue(d.imgMax); }
+    else { d.imgMin = d.imgMax - 1; m_imgMin->SetValue(d.imgMin); }
+  }
+  d.imgGamma = (float)m_imgGamma->GetValue();
+  d.imgSmooth = m_imgSmooth->GetValue();
+  m_pi->ImageryChanged();
+}
+
+std::vector<int64_t> BathyDialog::SelectedImages() const {
+  std::vector<int64_t> ids;
+  if (!m_imgList) return ids;
+  const auto& src = m_pi->ImgSources();
+  long i = -1;
+  while ((i = m_imgList->GetNextItem(i, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED)) != -1)
+    if (i >= 0 && (size_t)i < src.size()) ids.push_back(src[(size_t)i].id);
+  return ids;
+}
+
+void BathyDialog::UpdateImgButtons() {
+  if (!m_imgList) return;
+  const bool busy = m_pi->DbBusy(), sel = !SelectedImages().empty();
+  m_imgAdd->Enable(!busy);
+  m_imgDel->Enable(!busy && sel);
+  m_imgVis->Enable(!busy && sel);
+  m_imgZoom->Enable(sel);
+  if (m_imgStop) m_imgStop->Enable(busy);
+}
+
+void BathyDialog::RefreshImagery() {
+  if (!m_imgList) return;
+  std::set<int64_t> sel;
+  for (int64_t id : SelectedImages()) sel.insert(id);
+  m_imgList->DeleteAllItems();
+  long row = 0;
+  for (const auto& d : m_pi->ImgSources()) {
+    const long it = m_imgList->InsertItem(row, W8(d.name.c_str()));
+    m_imgList->SetItem(it, 1, d.visible ? U8("oui") : U8("non"));
+    wxString v = wxString::Format(W8("%.4g – %.4g"), d.vlo, d.vhi);
+    if (!d.vunit.empty()) v += " " + U8(d.vunit.c_str());
+    m_imgList->SetItem(it, 2, v);
+    m_imgList->SetItem(it, 3, d.res > 0 ? wxString::Format(d.res < 10 ? "%.1f m" : "%.0f m", d.res) : wxString());
+    m_imgList->SetItem(it, 4, W8(d.date.c_str()));
+    if (sel.count(d.id)) m_imgList->SetItemState(it, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+    ++row;
+  }
+  UpdateImgButtons();
 }
 
 void BathyDialog::OnExaggeration(wxCommandEvent&) {

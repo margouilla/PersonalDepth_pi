@@ -673,7 +673,7 @@ void BathyRenderer::PrewarmPending(PlugIn_ViewPort* vp, const DisplaySettings& s
   const int j0 = std::max(0, (int)std::floor((g.latN - vp->lat_max) / g.dlat));
   const int j1 = std::min(g.ny - 1, (int)std::floor((g.latN - vp->lat_min) / g.dlat));
   bool all = true;
-  for (int tj = j0 / kTile; i0 <= i1 && tj <= j1 / kTile; ++tj)
+  for (int tj = j0 / kTile; !m_tilesHidden && i0 <= i1 && tj <= j1 / kTile; ++tj)
     for (int ti = i0 / kTile; ti <= i1 / kTile; ++ti) {
       auto& slot = m_tiles[std::make_tuple((const void*)&l, lev, ti, tj)];
       if (!slot) slot = std::make_unique<Tile>();
@@ -689,7 +689,7 @@ void BathyRenderer::PrewarmPending(PlugIn_ViewPort* vp, const DisplaySettings& s
 }
 
 void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& layers,
-                             const DisplaySettings& s, const wxString& cursorText) {
+                             const DisplaySettings& s, const wxString& cursorText, int parts) {
   PerfFrame perfFrame(m_perf);
   ++m_frame;
   if (m_purgedEpoch != m_epoch) {  // couches retirées : on vide le cache de textures
@@ -779,6 +779,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
   }
 
   for (auto& l : layers) {
+    if (!(parts & kTiles)) break;  // passe des isobathes et étiquettes seulement
     if (!l->visible || l->state() != BathyLayer::Ready) continue;
     const int lev = l->grid.levelFor(m_ppd, 1.0);
     const GridLevel& g = l->grid.levels[lev];
@@ -841,7 +842,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
       }
   }
   if (shader) m_sgl->useProgram(0);  // retour au pipeline fixe (lignes, texte)
-  PrewarmPending(vp, s, shader, buf);
+  if ((parts & kTiles) || m_tilesHidden) PrewarmPending(vp, s, shader, buf);
   // Libère les tuiles inutilisées si le cache grossit
   if (m_tiles.size() > 160)
     for (auto it = m_tiles.begin(); it != m_tiles.end();) {
@@ -853,6 +854,7 @@ void BathyRenderer::RenderGL(PlugIn_ViewPort* vp, const std::vector<LayerPtr>& l
     }
 
   m_perf.tileMs += MsSince(perfFrame.t0);
+  if (!(parts & kOverlays)) return;  // imagerie, ou couche dessous : tuiles seules
   // Isobathes
   const auto tc = PerfClock::now();
   DrawContoursGL(vp, sm, layers, s);
@@ -1182,6 +1184,24 @@ void BathyRenderer::RenderCursorGL(PlugIn_ViewPort* vp, const wxString& text, in
   DrawCursorGL(vp, text);
 }
 
+// Bandeau seul (imagerie sans couche de bathymétrie affichée)
+void BathyRenderer::RenderBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  if (!s.banner) { m_banner.valid = false; return; }
+  GLHostState hostState(vp->pix_width, vp->pix_height);
+  glEnable(GL_TEXTURE_2D);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+  BuildGlyphs(s.fontSize);
+  DrawBannerGL(vp, s);
+}
+
+void BathyRenderer::RenderBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s) {
+  if (!s.banner) { m_banner.valid = false; return; }
+  dc.SetFont(wxFont(s.fontSize, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+  DrawBannerDC(dc, vp, s);
+}
+
 void BathyRenderer::RenderCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& text,
                                    int fontSize) {
   if (text.empty() || !m_curOn) return;
@@ -1270,67 +1290,162 @@ static std::vector<wxPoint2DDouble> GearShape(double cx, double cy, double r) {
 //                 ▇ – seuils
 //                 ▇ – …
 //                 max unité
+// Bandeau : une ou deux sections. La première (bathymétrie, ou imagerie seule)
+// porte la marée, l'orientation et la roue ; l'imagerie, quand les deux
+// couches sont affichées, s'ajoute en dessous avec sa rampe de gris.
+// En bas, ligne des isobathes et des sondes (cases à cocher, valeurs à
+// cliquer) ; seule, quand les couleurs de profondeur sont masquées.
 void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const DisplaySettings& s) {
-  m_banner.valid = false;
+  m_banner = BannerHit();
+  struct Sec {
+    bool img = false;
+    wxString minT, maxT, modeT, srcT;
+    bool autoOn = false;
+    std::function<uint32_t(float)> color;  // t de 0 (min) à 1 (max)
+    float safetyT = -1;
+    uint32_t safetyColor = 0;
+    std::vector<std::pair<float, wxString>> ticks;  // seuils intermédiaires (t, texte)
+    wxRect minR, maxR, modeR, srcR, barR;
+  };
+  std::vector<Sec> secs;
   const auto& st = s.ramp.stops;
-  if (st.empty()) return;
-  const ColorRamp& ramp = s.ramp;
-  const float lo = st.front().depth, hi = st.back().depth;
+  if (s.bannerBathy && !st.empty()) {
+    Sec b;
+    const ColorRamp& ramp = s.ramp;
+    const float lo = st.front().depth, hi = st.back().depth;
+    b.minT = DepthText(s, lo);
+    b.maxT = DepthText(s, hi) + " " + s.depthUnit;
+    b.modeT = s.autoPalette ? "A" : "M";
+    b.autoOn = s.autoPalette;
+    b.srcT = s.autoPalette ? wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout")) : wxString();
+    b.color = [&ramp, lo, hi](float t) { return ramp.colorAt(hi > lo ? lo + (hi - lo) * t : lo); };
+    if (ramp.safetyOn && hi > lo && ramp.safetyDepth > lo && ramp.safetyDepth < hi) {
+      b.safetyT = (ramp.safetyDepth - lo) / (hi - lo);
+      b.safetyColor = ramp.safetyColor;
+    }
+    if (hi > lo)
+      for (size_t i = 1; i + 1 < st.size(); ++i) b.ticks.push_back({(st[i].depth - lo) / (hi - lo), DepthText(s, st[i].depth)});
+    secs.push_back(b);
+  }
+  ColorRamp gray;
+  if (s.bannerImg) {
+    Sec g;
+    g.img = true;
+    gray = ImageryRamp(s);
+    const float lo = std::max(0, std::min(99, s.imgMin)) / 100.f;
+    const float hi = std::max(lo + 0.01f, std::max(1, std::min(100, s.imgMax)) / 100.f);
+    g.minT = wxString::Format("%d %%", (int)std::lround(lo * 100));
+    g.maxT = wxString::Format("%d %%", (int)std::lround(hi * 100));
+    g.modeT = s.imgAuto ? "A" : "M";
+    g.autoOn = s.imgAuto;
+    g.srcT = s.imgAuto ? wxString::FromUTF8(pd::tr(s.imgAutoSource == 1 ? "Vue" : "Tout")) : wxString();
+    g.color = [&gray, lo, hi](float t) { return gray.colorAt(lo + (hi - lo) * t); };
+    secs.push_back(g);
+  }
+  // ligne isobathes / sondes : éléments (case + libellé, valeur, libellé)
+  struct Item { BannerHit::Part part; wxString t; int kind; bool on; int row; wxRect r; };
+  std::vector<Item> items;
+  if (s.bannerChart) {
+    auto T = [](const char* t) { return wxString::FromUTF8(pd::tr(t)); };
+    const wxString u = " " + s.depthUnit;
+    items.push_back({BannerHit::CtOn, T("Isobathes"), 0, s.contours, 0, {}});
+    items.push_back({BannerHit::CtStep, s.contourMode == 1 ? T("seuils") : DepthText(s, s.contourStep) + u, 1, false, 0, {}});
+    items.push_back({BannerHit::CtMajor, T("maîtr."), 2, false, 1, {}});
+    items.push_back({BannerHit::CtMajor, s.contourMajor > 0 ? DepthText(s, s.contourMajor) + u : T("aucune"), 1, false, 1, {}});
+    items.push_back({BannerHit::SdOn, T("Sondes"), 0, s.soundings, 2, {}});
+    items.push_back({BannerHit::SdDec, wxString::Format(T("%d déc."), std::max(0, std::min(2, s.decimals))), 1, false, 2, {}});
+    items.push_back({BannerHit::SdSize, wxString::Format("%d pt", s.fontSize), 1, false, 2, {}});
+  }
+  if (secs.empty() && items.empty()) return;
+
   const int lineH = P.lineH();
-  const wxString minT = DepthText(s, lo), maxT = DepthText(s, hi) + " " + s.depthUnit;
-  const wxString modeT = s.autoPalette ? "A" : "M";
-  // source du mode automatique : zone affichée / toutes les données
-  const wxString srcT =
-      s.autoPalette ? wxString::FromUTF8(pd::tr(s.autoSource == 1 ? "Vue" : "Tout")) : wxString();
+  const int cb = std::max(8, lineH - 5);  // case à cocher
+  auto itemW = [&](const Item& it) { return P.textW(it.t) + (it.kind == 0 ? cb + 5 : it.kind == 1 ? 6 : 0); };
+  // horizontal : une seule ligne (petits écarts dans un groupe, grands entre
+  // isobathes et sondes) ; vertical : une ligne par rangée (row)
+  auto rowWidth = [&](int row) {  // row < 0 : tout sur une ligne (horizontal)
+    int w = 0, n = 0;
+    for (const auto& it : items) {
+      if (row >= 0 && it.row != row) continue;
+      if (n++) w += row >= 0 ? 6 : it.part == BannerHit::SdOn ? 18 : 8;
+      w += itemW(it);
+    }
+    return w;
+  };
   // marée : hauteur et date courte (horizontal : une ligne ; vertical : deux)
-  const wxString tide = s.tideLegend.empty() ? wxString() : s.tideLegend + "  " + s.tideWhen;
-  const wxString tide1 = s.tideLegend, tide2 = s.tideLegend.empty() ? wxString() : s.tideWhen;
+  const bool tideOn = s.bannerBathy && !s.tideLegend.empty();
+  const wxString tide = tideOn ? s.tideLegend + "  " + s.tideWhen : wxString();
+  const wxString tide1 = tideOn ? s.tideLegend : wxString(), tide2 = tideOn ? s.tideWhen : wxString();
   const bool vert = s.bannerVertical;
   const int pad = 8, gap = 16, barT = 14;  // barT : épaisseur de la rampe
   const int rowH = lineH + 6, icon = lineH + 2;
   const int badgeW = std::max(P.textW("M") + 12, rowH);
-  const int srcW = srcT.empty() ? 0 : std::max(P.textW("Tout"), P.textW(srcT)) + 12;
-  const int midW = badgeW + (srcW ? 3 + srcW : 0);
+  const int srcW = std::max(P.textW("Tout"), P.textW(wxString::FromUTF8(pd::tr("Tout")))) + 12;
+  auto midW = [&](const Sec& c) { return badgeW + (c.srcT.empty() ? 0 : 3 + srcW); };
   const int W = vp->pix_width, H = vp->pix_height;
 
   // ---- mise en page relative (origine 0,0 du bandeau)
-  wxRect minR, maxR, modeR, srcR, gearR, orientR, barR;
-  int boxW, boxH, tideH = 0;
-  struct Tick { int pos; wxString t; };
-  std::vector<Tick> ticks;  // seuils intermédiaires (vertical)
+  wxRect gearR, orientR;
+  int boxW = 0, boxH = 0, tideH = 0;
+  struct Tick { int pos; wxString t; size_t sec; };
+  std::vector<Tick> ticks;
+  std::vector<int> seps;  // séparation entre sections (y relatif, ou x en horizontal)
   if (!vert) {
-    const int leftNeed = pad + std::max(P.textW(minT), P.textW("-000.0")) + gap;
-    const int rightNeed = gap + std::max(P.textW(maxT), P.textW("000.0 ft")) + gap + icon + 8 + icon + pad;
-    boxW = std::max(380, midW + 2 * std::max(leftNeed, rightNeed));
-    if (!tide.empty()) boxW = std::max(boxW, P.textW(tide) + 2 * pad);
-    tideH = tide.empty() ? 0 : lineH + 2;
-    boxH = pad + tideH + rowH + 6 + barT + pad;
-    const int rowY = pad + tideH, bx = (boxW - midW) / 2;
-    modeR = wxRect(bx, rowY, badgeW, rowH);
-    if (srcW) srcR = wxRect(bx + badgeW + 3, rowY, srcW, rowH);
-    gearR = wxRect(boxW - pad - icon, rowY + (rowH - icon) / 2, icon, icon);
-    orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
-    minR = wxRect(2, rowY - 2, bx - 6, rowH + 4);
-    maxR = wxRect(bx + midW + 4, rowY - 2, orientR.x - 6 - (bx + midW + 4), rowH + 4);
-    barR = wxRect(pad, rowY + rowH + 6, boxW - 2 * pad, barT);
-  } else {
-    const int barLen = std::max(140, std::min(320, H * 35 / 100));
-    // étiquettes des seuils intermédiaires, espacées d'au moins une ligne
-    int labW = 0;
-    if (hi > lo) {
-      int last = -1000;
-      for (size_t i = 1; i + 1 < st.size(); ++i) {
-        const int pos = (int)std::lround(barLen * (st[i].depth - lo) / (hi - lo));
-        if (pos - last < lineH + 2 || pos < lineH / 2 + 2 || barLen - pos < lineH / 2 + 2) continue;
-        ticks.push_back({pos, DepthText(s, st[i].depth)});
-        labW = std::max(labW, P.textW(ticks.back().t));
-        last = pos;
-      }
+    int leftNeed = 0, rightNeed = 0, mid = 0;
+    for (const auto& c : secs) {
+      leftNeed = std::max(leftNeed, pad + std::max(P.textW(c.minT), P.textW("-000.0")) + gap);
+      rightNeed = std::max(rightNeed, gap + std::max(P.textW(c.maxT), P.textW("000.0 ft")) + gap + icon + 8 + icon + pad);
+      mid = std::max(mid, midW(c));
     }
-    boxW = std::max({pad + midW + pad, pad + icon + 12 + icon + pad, P.textW(minT) + 2 * pad,
-                     P.textW(maxT) + 2 * pad, pad + barT + 8 + labW + pad, 96,
-                     tide1.empty() ? 0 : P.textW(tide1) + 2 * pad,
-                     tide2.empty() ? 0 : P.textW(tide2) + 2 * pad});
+    boxW = secs.empty() ? 0 : std::max(380, mid + 2 * std::max(leftNeed, rightNeed));
+    if (!tide.empty()) boxW = std::max(boxW, P.textW(tide) + 2 * pad);
+    if (!items.empty())  // ligne seule : orientation et roue au bout de la ligne
+      boxW = std::max(boxW, rowWidth(-1) + 2 * pad + (secs.empty() ? 12 + icon + 8 + icon : 0));
+    tideH = tide.empty() ? 0 : lineH + 2;
+    int y = pad + tideH;
+    for (size_t k = 0; k < secs.size(); ++k) {
+      Sec& c = secs[k];
+      if (k) { seps.push_back(y + 2); y += 8; }
+      const int bx = (boxW - midW(c)) / 2;
+      c.modeR = wxRect(bx, y, badgeW, rowH);
+      if (!c.srcT.empty()) c.srcR = wxRect(bx + badgeW + 3, y, srcW, rowH);
+      if (k == 0) {
+        gearR = wxRect(boxW - pad - icon, y + (rowH - icon) / 2, icon, icon);
+        orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
+      }
+      const int rightEdge = k == 0 ? orientR.x - 6 : boxW - pad;
+      c.minR = wxRect(2, y - 2, bx - 6, rowH + 4);
+      c.maxR = wxRect(bx + midW(c) + 4, y - 2, rightEdge - (bx + midW(c) + 4), rowH + 4);
+      c.barR = wxRect(pad, y + rowH + 6, boxW - 2 * pad, barT);
+      y += rowH + 6 + barT;
+    }
+    if (!items.empty()) {
+      if (!secs.empty()) { seps.push_back(y + 4); y += 10; }
+      const int total = rowWidth(-1);
+      int xx = secs.empty() ? pad : (boxW - total) / 2;
+      for (size_t k = 0; k < items.size(); ++k) {
+        Item& it = items[k];
+        if (k) xx += it.part == BannerHit::SdOn ? 18 : 8;
+        it.r = wxRect(xx, y, itemW(it), rowH);
+        xx += it.r.width;
+      }
+      if (secs.empty()) {
+        gearR = wxRect(boxW - pad - icon, y + (rowH - icon) / 2, icon, icon);
+        orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
+      }
+      y += rowH;
+    }
+    boxH = y + pad;
+  } else {
+    const int barLen0 = std::max(140, std::min(320, H * 35 / 100));
+    int labW = 0;
+    for (const auto& c : secs) {
+      for (const auto& t : c.ticks) labW = std::max(labW, P.textW(t.second));
+      boxW = std::max({boxW, pad + midW(c) + pad, P.textW(c.minT) + 2 * pad, P.textW(c.maxT) + 2 * pad});
+    }
+    boxW = std::max({boxW, pad + icon + 12 + icon + pad, pad + barT + 8 + labW + pad, 96,
+                     tide1.empty() ? 0 : P.textW(tide1) + 2 * pad, tide2.empty() ? 0 : P.textW(tide2) + 2 * pad});
+    for (int row = 0; row < 3 && !items.empty(); ++row) boxW = std::max(boxW, rowWidth(row) + 2 * pad);
     int y = pad;
     if (!tide1.empty()) {  // marée en tête du bandeau, sur deux lignes
       tideH = 2 * (lineH + 2) + 4;
@@ -1339,109 +1454,165 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     orientR = wxRect(pad, y, icon, icon);
     gearR = wxRect(boxW - pad - icon, y, icon, icon);
     y += icon + 6;
-    const int bx = (boxW - midW) / 2;
-    modeR = wxRect(bx, y, badgeW, rowH);
-    if (srcW) srcR = wxRect(bx + badgeW + 3, y, srcW, rowH);
-    y += rowH + 4;
-    minR = wxRect(2, y, boxW - 4, lineH + 4);
-    y += lineH + 6;
-    barR = wxRect(pad, y, barT, barLen);
-    for (auto& t : ticks) t.pos += y;
-    y += barLen + 4;
-    maxR = wxRect(2, y, boxW - 4, lineH + 4);
-    y += lineH + 4;
+    for (size_t k = 0; k < secs.size(); ++k) {
+      Sec& c = secs[k];
+      // deux sections : la rampe de l'imagerie est plus courte
+      const int barLen = secs.size() > 1 && c.img ? std::max(100, barLen0 * 6 / 10) : barLen0;
+      if (k) { seps.push_back(y); y += 8; }
+      const int bx = (boxW - midW(c)) / 2;
+      c.modeR = wxRect(bx, y, badgeW, rowH);
+      if (!c.srcT.empty()) c.srcR = wxRect(bx + badgeW + 3, y, srcW, rowH);
+      y += rowH + 4;
+      c.minR = wxRect(2, y, boxW - 4, lineH + 4);
+      y += lineH + 6;
+      c.barR = wxRect(pad, y, barT, barLen);
+      int last = -1000;
+      for (const auto& t : c.ticks) {  // seuils espacés d'au moins une ligne
+        const int pos = (int)std::lround(barLen * t.first);
+        if (pos - last < lineH + 2 || pos < lineH / 2 + 2 || barLen - pos < lineH / 2 + 2) continue;
+        ticks.push_back({y + pos, t.second, k});
+        last = pos;
+      }
+      y += barLen + 4;
+      c.maxR = wxRect(2, y, boxW - 4, lineH + 4);
+      y += lineH + 4;
+    }
+    if (!items.empty()) {
+      if (!secs.empty()) { seps.push_back(y + 2); y += 8; }
+      for (int row = 0; row < 3; ++row) {
+        int xx = pad, n = 0;
+        for (auto& it : items) {
+          if (it.row != row) continue;
+          if (n++) xx += 6;
+          it.r = wxRect(xx, y, itemW(it), rowH);
+          xx += it.r.width;
+        }
+        y += rowH + 2;
+      }
+      y += 4;
+    }
     boxH = y + pad - 4;
   }
   // ---- position sur la carte : hors de la marge où OpenCPN fait défiler la
   // carte (5 % de la largeur), de l'échelle (bas gauche) et du zoom (bas droite)
   const int m = std::max(24, W * 5 / 100 + 10);
-  const int fullH = boxH;
   int x, y;
   switch (s.bannerPos) {
     case 1: x = (W - boxW) / 2; y = m; break;               // haut, centré
-    case 2: x = m; y = H - m - fullH; break;                 // bas gauche
+    case 2: x = m; y = H - m - boxH; break;                  // bas gauche
     case 3:                                                  // libre (déplacé à la souris)
       x = (int)std::lround(s.bannerFx * W - boxW / 2.0);
-      y = (int)std::lround(s.bannerFy * H - fullH / 2.0);
+      y = (int)std::lround(s.bannerFy * H - boxH / 2.0);
       break;
-    default: x = (W - boxW) / 2; y = H - m - fullH; break;  // bas, centré
+    default: x = (W - boxW) / 2; y = H - m - boxH; break;   // bas, centré
   }
   x = std::max(0, std::min(x, W - boxW));
-  y = std::max(0, std::min(y, H - fullH));
-  auto mv = [&](wxRect r) { r.Offset(x, y); return r; };
-  minR = mv(minR); maxR = mv(maxR); modeR = mv(modeR); gearR = mv(gearR); orientR = mv(orientR);
-  barR = mv(barR);
-  if (!srcR.IsEmpty()) srcR = mv(srcR);
-  for (auto& t : ticks) t.pos += y;  // seuils : position relative -> carte
+  y = std::max(0, std::min(y, H - boxH));
+  auto mv = [&](wxRect& r) { if (!r.IsEmpty()) r.Offset(x, y); };
+  for (auto& c : secs) { mv(c.minR); mv(c.maxR); mv(c.modeR); mv(c.srcR); mv(c.barR); }
+  for (auto& it : items) mv(it.r);
+  mv(gearR);
+  mv(orientR);
+  for (auto& t : ticks) t.pos += y;
   const wxRect box(x, y, boxW, boxH);
 
   // ---- dessin
   P.fill(box, kBannerBg, 0.86f, 5);
-  P.fill(modeR, s.autoPalette ? kBadgeAuto : kBadgeMan, 1.f, 3);
-  if (!srcR.IsEmpty()) P.fill(srcR, kBadgeSrc, 1.f, 3);
-  // rampe : une tranche par pixel, couleur exacte de la palette (paliers, sécurité)
-  const int len = vert ? barR.height : barR.width;
-  for (int i = 0; i < len; ++i) {
-    const float d = hi > lo ? lo + (hi - lo) * (i + 0.5f) / len : lo;
-    const wxRect sl = vert ? wxRect(barR.x, barR.y + i, barR.width, 1) : wxRect(barR.x + i, barR.y, 1, barR.height);
-    P.fill(sl, ramp.colorAt(d), 1.f, 0);
-  }
-  // profondeur de sécurité : repère sur la rampe
-  if (ramp.safetyOn && hi > lo && ramp.safetyDepth > lo && ramp.safetyDepth < hi) {
-    const int q = (int)(len * (ramp.safetyDepth - lo) / (hi - lo));
-    if (vert) {
-      P.fill(wxRect(barR.x - 3, barR.y + q - 1, barR.width + 6, 3), RGBA(255, 255, 255), 1.f, 0);
-      P.fill(wxRect(barR.x - 2, barR.y + q, barR.width + 4, 1), ramp.safetyColor, 1.f, 0);
-    } else {
-      P.fill(wxRect(barR.x + q - 1, barR.y - 3, 3, barR.height + 6), RGBA(255, 255, 255), 1.f, 0);
-      P.fill(wxRect(barR.x + q, barR.y - 2, 1, barR.height + 4), ramp.safetyColor, 1.f, 0);
+  for (int sp : seps)
+    P.fill(vert ? wxRect(x + pad, y + sp, boxW - 2 * pad, 1) : wxRect(x + pad, y + sp, boxW - 2 * pad, 1),
+           RGBA(90, 100, 116), 1.f, 0);
+  for (const auto& c : secs) {
+    P.fill(c.modeR, c.autoOn ? kBadgeAuto : kBadgeMan, 1.f, 3);
+    if (!c.srcR.IsEmpty()) P.fill(c.srcR, kBadgeSrc, 1.f, 3);
+    // rampe : une tranche par pixel, couleur exacte de la palette
+    const wxRect& r = c.barR;
+    const int len = vert ? r.height : r.width;
+    for (int i = 0; i < len; ++i) {
+      const wxRect sl = vert ? wxRect(r.x, r.y + i, r.width, 1) : wxRect(r.x + i, r.y, 1, r.height);
+      P.fill(sl, c.color((i + 0.5f) / len), 1.f, 0);
+    }
+    if (c.safetyT >= 0) {  // profondeur de sécurité : repère sur la rampe
+      const int q = (int)(len * c.safetyT);
+      if (vert) {
+        P.fill(wxRect(r.x - 3, r.y + q - 1, r.width + 6, 3), RGBA(255, 255, 255), 1.f, 0);
+        P.fill(wxRect(r.x - 2, r.y + q, r.width + 4, 1), c.safetyColor, 1.f, 0);
+      } else {
+        P.fill(wxRect(r.x + q - 1, r.y - 3, 3, r.height + 6), RGBA(255, 255, 255), 1.f, 0);
+        P.fill(wxRect(r.x + q, r.y - 2, 1, r.height + 4), c.safetyColor, 1.f, 0);
+      }
     }
   }
-  // seuils intermédiaires (vertical) : petit trait et valeur
   for (const auto& t : ticks)
-    P.fill(wxRect(barR.GetRight() + 2, t.pos, 4, 1), RGBA(220, 225, 232), 1.f, 0);
-  // bouton d'orientation : petite rampe dans l'autre sens
-  {
+    P.fill(wxRect(secs[t.sec].barR.GetRight() + 2, t.pos, 4, 1), RGBA(220, 225, 232), 1.f, 0);
+  {  // bouton d'orientation : petite rampe dans l'autre sens (couleurs de la 1re section)
     const wxRect& o = orientR;
     const wxRect ic = vert ? wxRect(o.x, o.y + o.height / 2 - 3, o.width, 7)    // vers horizontal
                            : wxRect(o.x + o.width / 2 - 3, o.y, 7, o.height);  // vers vertical
     P.fill(wxRect(ic.x - 1, ic.y - 1, ic.width + 2, ic.height + 2), RGBA(220, 225, 232), 1.f, 0);
     const int n = vert ? ic.width : ic.height;
+    const ColorRamp& pr = s.ramp;
+    const float plo = st.empty() ? 0.f : st.front().depth, phi = st.empty() ? 1.f : st.back().depth;
     for (int i = 0; i < n; ++i) {
-      const float d = hi > lo ? lo + (hi - lo) * (i + 0.5f) / n : lo;
+      const float t = (i + 0.5f) / n;
       P.fill(vert ? wxRect(ic.x + i, ic.y, 1, ic.height) : wxRect(ic.x, ic.y + i, ic.width, 1),
-             ramp.colorAt(d), 1.f, 0);
+             !secs.empty() ? secs[0].color(t) : pr.colorAt(plo + (phi - plo) * t), 1.f, 0);
     }
   }
   P.gear(gearR, kBannerBg);
   // textes
-  const float cyMode = modeR.y + modeR.height / 2.f;
-  P.text(modeR.x + modeR.width / 2, cyMode, modeT, 1);
-  if (!srcR.IsEmpty()) P.text(srcR.x + srcR.width / 2, cyMode, srcT, 1);
-  if (!vert) {
-    if (tideH) P.text(x + pad, y + pad + lineH / 2.f, tide, 0);
-    P.text(x + pad, cyMode, minT, 0);
-    P.text(orientR.x - 10, cyMode, maxT, 2);
-  } else {
-    P.text(x + pad, minR.y + minR.height / 2.f, minT, 0);
-    P.text(x + pad, maxR.y + maxR.height / 2.f, maxT, 0);
-    for (const auto& t : ticks) P.text(barR.GetRight() + 8, (float)t.pos, t.t, 0);
-    if (tideH) {
+  if (tideH) {
+    if (!vert) P.text(x + pad, y + pad + lineH / 2.f, tide, 0);
+    else {
       P.text(x + pad, y + pad + lineH / 2.f, tide1, 0);
       P.text(x + pad, y + pad + lineH + 2 + lineH / 2.f, tide2, 0);
+    }
+  }
+  for (size_t k = 0; k < secs.size(); ++k) {
+    const Sec& c = secs[k];
+    const float cy = c.modeR.y + c.modeR.height / 2.f;
+    P.text(c.modeR.x + c.modeR.width / 2, cy, c.modeT, 1);
+    if (!c.srcR.IsEmpty()) P.text(c.srcR.x + c.srcR.width / 2, cy, c.srcT, 1);
+    if (!vert) {
+      P.text(x + pad, cy, c.minT, 0);
+      P.text(k == 0 ? orientR.x - 10 : x + boxW - pad, cy, c.maxT, 2);
+    } else {
+      P.text(x + pad, c.minR.y + c.minR.height / 2.f, c.minT, 0);
+      P.text(x + pad, c.maxR.y + c.maxR.height / 2.f, c.maxT, 0);
+    }
+  }
+  for (const auto& t : ticks) P.text(secs[t.sec].barR.GetRight() + 8, (float)t.pos, t.t, 0);
+  for (const auto& it : items) {  // ligne isobathes / sondes
+    const float cy = it.r.y + it.r.height / 2.f;
+    if (it.kind == 0) {
+      const wxRect c(it.r.x, it.r.y + (it.r.height - cb) / 2, cb, cb);
+      P.fill(c, RGBA(220, 225, 232), 1.f, 2);
+      P.fill(wxRect(c.x + 1, c.y + 1, c.width - 2, c.height - 2), it.on ? kBadgeAuto : kBannerBg, 1.f, 1);
+      if (it.on) P.fill(wxRect(c.x + 3, c.y + 3, c.width - 6, c.height - 6), RGBA(255, 255, 255), 1.f, 1);
+      P.text(c.GetRight() + 5, cy, it.t, 0);
+    } else {
+      P.text(it.r.x + (it.kind == 1 ? 3 : 0), cy, it.t, 0);
+      if (it.kind == 1)  // valeur modifiable : soulignée
+        P.fill(wxRect(it.r.x + 3, (int)(cy + lineH / 2.f), it.r.width - 6, 1), RGBA(150, 162, 178), 1.f, 0);
     }
   }
 
   // ---- zones cliquables
   m_banner.valid = true;
   m_banner.box = box;
-  m_banner.minR = minR;
-  m_banner.maxR = maxR;
-  m_banner.modeR = modeR;
-  m_banner.srcR = srcR;
-  m_banner.barR = vert ? wxRect(barR.x - 3, barR.y, barR.width + 6, barR.height)
-                       : wxRect(barR.x, barR.y - 3, barR.width, barR.height + 6);
-  if (vert) m_banner.barR.width = boxW - 2 * pad + 3;  // rampe et étiquettes
+  for (const auto& c : secs) {
+    BannerHit::Zones& z = c.img ? m_banner.img : m_banner.bathy;
+    z.on = true;
+    z.minR = c.minR;
+    z.maxR = c.maxR;
+    z.modeR = c.modeR;
+    z.srcR = c.srcR;
+    z.barR = vert ? wxRect(c.barR.x - 3, c.barR.y, boxW - 2 * pad + 3, c.barR.height)  // rampe et étiquettes
+                  : wxRect(c.barR.x, c.barR.y - 3, c.barR.width, c.barR.height + 6);
+  }
+  for (const auto& it : items) {  // case et libellé, ou valeur : zone un peu agrandie
+    const BannerHit::Part part = it.kind == 2 ? BannerHit::CtMajor : it.part;
+    m_banner.items.push_back({wxRect(it.r.x - 2, it.r.y - 2, it.r.width + 4, it.r.height + 4), part});
+  }
   m_banner.gearR = wxRect(gearR.x - 4, gearR.y - 4, gearR.width + 8, gearR.height + 8);
   m_banner.orientR = wxRect(orientR.x - 3, orientR.y - 3, orientR.width + 6, orientR.height + 6);
   m_banner.pixW = W;
@@ -1541,7 +1712,7 @@ void BathyRenderer::DrawBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySet
 
 // ---------------------------------------------------------------- wxDC
 void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<LayerPtr>& layers,
-                             const DisplaySettings& s, const wxString& cursorText) {
+                             const DisplaySettings& s, const wxString& cursorText, int parts) {
   if (!PrepareLUT(layers, s)) return;
   ScreenMapper sm;
   if (!FitMapper(vp, sm)) return;
@@ -1552,7 +1723,7 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
   wxString key = wxString::Format("%.8f %.8f %.6f %.5f %d %d %u %u %d %d %d", vp->clat, vp->clon,
                                   vp->view_scale_ppm, vp->rotation + vp->skew, W, H, m_lutStamp,
                                   m_epoch, ready, s.opacity, s.smooth ? 1 : 0);
-  if (key != m_dcKey || !m_dcBitmap.IsOk()) {
+  if ((parts & kTiles) && (key != m_dcKey || !m_dcBitmap.IsOk())) {
     // Grille de points de contrôle : lat/lon interpolées entre eux (exact à <1 px)
     const int step = 32, cw = W / step + 2, ch = H / step + 2;
     std::vector<double> cl((size_t)cw * ch), cp((size_t)cw * ch);
@@ -1617,7 +1788,8 @@ void BathyRenderer::RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<La
     m_dcBitmap = wxBitmap(img);
     m_dcKey = key;
   }
-  dc.DrawBitmap(m_dcBitmap, 0, 0, true);
+  if (parts & kTiles) dc.DrawBitmap(m_dcBitmap, 0, 0, true);
+  if (!(parts & kOverlays)) return;
 
   // Sondes chiffrées
   wxFont fontBig(s.fontSize, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);

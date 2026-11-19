@@ -1100,9 +1100,9 @@ msgstr "\n\nПеречитать невозможно: верните файлы
 msgid "Dynamic personal bathymetry (XYZ clouds, grids, TIN)"
 msgstr "Динамическая собственная батиметрия (облака XYZ, сетки, TIN)"
 
-#. fr: Affiche de volumineux levés bathymétriques personnels (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG avec GDAL) sous forme de surface colorée ombrée et de sondes chiffrées exactes. Palette, seuils de profondeur, zone dangereuse et ombrage se modifient instantanément, sans régénérer les données — à la manière du module PBG de TimeZero.
-msgid "Displays large personal bathymetric surveys (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG with GDAL) as a shaded coloured surface and exact soundings. Palette, depth thresholds, danger zone and shading change instantly, without regenerating the data — like the TimeZero PBG module."
-msgstr "Показывает большие собственные батиметрические съёмки (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF/BAG через GDAL) в виде окрашенной поверхности с отмывкой и точных отметок глубин. Палитра, пороги глубин, опасная зона и отмывка меняются мгновенно, без пересчёта данных — как в модуле PBG TimeZero."
+#. fr: Affiche de volumineux levés bathymétriques personnels (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF, BAG avec GDAL) sous forme de surface colorée ombrée et de sondes chiffrées exactes. Palette, seuils de profondeur, zone dangereuse et ombrage se modifient instantanément, sans régénérer les données — à la manière du module PBG de TimeZero.
+msgid "Displays large personal bathymetric surveys (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF, BAG with GDAL) as a shaded coloured surface and exact soundings. Palette, depth thresholds, danger zone and shading change instantly, without regenerating the data — like the TimeZero PBG module."
+msgstr "Показывает большие собственные батиметрические съёмки (XYZ, ESRI ASCII, LandXML TIN, GeoTIFF, BAG через GDAL) в виде окрашенной поверхности с отмывкой и точных отметок глубин. Палитра, пороги глубин, опасная зона и отмывка меняются мгновенно, без пересчёта данных — как в модуле PBG TimeZero."
 
 #. fr: Bathymétrie personnelle
 msgid "Personal bathymetry"
@@ -3737,4 +3737,668 @@ msgstr "✓ Официальный нуль глубин страны, как н
 #. fr: , pays 
 msgid ", countries "
 msgstr ", страны "
+
+#. fr: Fichier TIFF illisible
+msgid "Unreadable TIFF file"
+msgstr "Нечитаемый файл TIFF"
+
+#. fr: TIFF : %d bits par valeur non pris en charge
+msgid "TIFF: %d bits per value not supported"
+msgstr "TIFF: %d бит на значение не поддерживается"
+
+#. fr: TIFF : compression %d non prise en charge (sans, LZW, Deflate, PackBits)
+msgid "TIFF: compression %d not supported (none, LZW, Deflate, PackBits)"
+msgstr "TIFF: сжатие %d не поддерживается (без сжатия, LZW, Deflate, PackBits)"
+
+#. fr: TIFF : projection définie par l'utilisateur non prise en charge
+msgid "TIFF: user-defined projection not supported"
+msgstr "TIFF: пользовательская проекция не поддерживается"
+
+#. fr: TIFF : système 
+msgid "TIFF: coordinate system "
+msgstr "TIFF: система координат "
+
+#. fr:  non reconnu
+msgid " not recognised"
+msgstr " не распознана"
+
+#. fr: TIFF : lecture impossible
+msgid "TIFF: read error"
+msgstr "TIFF: ошибка чтения"
+
+#. fr: TIFF : bloc compressé illisible
+msgid "TIFF: unreadable compressed block"
+msgstr "TIFF: нечитаемый сжатый блок"
+
+#. fr: TIFF sans géoréférencement (ni GeoTIFF ni fichier .tfw)
+msgid "TIFF without georeferencing (neither GeoTIFF nor .tfw file)"
+msgstr "TIFF без географической привязки (ни GeoTIFF, ни файла .tfw)"
+
+#. fr:  : choisir le système à l'import
+msgid ": choose the coordinate system at import"
+msgstr ": выберите систему координат при импорте"
+
+#. fr: Imagerie du fond
+msgid "Seabed imagery"
+msgstr "Изображение дна"
+
+#. fr: Couches affichées
+msgid "Displayed layers"
+msgstr "Отображаемые слои"
+
+#. fr: Bathymétrie
+msgid "Bathymetry"
+msgstr "Батиметрия"
+
+#. fr: Imagerie
+msgid "Imagery"
+msgstr "Изображение"
+
+#. fr: Couleurs de profondeur, ombrage, isobathes et sondes (base et fichiers).
+msgid "Depth colours, hillshade, contours and soundings (database and files)."
+msgstr "Цвета глубин, отмывка рельефа, изобаты и отметки глубин (база и файлы)."
+
+#. fr: Réflectivité, rétrodiffusion, mosaïques de sonar (fichiers .pdi de la base).
+msgid "Reflectivity, backscatter, sonar mosaics (.pdi files of the database)."
+msgstr "Отражательная способность, обратное рассеяние, мозаики сонара (файлы .pdi базы)."
+
+#. fr: Imagerie sous la bathymétrie
+msgid "Imagery below bathymetry"
+msgstr "Изображение под батиметрией"
+
+#. fr: Imagerie au-dessus de la bathymétrie
+msgid "Imagery above bathymetry"
+msgstr "Изображение над батиметрией"
+
+#. fr: Couche du dessus : son opacité règle la transparence de la superposition. Isobathes et sondes restent toujours au-dessus.
+msgid "Top layer: its opacity sets the transparency of the overlay. Contours and soundings always stay on top."
+msgstr "Верхний слой: его непрозрачность задаёт прозрачность наложения. Изобаты и отметки глубин всегда остаются сверху."
+
+#. fr: Rendu de l'imagerie
+msgid "Imagery rendering"
+msgstr "Отображение изображения"
+
+#. fr: Cuivre
+msgid "Copper"
+msgstr "Медь"
+
+#. fr: Sépia
+msgid "Sepia"
+msgstr "Сепия"
+
+#. fr: Inverser (réflectivité forte en sombre)
+msgid "Invert (strong reflectivity dark)"
+msgstr "Инвертировать (сильное отражение — тёмным)"
+
+#. fr: Noir à (%)
+msgid "Black at (%)"
+msgstr "Чёрный при (%)"
+
+#. fr: Blanc à (%)
+msgid "White at (%)"
+msgstr "Белый при (%)"
+
+#. fr: Gamma
+msgid "Gamma"
+msgstr "Гамма"
+
+#. fr: En % de l'étirement de chaque image (0 % et 100 % : valeurs à 2 % et 98 % de l'image, mesurées à l'import). Les valeurs d'origine (dB, niveaux) sont conservées et lues au curseur.
+msgid "As % of each image's stretch (0 % and 100 %: the image's 2 % and 98 % values, measured at import). Original values (dB, levels) are kept and read at the cursor."
+msgstr "В % от растяжки каждого изображения (0 % и 100 %: значения 2 % и 98 % изображения, измеренные при импорте). Исходные значения (дБ, уровни) сохраняются и показываются под курсором."
+
+#. fr: Plus de 1 : tons moyens éclaircis ; moins de 1 : assombris.
+msgid "Above 1: mid-tones brightened; below 1: darkened."
+msgstr "Больше 1: средние тона светлее; меньше 1: темнее."
+
+#. fr: Lissage (interpolation entre pixels)
+msgid "Smoothing (interpolation between pixels)"
+msgstr "Сглаживание (интерполяция между пикселями)"
+
+#. fr: Images de la base (même dossier, fichiers .pdi)
+msgid "Database images (same folder, .pdi files)"
+msgstr "Изображения базы (та же папка, файлы .pdi)"
+
+#. fr: Image
+msgid "Image"
+msgstr "Изображение"
+
+#. fr: Affichée
+msgid "Shown"
+msgstr "Показано"
+
+#. fr: Valeurs
+msgid "Values"
+msgstr "Значения"
+
+#. fr: Pixel
+msgid "Pixel"
+msgstr "Пиксель"
+
+#. fr: Date
+msgid "Date"
+msgstr "Дата"
+
+#. fr: GeoTIFF de réflectivité ou de rétrodiffusion (dB, niveaux de gris 8/16 bits, palette) : mosaïques Ifremer, Infomar, EMODnet… Système de coordonnées lu dans le fichier.
+msgid "Reflectivity or backscatter GeoTIFF (dB, 8/16-bit greyscale, palette): Ifremer, Infomar, EMODnet mosaics… Coordinate system read from the file."
+msgstr "GeoTIFF отражательной способности или обратного рассеяния (дБ, 8/16-битные оттенки серого, палитра): мозаики Ifremer, Infomar, EMODnet… Система координат читается из файла."
+
+#. fr: Afficher / masquer
+msgid "Show / hide"
+msgstr "Показать / скрыть"
+
+#. fr: Zoom
+msgid "Zoom"
+msgstr "Масштаб"
+
+#. fr: Fond hors levé à l'import
+msgid "Background outside the survey at import"
+msgstr "Фон вне съёмки при импорте"
+
+#. fr: détection automatique
+msgid "automatic detection"
+msgstr "автоопределение"
+
+#. fr: valeur :
+msgid "value:"
+msgstr "значение:"
+
+#. fr: Mosaïques sur fond uniforme (blanc 255 ou noir 0 autour du levé) : ces pixels sont écartés. Automatique : valeur extrême présente sur une grande partie du bord de l'image.
+msgid "Mosaics on a uniform background (white 255 or black 0 around the survey): these pixels are discarded. Automatic: extreme value found on a large part of the image border."
+msgstr "Мозаики на однородном фоне (белый 255 или чёрный 0 вокруг съёмки): эти пиксели отбрасываются. Автоматически: крайнее значение, занимающее большую часть края изображения."
+
+#. fr: Choisissez d'abord le dossier de la base (onglet Base).
+msgid "First choose the database folder (Database tab)."
+msgstr "Сначала выберите папку базы (вкладка «База»)."
+
+#. fr: Imagerie du fond (GeoTIFF)
+msgid "Seabed imagery (GeoTIFF)"
+msgstr "Изображение дна (GeoTIFF)"
+
+#. fr: GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|Tous les fichiers (*.*)|*.*
+msgid "GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|All files (*.*)|*.*"
+msgstr "GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|Все файлы (*.*)|*.*"
+
+#. fr: Retirer %d image(s) de la base ? Les fichiers d'origine ne sont pas modifiés.
+msgid "Remove %d image(s) from the database? The original files are not modified."
+msgstr "Удалить %d изображени(й) из базы? Исходные файлы не изменяются."
+
+#. fr: Import d'imagerie (%d fichier(s))
+msgid "Imagery import (%d file(s))"
+msgstr "Импорт изображений (%d файл(ов))"
+
+#. fr: Retrait de %d image(s)
+msgid "Removing %d image(s)"
+msgstr "Удаление %d изображени(й)"
+
+#. fr: Affichage de %d image(s)
+msgid "Showing %d image(s)"
+msgstr "Показ %d изображени(й)"
+
+#. fr: Masquage de %d image(s)
+msgid "Hiding %d image(s)"
+msgstr "Скрытие %d изображени(й)"
+
+#. fr: Base d'imagerie
+msgid "Imagery database"
+msgstr "База изображений"
+
+#. fr: Image vide
+msgid "Empty image"
+msgstr "Пустое изображение"
+
+#. fr: niveau
+msgid "level"
+msgstr "уровень"
+
+#. fr: Analyse de l'image
+msgid "Image analysis"
+msgstr "Анализ изображения"
+
+#. fr: image %d × %d, pixel %.2f × %.2f m, affichage %g – %g %s
+msgid "image %d × %d, pixel %.2f × %.2f m, display %g – %g %s"
+msgstr "изображение %d × %d, пиксель %.2f × %.2f м, отображение %g – %g %s"
+
+#. fr:  ; fond %g écarté
+msgid "; background %g discarded"
+msgstr "; фон %g отброшен"
+
+#. fr: GeoTIFF de réflectivité ou de rétrodiffusion (dB, niveaux de gris 8/16 bits, palette) : mosaïques Ifremer, Infomar, EMODnet… Système de coordonnées lu dans le fichier.\nJournaux Lowrance / Simrad / B&G .sl2 / .sl3 : sonar latéral (StructureScan, SideImaging) assemblé en mosaïque.
+msgid "Reflectivity or backscatter GeoTIFF (dB, 8/16-bit greyscale, palette): Ifremer, Infomar, EMODnet mosaics… Coordinate system read from the file.\nLowrance / Simrad / B&G .sl2 / .sl3 logs: side-scan sonar (StructureScan, SideImaging) assembled into a mosaic."
+msgstr "GeoTIFF отражательной способности или обратного рассеяния (дБ, 8/16-битные оттенки серого, палитра): мозаики Ifremer, Infomar, EMODnet… Система координат читается из файла.\nЖурналы Lowrance / Simrad / B&G .sl2 / .sl3: боковой сонар (StructureScan, SideImaging) собирается в мозаику."
+
+#. fr: Sonar latéral : pixel (m)
+msgid "Side-scan: pixel (m)"
+msgstr "Боковой сонар: пиксель (м)"
+
+#. fr: Pas de la mosaïque des journaux .sl2 / .sl3. 0 = automatique (portée / 400, de 0,1 à 1 m). Élargi tout seul si le levé est très étendu (mémoire).
+msgid "Mosaic step of .sl2 / .sl3 logs. 0 = automatic (range / 400, 0.1 to 1 m). Widened automatically for very large surveys (memory)."
+msgstr "Шаг мозаики журналов .sl2 / .sl3. 0 = автоматически (дальность / 400, от 0,1 до 1 м). Автоматически увеличивается для очень больших съёмок (память)."
+
+#. fr: Égaliser
+msgid "Equalise"
+msgstr "Выравнивать"
+
+#. fr: Même luminosité moyenne du centre au bord de la fauchée, malgré les changements de gain ou de portée ; le bruit au-delà de la portée utile est coupé.
+msgid "Same mean brightness from the centre to the edge of the swath, despite gain or range changes; noise beyond the useful range is cut."
+msgstr "Одинаковая средняя яркость от центра до края полосы обзора, несмотря на изменения усиления или дальности; шум за пределами полезной дальности отсекается."
+
+#. fr: Imagerie du fond (GeoTIFF, journaux de sondeur)
+msgid "Seabed imagery (GeoTIFF, sounder logs)"
+msgstr "Изображение дна (GeoTIFF, журналы эхолота)"
+
+#. fr: Imagerie (*.tif;*.tiff;*.sl2;*.sl3)|*.tif;*.tiff;*.TIF;*.TIFF;*.sl2;*.sl3;*.SL2;*.SL3|GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|Journaux de sondeur (*.sl2;*.sl3)|*.sl2;*.sl3;*.SL2;*.SL3|Tous les fichiers (*.*)|*.*
+msgid "Imagery (*.tif;*.tiff;*.sl2;*.sl3)|*.tif;*.tiff;*.TIF;*.TIFF;*.sl2;*.sl3;*.SL2;*.SL3|GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|Sounder logs (*.sl2;*.sl3)|*.sl2;*.sl3;*.SL2;*.SL3|All files (*.*)|*.*"
+msgstr "Изображения (*.tif;*.tiff;*.sl2;*.sl3)|*.tif;*.tiff;*.TIF;*.TIFF;*.sl2;*.sl3;*.SL2;*.SL3|GeoTIFF (*.tif;*.tiff)|*.tif;*.tiff;*.TIF;*.TIFF|Журналы эхолота (*.sl2;*.sl3)|*.sl2;*.sl3;*.SL2;*.SL3|Все файлы (*.*)|*.*"
+
+#. fr: lecture du sonar latéral
+msgid "reading the side-scan sonar"
+msgstr "чтение бокового сонара"
+
+#. fr: assemblage de la mosaïque
+msgid "assembling the mosaic"
+msgstr "сборка мозаики"
+
+#. fr: Journal sans sonar latéral (canal SideScan / StructureScan absent)
+msgid "Log without side-scan sonar (no SideScan / StructureScan channel)"
+msgstr "Журнал без бокового сонара (нет канала SideScan / StructureScan)"
+
+#. fr: Journal sans position GPS
+msgid "Log without GPS position"
+msgstr "Журнал без GPS-координат"
+
+#. fr: Sonar latéral sans position, cap ou hauteur au-dessus du fond utilisables
+msgid "Side-scan sonar without usable position, heading or height above the bottom"
+msgstr "Боковой сонар без пригодных координат, курса или высоты над дном"
+
+#. fr: sonar latéral %s : %lld pings, portée ±%.0f m, route %.2f km, pixel %.2f m%s%s
+msgid "side-scan %s: %lld pings, range ±%.0f m, track %.2f km, pixel %.2f m%s%s"
+msgstr "боковой сонар %s: %lld посылок, дальность ±%.0f м, маршрут %.2f км, пиксель %.2f м%s%s"
+
+#. fr:  (élargi : levé étendu)
+msgid " (widened: large survey)"
+msgstr " (увеличен: большая съёмка)"
+
+#. fr: , égalisé
+msgid ", equalised"
+msgstr ", выровнено"
+
+#. fr: Décalage sonde / GPS estimé
+msgid "Estimate transducer / GPS offset"
+msgstr "Оценивать смещение датчика / GPS"
+
+#. fr: Estimé sur les lignes parcourues en sens opposés : une même tache du fond vue des deux sens est décalée de deux fois l'écart entre la sonde et l'antenne GPS. Les champs avant / tribord montrent alors le décalage obtenu sur le dernier journal importé ; sans allers-retours ni fond reconnaissable, ce sont les valeurs saisies (case décochée) qui s'appliquent.
+msgid "Estimated on lines run in opposite directions: the same seabed patch seen from both directions is shifted by twice the distance between the transducer and the GPS antenna. The forward / starboard fields then show the offset obtained on the last imported log; without reciprocal lines or recognisable seabed, the values entered (box unchecked) apply."
+msgstr "Оценивается по галсам, пройденным во встречных направлениях: один и тот же участок дна, видимый с двух сторон, сдвинут на удвоенное расстояние между датчиком и GPS-антенной. Поля «вперёд / правый борт» тогда показывают смещение, полученное по последнему импортированному журналу; без встречных галсов или узнаваемого дна применяются введённые значения (флажок снят)."
+
+#. fr: Sonde par rapport à l'antenne GPS, vers l'avant (m). Négatif : sonde en arrière, cas habituel d'une sonde au tableau arrière et d'un GPS intégré à l'écran.
+msgid "Transducer relative to the GPS antenna, forward (m). Negative: transducer aft, the usual case with a transom transducer and a GPS built into the display."
+msgstr "Датчик относительно GPS-антенны, вперёд (м). Отрицательное значение: датчик сзади — обычный случай для датчика на транце и GPS, встроенного в дисплей."
+
+#. fr: Sonde par rapport à l'antenne GPS, vers tribord (m). Négatif : vers bâbord.
+msgid "Transducer relative to the GPS antenna, to starboard (m). Negative: to port."
+msgstr "Датчик относительно GPS-антенны, к правому борту (м). Отрицательное значение: к левому борту."
+
+#. fr: avant
+msgid "forward"
+msgstr "вперёд"
+
+#. fr: Dernière estimation : %+.1f m vers l'avant, %+.1f m vers tribord.
+msgid "Last estimate: %+.1f m forward, %+.1f m to starboard."
+msgstr "Последняя оценка: %+.1f м вперёд, %+.1f м к правому борту."
+
+#. fr: Pas encore d'estimation réussie.
+msgid "No successful estimate yet."
+msgstr "Успешной оценки пока нет."
+
+#. fr: Référence verticale des profondeurs
+msgid "Vertical reference of depths"
+msgstr "Вертикальная привязка глубин"
+
+#. fr: Surfaces de référence verticale
+msgid "Vertical reference surfaces"
+msgstr "Поверхности вертикальной привязки"
+
+#. fr: Bathymétrie : relief et lissage
+msgid "Bathymetry: relief and smoothing"
+msgstr "Батиметрия: рельеф и сглаживание"
+
+#. fr: tribord
+msgid "starboard"
+msgstr "правый борт"
+
+#. fr: Lecture du journal interrompue
+msgid "Log reading interrupted"
+msgstr "Чтение журнала прервано"
+
+#. fr:  ; sonde à %+.1f m vers l'avant, %+.1f m vers tribord de l'antenne (%s)
+msgid "; transducer %+.1f m forward, %+.1f m to starboard of the antenna (%s)"
+msgstr "; датчик на %+.1f м вперёд, %+.1f м к правому борту от антенны (%s)"
+
+#. fr: estimé
+msgid "estimated"
+msgstr "оценено"
+
+#. fr: saisi
+msgid "entered"
+msgstr "введено"
+
+#. fr:  ; décalage sonde / antenne non estimé (pas de lignes en sens opposés au fond reconnaissable)
+msgid "; transducer / antenna offset not estimated (no reciprocal lines over recognisable seabed)"
+msgstr "; смещение датчика / антенны не оценено (нет встречных галсов над узнаваемым дном)"
+
+#. fr: sonde / GPS estimé
+msgid "transducer / GPS estimated"
+msgstr "датчик / GPS оценено"
+
+#. fr: sonde %+.1f / %+.1f m
+msgid "transducer %+.1f / %+.1f m"
+msgstr "датчик %+.1f / %+.1f м"
+
+#. fr: Traces : décalage sonde / GPS estimé
+msgid "Tracks: estimate transducer / GPS offset"
+msgstr "Треки: оценивать смещение датчика / GPS"
+
+#. fr: Journaux .sl2 / .sl3 et GPX. Estimé sur les lignes parcourues en sens opposés : d'abord sur les profondeurs (pente qui varie le long des lignes : cuvette, haut-fond, tombant ; l'écart comprend le retard de la profondeur du sondeur), sinon sur le sonar latéral du journal s'il y en a un. Le fichier n'indique jamais si la position est déjà corrigée. Les champs avant / tribord montrent alors le décalage obtenu (dernier import) ; à défaut d'estimation, ce sont les valeurs saisies (case décochée) qui s'appliquent.
+msgid ".sl2 / .sl3 logs and GPX. Estimated on lines run in opposite directions: first on the depths (slope varying along the lines: basin, shoal, drop-off; the offset includes the lag of the sounder's depth), otherwise on the side-scan sonar of the log if there is one. The file never says whether the position is already corrected. The forward / starboard fields then show the offset obtained (last import); without an estimate, the values entered (box unchecked) apply."
+msgstr "Журналы .sl2 / .sl3 и GPX. Оценивается по галсам, пройденным во встречных направлениях: сначала по глубинам (уклон, меняющийся вдоль галсов: котловина, отмель, свал; смещение включает запаздывание глубины эхолота), иначе по боковому сонару журнала, если он есть. Файл никогда не указывает, исправлены ли уже координаты. Поля «вперёд / правый борт» тогда показывают полученное смещение (последний импорт); без оценки применяются введённые значения (флажок снят)."
+
+#. fr: estimé sur les profondeurs, vers l'avant seulement
+msgid "estimated on the depths, forward only"
+msgstr "оценено по глубинам, только вперёд"
+
+#. fr: estimé sur le sonar latéral
+msgid "estimated on the side-scan sonar"
+msgstr "оценено по боковому сонару"
+
+#. fr:  ; décalage sonde / antenne non estimé (pas d'allers-retours sur une pente ni de sonar latéral recalable)
+msgid "; transducer / antenna offset not estimated (no reciprocal lines over a slope and no matching side-scan)"
+msgstr "; смещение датчика / антенны не оценено (нет встречных галсов над уклоном и пригодного бокового сонара)"
+
+#. fr:  — estimation impossible, valeurs saisies
+msgid " — no estimate possible, entered values"
+msgstr " — оценка невозможна, введённые значения"
+
+#. fr: Bandeau et curseur
+msgid "Banner and cursor"
+msgstr "Плашка и курсор"
+
+#. fr: A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée ou toutes les données ; clic sur une profondeur : borne de la palette ; clic sur les couleurs : préréglages ; petite rampe : bandeau horizontal ou vertical ; roue : ce panneau. Imagerie affichée : seconde rampe (gris), bornes en % de l'étirement, A / M et Vue / Tout du contraste, clic sur la rampe : palette et inversion.
+msgid "A / M: automatic or manual palette; View / All: thresholds from the displayed area or all data; click a depth: palette bound; click the colours: presets; small colour bar: horizontal or vertical banner; gear: this panel. Imagery shown: second (grey) bar, bounds in % of the stretch, A / M and View / All of the contrast, click the bar: palette and inversion."
+msgstr "A / M: автоматическая или ручная палитра; Вид / Всё: пороги по видимой области или по всем данным; щелчок по глубине: граница палитры; щелчок по цветам: предустановки; маленькая шкала: горизонтальная или вертикальная плашка; шестерёнка: эта панель. При показе изображения: вторая (серая) шкала, границы в % растяжки, A / M и Вид / Всё для контраста, щелчок по шкале: палитра и инверсия."
+
+#. fr: Contraste automatique
+msgid "Automatic contrast"
+msgstr "Автоматический контраст"
+
+#. fr: Noir et blanc placés aux valeurs à 2 % et 98 % de la zone affichée, ou étirement de chaque image mesuré à l'import (toutes les images). Saisir une borne repasse en manuel. Aussi par les boutons A / M et Vue / Tout du bandeau.
+msgid "Black and white set at the 2 % and 98 % values of the displayed area, or the stretch of each image measured at import (all images). Entering a bound switches back to manual. Also with the A / M and View / All buttons of the banner."
+msgstr "Чёрный и белый на значениях 2 % и 98 % видимой области или растяжка каждого изображения, измеренная при импорте (все изображения). Ввод границы возвращает ручной режим. Также кнопками A / M и Вид / Всё на плашке."
+
+#. fr: toutes les images
+msgid "all images"
+msgstr "все изображения"
+
+#. fr: Imagerie : noir à (en pour cent de l'étirement de chaque image, 0 – 99)
+msgid "Imagery: black at (percent of each image's stretch, 0 – 99)"
+msgstr "Изображение: чёрный при (процент растяжки каждого изображения, 0 – 99)"
+
+#. fr: Imagerie : blanc à (en pour cent de l'étirement de chaque image, 1 – 100)
+msgid "Imagery: white at (percent of each image's stretch, 1 – 100)"
+msgstr "Изображение: белый при (процент растяжки каждого изображения, 1 – 100)"
+
+#. fr: Bandeau de palette sur la carte. A / M : palette automatique ou manuelle ; Vue / Tout : seuils d'après la zone affichée ou toutes les données ; clic sur une profondeur : borne de la palette ; clic sur les couleurs : préréglages ; petite rampe : bandeau horizontal ou vertical ; roue : ce panneau. Imagerie affichée : seconde rampe (gris), bornes en % de l'étirement, A / M et Vue / Tout du contraste, clic sur la rampe : palette et inversion.
+msgid "Palette banner on the chart. A / M: automatic or manual palette; View / All: thresholds from the displayed area or all data; click a depth: palette bound; click the colours: presets; small colour bar: horizontal or vertical banner; gear: this panel. Imagery shown: second (grey) bar, bounds in % of the stretch, A / M and View / All of the contrast, click the bar: palette and inversion."
+msgstr "Полоса палитры на карте. A / M: автоматическая или ручная палитра; Вид / Всё: пороги по видимой области или по всем данным; щелчок по глубине: граница палитры; щелчок по цветам: предустановки; маленькая шкала: горизонтальная или вертикальная плашка; шестерёнка: эта панель. При показе изображения: вторая (серая) шкала, границы в % растяжки, A / M и Вид / Всё для контраста, щелчок по шкале: палитра и инверсия."
+
+#. fr: Contraste automatique : noir et blanc placés aux valeurs à 2 % et 98 % de la zone affichée, ou étirement de chaque image mesuré à l'import (toutes les images). Saisir une borne repasse en manuel. Aussi par les boutons A / M et Vue / Tout du bandeau.
+msgid "Automatic contrast: black and white set at the 2 % and 98 % values of the displayed area, or the stretch of each image measured at import (all images). Entering a bound switches back to manual. Also with the A / M and View / All buttons of the banner."
+msgstr "Автоматический контраст: чёрный и белый на значениях 2 % и 98 % видимой области или растяжка каждого изображения, измеренная при импорте (все изображения). Ввод границы возвращает ручной режим. Также кнопками A / M и Вид / Всё на плашке."
+
+#. fr: Dossier de palettes : choisir le dossier des palettes (.cpt) : toutes les palettes proposées (sauf ENC S-52) sont les fichiers de ce dossier, palettes d'origine comprises. On peut les modifier, les renommer, les supprimer, y déposer des palettes GMT.
+msgid "Palette folder: choose the palette folder (.cpt): all the palettes offered (except ENC S-52) are the files of this folder, original palettes included. They can be edited, renamed, deleted, and GMT palettes can be dropped there."
+msgstr "Папка палитр: выберите папку палитр (.cpt): все предлагаемые палитры (кроме ENC S-52) — это файлы этой папки, включая исходные. Их можно изменять, переименовывать, удалять, класть туда палитры GMT."
+
+#. fr: Palette automatique : seuils répartis entre la profondeur minimale et maximale, couleurs reprises de la palette choisie. Modifier un seuil à la main désactive le mode automatique.
+msgid "Automatic palette: thresholds spread between minimum and maximum depth, colours taken from the chosen palette. Editing a threshold by hand turns automatic mode off."
+msgstr "Автоматическая палитра: пороги распределены между минимальной и максимальной глубиной, цвета берутся из выбранной палитры. Ручное изменение порога отключает автоматический режим."
+
+#. fr: Auto
+msgid "Auto"
+msgstr "Авто"
+
+#. fr: arrondis
+msgid "rounded"
+msgstr "округлённые"
+
+#. fr: Valeurs rondes : seuils multiples de 1, 2, 2,5 ou 5 × 10ⁿ (sinon répartis exactement)
+msgid "Round values: thresholds multiple of 1, 2, 2.5 or 5 × 10ⁿ (otherwise spread exactly)"
+msgstr "Круглые значения: пороги кратны 1, 2, 2,5 или 5 × 10ⁿ (иначе распределены точно)"
+
+#. fr: min
+msgid "min"
+msgstr "мин"
+
+#. fr: Min imposé : premier seuil fixé (ex. 0 m : palette sur la seule bathymétrie, les altitudes gardent une seule couleur)
+msgid "Fixed min: first threshold fixed (e.g. 0 m: palette over the bathymetry only, heights keep a single colour)"
+msgstr "Фиксированный минимум: первый порог задан (напр. 0 м: палитра только для батиметрии, высоты остаются одного цвета)"
+
+#. fr: max
+msgid "max"
+msgstr "макс"
+
+#. fr: Max imposé : dernier seuil fixé : les fonds plus profonds gardent la dernière couleur
+msgid "Fixed max: last threshold fixed: deeper bottoms keep the last colour"
+msgstr "Фиксированный максимум: последний порог задан: более глубокое дно сохраняет последний цвет"
+
+#. fr: +
+msgid "+"
+msgstr "+"
+
+#. fr: −
+msgid "−"
+msgstr "−"
+
+#. fr: Ajouter un seuil
+msgid "Add a threshold"
+msgstr "Добавить порог"
+
+#. fr: Retirer le seuil sélectionné
+msgid "Remove the selected threshold"
+msgstr "Удалить выбранный порог"
+
+#. fr: Importer une palette GMT (.cpt)
+msgid "Import a GMT palette (.cpt)"
+msgstr "Импортировать палитру GMT (.cpt)"
+
+#. fr: Exporter…
+msgid "Export…"
+msgstr "Экспорт…"
+
+#. fr: Exporter la palette en GMT (.cpt)
+msgid "Export the palette as GMT (.cpt)"
+msgstr "Экспортировать палитру в GMT (.cpt)"
+
+#. fr: Enregistrer…
+msgid "Save…"
+msgstr "Сохранить…"
+
+#. fr: Restaurer
+msgid "Restore"
+msgstr "Восстановить"
+
+#. fr: Restaurer les palettes d'origine : réécrit dans le dossier les palettes livrées avec le plugin (remplace les fichiers du même nom).
+msgid "Restore original palettes: writes the palettes shipped with the plugin back to the folder (replaces files of the same name)."
+msgstr "Восстановить исходные палитры: записывает в папку палитры, поставляемые с плагином (заменяет файлы с тем же именем)."
+
+#. fr: Danger <
+msgid "Danger <"
+msgstr "Опасно <"
+
+#. fr: Zone dangereuse : surcouche des fonds moins profonds que cette valeur (tirant d'eau et marge). L'isobathe de sécurité (rouge) la suit.
+msgid "Danger zone: overlay of the bottoms shallower than this value (draught and margin). The safety contour (red) follows it."
+msgstr "Опасная зона: наложение на участки мельче этого значения (осадка и запас). Изобата безопасности (красная) следует за ней."
+
+#. fr: Maîtresse (
+msgid "Major ("
+msgstr "Основная ("
+
+#. fr: Afficher les isobathes. L'isobathe de sécurité (rouge) suit la zone dangereuse.
+msgid "Show depth contours. The safety contour (red) follows the danger zone."
+msgstr "Показать изобаты. Изобата безопасности (красная) следует за опасной зоной."
+
+#. fr: Couleur des isobathes
+msgid "Contour colour"
+msgstr "Цвет изобат"
+
+#. fr: Niveaux des isobathes
+msgid "Contour levels"
+msgstr "Уровни изобат"
+
+#. fr: Afficher les sondes chiffrées (la plus faible par case d'écran, jamais prise dans les zones interpolées).
+msgid "Show soundings (the shoalest per screen cell, never taken from interpolated areas)."
+msgstr "Показать отметки глубин (наименьшая в ячейке экрана, никогда из интерполированных зон)."
+
+#. fr: Opacité de la surface colorée sur la carte
+msgid "Opacity of the colour surface over the chart"
+msgstr "Непрозрачность цветной поверхности на карте"
+
+#. fr: Ombrage
+msgid "Shading"
+msgstr "Отмывка"
+
+#. fr: Ombrage du relief et son intensité
+msgid "Relief shading and its strength"
+msgstr "Отмывка рельефа и её интенсивность"
+
+#. fr: Exagération verticale : accentue le relief de l'ombrage
+msgid "Vertical exaggeration: accentuates the relief of the shading"
+msgstr "Вертикальное преувеличение: усиливает рельеф отмывки"
+
+#. fr: Lissage
+msgid "Smoothing"
+msgstr "Сглаживание"
+
+#. fr: Lissage (interpolation) : couleurs fondues entre les mailles
+msgid "Smoothing (interpolation): colours blended between grid cells"
+msgstr "Сглаживание (интерполяция): цвета плавно переходят между ячейками"
+
+#. fr: plus claires
+msgid "lighter"
+msgstr "светлее"
+
+#. fr: Profondeur et source à côté du curseur
+msgid "Depth and source next to the cursor"
+msgstr "Глубина и источник рядом с курсором"
+
+#. fr: Bandeau
+msgid "Banner"
+msgstr "Полоса"
+
+#. fr: Verrouiller
+msgid "Lock"
+msgstr "Закрепить"
+
+#. fr: Inverser
+msgid "Invert"
+msgstr "Инвертировать"
+
+#. fr: Réflectivité forte en sombre
+msgid "Strong reflectivity shown dark"
+msgstr "Сильная отражательная способность тёмным"
+
+#. fr: Interpolation entre pixels
+msgid "Interpolation between pixels"
+msgstr "Интерполяция между пикселями"
+
+#. fr: Contraste auto
+msgid "Auto contrast"
+msgstr "Автоконтраст"
+
+#. fr: Exagération
+msgid "Exaggeration"
+msgstr "Преувеличение"
+
+#. fr: Adoucir
+msgid "Soften"
+msgstr "Смягчить"
+
+#. fr: Couleurs de profondeur et ombrage (base et fichiers). Isobathes et sondes, si elles sont cochées, restent affichées au-dessus de toutes les couches, même couleurs masquées.
+msgid "Depth colours and shading (database and files). Contours and soundings, when ticked, stay on top of every layer, even with the colours hidden."
+msgstr "Цвета глубин и отмывка (база и файлы). Изобаты и отметки глубин, если отмечены, остаются поверх всех слоёв, даже когда цвета скрыты."
+
+#. fr: Dossier de la base (bathymétrie .pdb, imagerie .pdi)
+msgid "Database folder (bathymetry .pdb, imagery .pdi)"
+msgstr "Папка базы (батиметрия .pdb, изображения .pdi)"
+
+#. fr: dossier de la base (fichiers PD_*.pdb, PD_*.pdi)
+msgid "database folder (PD_*.pdb, PD_*.pdi files)"
+msgstr "папка базы (файлы PD_*.pdb, PD_*.pdi)"
+
+#. fr: Gestion des données (import)…
+msgid "Data management (import)…"
+msgstr "Управление данными (импорт)…"
+
+#. fr: Pas d'interpolation sur la terre
+msgid "No interpolation on land"
+msgstr "Без интерполяции на суше"
+
+#. fr: Pas de surface interpolée sur la terre (îles, côte) : à l'import, les pixels interpolés situés sur la terre sont retirés ; les sondes mesurées sont toujours gardées.
+msgid "No interpolated surface on land (islands, coast): at import, interpolated pixels on land are removed; measured soundings are always kept."
+msgstr "Без интерполированной поверхности на суше (острова, берег): при импорте интерполированные пиксели на суше удаляются; измеренные глубины всегда сохраняются."
+
+#. fr: Lacs : rivage = isobathe 0
+msgid "Lakes: shoreline = 0 m contour"
+msgstr "Озёра: берег = изобата 0"
+
+#. fr: Plans d'eau non rattachés : rivage = isobathe 0 de l'interpolation. Sources « non rattachées » (lac, retenue) : à l'import, la surface interpolée descend vers 0 m au rivage au lieu de s'arrêter à la dernière sonde. Aucune sonde n'est ajoutée ; la distance D d'interpolation reste la limite.
+msgid "Unreferenced water bodies: shoreline = 0 m contour for interpolation. \"Not tied\" sources (lake, reservoir): at import, the interpolated surface slopes down to 0 m at the shoreline instead of stopping at the last sounding. No sounding is added; the interpolation distance D remains the limit."
+msgstr "Водоёмы без привязки: берег = изобата 0 для интерполяции. Источники «без привязки» (озеро, водохранилище): при импорте интерполированная поверхность опускается к 0 м у берега, а не обрывается на последней глубине. Глубины не добавляются; предел — расстояние интерполяции D."
+
+#. fr: Fond hors levé
+msgid "Background outside survey"
+msgstr "Фон вне съёмки"
+
+#. fr: Sonar : pixel (m)
+msgid "Sonar: pixel (m)"
+msgstr "Сонар: пиксель (м)"
+
+#. fr: Sonde / GPS estimé
+msgid "Transducer / GPS estimated"
+msgstr "Датчик / GPS: оценка"
+
+#. fr: Choisissez d'abord le dossier de la base (onglet Données).
+msgid "Choose the database folder first (Data tab)."
+msgstr "Сначала выберите папку базы (вкладка «Данные»)."
+
+#. fr: Taille du texte (sondes, valeurs des isobathes)
+msgid "Text size (soundings, contour values)"
+msgstr "Размер текста (глубины, значения изобат)"
+
+#. fr: Aucune isobathe maîtresse
+msgid "No major contour"
+msgstr "Без основных изобат"
+
+#. fr: Autre valeur…
+msgid "Other value…"
+msgstr "Другое значение…"
+
+#. fr: Isobathe maîtresse tous les
+msgid "Major contour every"
+msgstr "Основная изобата через каждые"
+
+#. fr: Intervalle des isobathes
+msgid "Contour interval"
+msgstr "Интервал изобат"
+
+#. fr: maîtr.
+msgid "major"
+msgstr "осн."
+
+#. fr: %d déc.
+msgid "%d dec."
+msgstr "%d зн."
+
+#. fr: Données
+msgid "Data"
+msgstr "Данные"
 

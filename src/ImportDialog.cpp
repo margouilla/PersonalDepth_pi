@@ -220,6 +220,9 @@ void ImportDialog::UpdatePaneLabels() {
   if (m_boundsOn->GetValue())
     adv.Add(wxString::Format(U8("bornes %.1f … %.1f "), m_boundMin->GetValue(), m_boundMax->GetValue()) + u);
   if (m_cache->GetValue()) adv.Add(U8("cache .pdpc"));
+  if (m_antAuto->GetValue()) adv.Add(U8("sonde / GPS estimé"));
+  else if (std::fabs(m_antManF) > 1e-9 || std::fabs(m_antManS) > 1e-9)
+    adv.Add(wxString::Format(U8("sonde %+.1f / %+.1f m"), m_antManF, m_antManS));
   wxString advs = adv.empty() ? U8("aucune") : wxJoin(adv, ';', 0);
   advs.Replace(";", "; ");
   const wxString labels[4] = {PaneTitle(U8("Coordonnées"), crs), PaneTitle(U8("Référence verticale"), vref),
@@ -649,8 +652,63 @@ wxSizer* ImportDialog::BuildAdvanced(wxWindow* p) {
     m_offsetL->SetLabel(U8("Décalage (") + u + ")");
     m_boundsU->SetLabel(u + U8(" (profondeur ZH)"));
   }
+  // traces de sondeur : position de la sonde par rapport à l'antenne GPS
+  auto* ar = new wxBoxSizer(wxHORIZONTAL);
+  m_antAuto = new wxCheckBox(p, wxID_ANY, U8("Traces : décalage sonde / GPS estimé"));
+  m_antAuto->SetValue(st.importAntAuto);
+  m_antAuto->SetToolTip(
+      U8("Journaux .sl2 / .sl3 et GPX. Estimé sur les lignes parcourues en sens opposés : d'abord sur les "
+         "profondeurs (pente qui varie le long des lignes : cuvette, haut-fond, tombant ; l'écart comprend le "
+         "retard de la profondeur du sondeur), sinon sur le sonar latéral du journal s'il y en a un. Le "
+         "fichier n'indique jamais si la position est déjà corrigée. Les champs avant / tribord montrent "
+         "alors le décalage obtenu (dernier import) ; à défaut d'estimation, ce sont les valeurs saisies "
+         "(case décochée) qui s'appliquent.") +
+      "\n" +
+      (st.importAntEstOk ? wxString::Format(U8("Dernière estimation : %+.1f m vers l'avant, %+.1f m vers tribord."),
+                                            st.importAntEstFwd, st.importAntEstStbd)
+                         : U8("Pas encore d'estimation réussie.")));
+  m_antManF = st.importAntFwd;
+  m_antManS = st.importAntStbd;
+  m_antFwd = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1), wxSP_ARROW_KEYS,
+                                  -30, 30, st.importAntFwd, 0.1);
+  m_antFwd->SetDigits(1);
+  m_antFwd->SetToolTip(U8("Sonde par rapport à l'antenne GPS, vers l'avant (m). Négatif : sonde en "
+                          "arrière, cas habituel d'une sonde au tableau arrière et d'un GPS intégré à "
+                          "l'écran."));
+  m_antStbd = new wxSpinCtrlDouble(p, wxID_ANY, "", wxDefaultPosition, wxSize(FromDIP(80), -1), wxSP_ARROW_KEYS,
+                                   -10, 10, st.importAntStbd, 0.1);
+  m_antStbd->SetDigits(1);
+  m_antStbd->SetToolTip(U8("Sonde par rapport à l'antenne GPS, vers tribord (m). Négatif : vers bâbord."));
+  ar->Add(m_antAuto, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  ar->Add(L("avant"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  ar->Add(m_antFwd, 0, wxRIGHT, 6);
+  ar->Add(L("tribord"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  ar->Add(m_antStbd, 0);
+  // estimé : champs grisés montrant le décalage obtenu ; saisi : modifiables
+  auto antSync = [this]() {
+    const DisplaySettings& st = m_init;
+    const bool est = m_antAuto->GetValue();
+    m_antFwd->Enable(!est);
+    m_antStbd->Enable(!est);
+    m_antFwd->SetValue(est ? (st.importAntEstOk ? st.importAntEstFwd : 0.0) : m_antManF);
+    m_antStbd->SetValue(est ? (st.importAntEstOk ? st.importAntEstStbd : 0.0) : m_antManS);
+  };
+  antSync();
+  m_antAuto->Bind(wxEVT_CHECKBOX, [antSync](wxCommandEvent& e) {
+    antSync();
+    e.Skip();
+  });
+  m_antFwd->Bind(wxEVT_SPINCTRLDOUBLE, [this](wxSpinDoubleEvent& e) {
+    if (!m_antAuto->GetValue()) m_antManF = m_antFwd->GetValue();
+    e.Skip();
+  });
+  m_antStbd->Bind(wxEVT_SPINCTRLDOUBLE, [this](wxSpinDoubleEvent& e) {
+    if (!m_antAuto->GetValue()) m_antManS = m_antStbd->GetValue();
+    e.Skip();
+  });
   auto* col = new wxBoxSizer(wxVERTICAL);
   col->Add(g, 0, wxEXPAND);
+  col->Add(ar, 0, wxTOP, 6);
   col->Add(m_cache, 0, wxTOP, 6);
   return col;
 }
@@ -1017,6 +1075,9 @@ void ImportDialog::OnOk(wxCommandEvent&) {
   s.importZFeet = m_zUnit->GetSelection() == 1;
   s.importOffset = toM(m_offset->GetValue(), s.importOffset, 100.0);
   s.importCache = m_cache->GetValue();
+  s.importAntAuto = m_antAuto->GetValue();
+  s.importAntFwd = (float)m_antManF;  // valeurs saisies (les champs montrent l'estimation si cochée)
+  s.importAntStbd = (float)m_antManS;
   s.importRes = m_resOn->GetValue() ? (float)m_res->GetValue() : 0.f;
   DataTypeToPrefs(m_dtype->GetSelection(), s.importInstrument, s.importNature);
   s.importInterp = m_interp->GetValue();
@@ -1131,6 +1192,9 @@ void ImportDialog::OnOk(wxCommandEvent&) {
     p.load.text.deserialize(s.importFormat);
     p.load.zsign = (LoadOptions::ZSign)s.importSign;
     p.load.zOffset = s.importOffset;
+    p.load.antAuto = s.importAntAuto;
+    p.load.antFwd = s.importAntFwd;
+    p.load.antStbd = s.importAntStbd;
     p.load.zToMeters = s.importZFeet ? 0.3048 : 1.0;
     p.load.nodata = nodata;
     p.load.water = water;

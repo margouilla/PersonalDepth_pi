@@ -84,6 +84,8 @@ struct DisplaySettings {
   bool legend = true;         // lecture au curseur
   bool perfLog = false;       // journal des temps d'affichage (opencpn.ini : PerfLog=1)
   bool banner = true;         // bandeau de palette sur la carte
+  bool bannerBathy = true, bannerImg = false;  // sections du bandeau (selon les couches affichées)
+  bool bannerChart = true;    // ligne isobathes / sondes du bandeau (profondeurs chargées)
   bool interpShow = true;     // zones interpolées de la base affichées
   bool interpDistinct = true; // … et éclaircies (distinguées des zones mesurées)
   int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche, 3 libre
@@ -115,6 +117,11 @@ struct DisplaySettings {
   int importOrder = 0;              // LoadOptions::Order
   int importSign = 0;               // LoadOptions::ZSign
   float importOffset = 0.f;         // décalage vertical (m)
+  // traces de sondeur : position de la sonde par rapport à l'antenne GPS
+  bool importAntAuto = true;        // estimée (sonar latéral, sinon profondeurs)
+  float importAntFwd = 0.f, importAntStbd = 0.f;  // saisi : sans estimation, ou à défaut (m)
+  bool importAntEstOk = false;      // dernier décalage estimé (affiché)
+  float importAntEstFwd = 0.f, importAntEstStbd = 0.f;
   bool importZFeet = false;         // unité verticale des fichiers importés : pieds (sinon m)
   std::string importFormat;         // format personnalisé des fichiers texte (TextFormat), "" = X Y Z
   float importRes = 0.f;            // résolution de stockage imposée (m), 0 = automatique
@@ -168,6 +175,29 @@ struct DisplaySettings {
   std::string dbFolder;             // dossier des fichiers PD_*.pdb
   int dbPriority = 0;               // pd::DbPriority
   std::set<std::string> dbHidden;   // fichiers .pdb masqués à l'affichage
+  // Couches affichées : bathymétrie (base + fichiers) et imagerie (base .pdi)
+  bool bathyShow = true;
+  bool imgShow = true;
+  // Imagerie du fond (réflectivité) : rendu en niveaux de gris (ou cuivre),
+  // réglé sur l'étirement 0 – 1 propre à chaque source
+  int imgOpacity = 100;             // %
+  bool imgOnTop = false;            // imagerie au-dessus de la bathymétrie
+  int imgPalette = 0;               // 0 gris, 1 cuivre, 2 bleu nuit
+  bool imgInvert = false;           // fort = sombre
+  int imgMin = 0, imgMax = 100;     // bornes du contraste (% de l'étirement)
+  bool imgAuto = false;             // contraste automatique (2 % – 98 % des valeurs)
+  int imgAutoSource = 1;            // 1 : zone affichée, 0 : toutes les images (étirement d'import)
+  float imgGamma = 1.f;             // > 1 : tons moyens éclaircis
+  bool imgSmooth = true;            // interpolation entre pixels
+  int imgBgMode = 0;                // import : fond 0 automatique, 1 aucun, 2 valeur
+  double imgBgValue = 255;
+  double imgSonarPixel = 0;         // mosaïques de sonar latéral (.sl2/.sl3) : pas (m), 0 = automatique
+  bool imgSonarEqualize = true;     // égalisation selon la distance au sol
+  bool imgSonarOffsetAuto = true;   // décalage sonde / antenne GPS estimé (allers-retours)
+  double imgSonarOffsetFwd = 0, imgSonarOffsetStbd = 0;  // saisi : sonde vers l'avant / tribord (m)
+  bool imgSonarOffsetEstOk = false;  // dernier décalage estimé (affiché)
+  double imgSonarOffsetEstFwd = 0, imgSonarOffsetEstStbd = 0;
+  unsigned imgVersion = 1;          // incrémenté à chaque changement du rendu
   // --- calculés (non sauvegardés)
   // Unités d'affichage d'OpenCPN (Options › Affichage › Unités) : les valeurs
   // restent en mètres partout, multipliées par ces facteurs à l'affichage.
@@ -186,6 +216,8 @@ struct DisplaySettings {
 
 // Niveaux d'isobathes effectifs (avec l'isobathe de sécurité si active)
 std::vector<float> ContourLevels(const DisplaySettings& s, float zMin, float zMax);
+// Palette de l'imagerie (gris, cuivre, sépia) sur la valeur étirée 0 – 1
+pd::ColorRamp ImageryRamp(const DisplaySettings& s);
 
 // Réglages d'import d'une source (système, référence verticale, lecture…)
 // sérialisés « clé=valeur » et gardés dans la base, pour relire le fichier
@@ -241,6 +273,16 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void DbImport(const std::vector<pd::LayerParams>& files, const std::string& group,
                 const std::vector<std::vector<int64_t>>& replace = {});
   float DbProgressValue() const { return m_dbBusy ? m_dbProgress.load() : -1.f; }
+  // Base d'imagerie (fichiers PD_*.pdi du même dossier)
+  const std::vector<pd::DbSource>& ImgSources() const { return m_imgSources; }
+  void ImgImport(const std::vector<std::string>& files, const std::string& group);
+  void ImgRemove(const std::vector<int64_t>& ids);
+  void ImgSetVisible(const std::vector<int64_t>& ids, bool visible);
+  void ImgZoomTo(const std::vector<int64_t>& ids);
+  void ImageryChanged();           // rendu de l'imagerie (palette, contraste, opacité…)
+  void UpdateImgAuto(bool force);  // contraste automatique de l'imagerie
+  void LayersShownChanged();       // interrupteurs bathymétrie / imagerie
+
   void DbStop() { m_dbCancel = true; }
   // Courbe de marée : points utilisés (station OpenCPN, ou 9 points FES sur
   // l'emprise des données), hauteurs au-dessus du ZH (m), instant choisi
@@ -325,14 +367,28 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   bool ShouldDraw(int priority);
   wxString CursorTextFor(int priority) const;
   std::vector<pd::LayerPtr> DrawLayers() const;          // vue de la base + couches fichiers
+  // profondeurs nécessaires : couleurs, ou isobathes / sondes (toujours au-dessus)
+  bool BathyNeeded() const { return m_set.bathyShow || m_set.contours || m_set.soundings; }
   void StartDbJob(const std::string& title,
-                  std::function<bool(pd::BathyDb&, std::string&, const pd::DbProgress&)> job);
+                  std::function<bool(pd::BathyDb&, std::string&, const pd::DbProgress&)> job,
+                  pd::DbKind kind = pd::DbKind::Depth);
+  pd::DbKind m_dbJobKind = pd::DbKind::Depth;
+  std::vector<pd::LayerPtr> ImgLayers() const;           // vue de l'imagerie (vide si masquée)
+  const DisplaySettings& ImgSettings();                  // réglages du rendu de l'imagerie
+  DisplaySettings m_imgSet;
+  unsigned m_imgSetVersion = 0;
+  std::unique_ptr<BathyRenderer> m_imgRenderer;
+  std::vector<pd::DbSource> m_imgSources, m_imgSourcesNew;
+  unsigned m_imgEpoch = 1;
+  wxString ImgCursorText();
   void UpdateDbView();
   void UpdateAutoPalette(bool force);
   void BannerClick(int part, wxWindow* win, wxPoint pos);
   int m_bannerDown = 0;  // partie du bandeau sous l'appui du bouton gauche
   bool m_bannerDrag = false;  // bandeau en cours de déplacement
   wxPoint m_bannerDownPt, m_bannerGrab;  // appui ; prise dans le bandeau
+  void ChartTextChanged(bool contours);                    // isobathes / sondes (bandeau)
+  void BannerContourValue(bool major, wxWindow* win, wxPoint pos);
   void BannerRange(bool isMin, wxWindow* win);
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
@@ -386,10 +442,14 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   std::atomic<bool> m_dbBusy{false}, m_dbCancel{false};
   std::atomic<float> m_dbProgress{0.f};
   std::mutex m_dbMx;
+  // dernier décalage sonde / antenne estimé par une tâche (sous m_dbMx),
+  // recopié dans les réglages à la fin de la tâche
+  struct LeverEstimate {
+    bool set = false, ok = false;
+    double fwd = 0, stbd = 0;
+  } m_estTracks, m_estSonar;
   std::string m_dbTitle, m_dbStep, m_dbErr, m_dbLast;
-  unsigned m_dbEpoch = 1, m_dbViewEpoch = 0;
-  int m_dbViewDatum = -9;                          // référence de la vue demandée
-  std::shared_ptr<std::atomic<int>> m_dbViewOriginNext;  // origine des surfaces (calcul en cours)
+  unsigned m_dbEpoch = 1;
   int m_datumOrigin = 0;                           // … de la vue affichée
   mutable std::string m_natDir;                    // dossier des pays déjà lu
   mutable std::vector<pd::NationalDatum> m_natList;  // … et ses fichiers
@@ -400,30 +460,40 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   unsigned m_srcOffsetEpoch = 0;
   int m_srcOffsetDatum = -9;
   float SourceDisplayOffset(const pd::DbSource& d);
-  // Vue de la base : couche calculée pour la zone affichée
-  pd::LayerPtr m_dbView, m_dbViewNext;
-  double m_dbViewBox[4] = {0, 0, 0, 0};
-  int m_dbViewTarget = -1;
-  pd::ViewQuad m_dbViewQuad{};                 // écran (+ marge) de la vue préparée
-  bool m_dbViewHasQuad = false;
+  // Vue d'une base (bathymétrie ou imagerie) : couche calculée pour la zone affichée
   struct DbViewPrep {
     pd::ViewQuad quad{};
     double box[4] = {0, 0, 0, 0};
   };
+  struct DbViewSlot {
+    pd::LayerPtr view, next;
+    double box[4] = {0, 0, 0, 0};
+    int target = -1;
+    pd::ViewQuad quad{};             // écran (+ marge) de la vue préparée
+    bool hasQuad = false;
+    unsigned epoch = 0;
+    int datum = -9;                  // référence de la vue demandée
+    std::shared_ptr<std::atomic<int>> originNext;  // origine des surfaces (calcul en cours)
+    std::shared_ptr<DbViewPrep> result;           // zone réellement préparée (fin du calcul)
+    std::shared_ptr<std::atomic<bool>> stop;      // arrêt de la vue en cours de calcul
+    std::vector<pd::LayerPtr> dying;              // vues abandonnées, en fin d'arrêt
+    wxLongLong pendingSince = 0;
+  };
+  DbViewSlot m_vd;  // bathymétrie
+  DbViewSlot m_vi;  // imagerie
+  void UpdateView(DbViewSlot& V, pd::DbKind kind, BathyRenderer& R);
+  void ResetView(DbViewSlot& V, BathyRenderer* R);
   // journal PerfLog : vues de la base lancées / arrêtées / prêtes
   int m_perfViewsStarted = 0, m_perfViewsCancelled = 0, m_perfViewsReady = 0;
   double m_perfViewMs = 0, m_perfViewMaxMs = 0;
   wxLongLong m_perfViewStart = 0, m_perfLast = 0;
   void PerfLogTick();
-  std::shared_ptr<DbViewPrep> m_dbViewResult;  // zone réellement préparée (fin du calcul)
-  std::shared_ptr<std::atomic<bool>> m_dbViewStop;  // arrêt de la vue en cours de calcul
-  std::vector<pd::LayerPtr> m_dbViewDying;     // vues abandonnées, en fin d'arrêt
   double m_vpBox[4] = {0, 0, 0, 0};
   pd::ViewQuad m_vpQuad{};  // coins de l'écran (lon, y Mercator), carte tournée comprise
   bool m_vpQuadOk = false;
   bool m_vpValid = false;
   double m_vpCenter[2] = {1e9, 1e9};
-  wxLongLong m_vpMoveTime = 0, m_pendingSince = 0;
+  wxLongLong m_vpMoveTime = 0;
   bool m_lastRenderGL = false;  // dernier rendu en OpenGL (préparation des vues possible)
   void StoreViewport(PlugIn_ViewPort* vp);
   std::string m_autoKey;

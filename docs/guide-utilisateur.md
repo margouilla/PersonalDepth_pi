@@ -15,7 +15,7 @@ l'ombrage se règlent ensuite en direct, sans rien régénérer.
 > chaque partie. Tout fonctionne ? Envoyez un court
 > [retour de test](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=test_report.yml).
 > Un problème ? [Signalez-le](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
-> — voir [§10](#10-signaler-un-problème) pour les informations utiles.
+> — voir [§11](#11-signaler-un-problème) pour les informations utiles.
 
 **Sommaire**
 1. [Installation](#1-installation)
@@ -26,9 +26,10 @@ l'ombrage se règlent ensuite en direct, sans rien régénérer.
 6. [Palette et seuils de profondeur](#6-palette-et-seuils-de-profondeur)
 7. [Isobathes et affichage](#7-isobathes-et-affichage)
 8. [Marée](#8-marée)
-9. [Unités et langue](#9-unités-et-langue)
-10. [Signaler un problème](#10-signaler-un-problème)
-11. [Questions fréquentes et limites connues](#11-questions-fréquentes-et-limites-connues)
+9. [Imagerie du fond](#9-imagerie-du-fond)
+10. [Unités et langue](#10-unités-et-langue)
+11. [Signaler un problème](#11-signaler-un-problème)
+12. [Questions fréquentes et limites connues](#12-questions-fréquentes-et-limites-connues)
 
 ---
 
@@ -75,8 +76,8 @@ permettent de voir le rendu sans rien importer. Ils demandent la version
 1. Télécharger les fichiers `.pdb` **et `PersonalDepth_datum.sqlite`** de la release
    [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
    et les placer **dans un même dossier vide** (ex. `Documents/PersonalDepth/base`).
-2. Panneau PersonalDepth, cadre *Base de bathymétrie* : cliquer sur **…** et
-   choisir ce dossier. Les fichiers `.pdb` apparaissent dans la liste.
+2. Panneau PersonalDepth, onglet *Données*, cadre *Dossier de la base* :
+   cliquer sur **…** et choisir ce dossier. Les fichiers `.pdb` apparaissent dans la liste.
 3. Sélectionner les fichiers et cliquer sur **Centrer** : la carte se place
    sur la mer d'Iroise.
 4. Zoomer : la surface colorée apparaît, puis les sondes chiffrées aux grandes
@@ -108,8 +109,16 @@ En bas de la carte, un bandeau présente la palette de couleurs :
 | Rampe de couleurs | Choix d'un préréglage de couleurs |
 | Petite rampe (à côté de ⚙) | Bascule le bandeau entre **horizontal** et **vertical** ; le bandeau vertical montre aussi les seuils intermédiaires |
 | ⚙ | Ouvre le panneau principal |
+| Case *Isobathes* / *Sondes* (ligne du bas) | Affiche ou masque les isobathes / les sondes chiffrées |
+| Intervalle des isobathes (ex. *5 m*) | Menu : *Seuils de la palette*, valeurs rondes, *Autre valeur…* (saisie) |
+| *maîtr.* et sa valeur | Isobathe maîtresse : *aucune*, valeurs rondes, *Autre valeur…* |
+| *1 déc.* | Décimales des sondes : 0, 1, 2 à chaque clic |
+| *9 pt* | Taille du texte des sondes et des valeurs des isobathes |
 
-Le trait sur la rampe marque la profondeur de sécurité. **Faites glisser le
+La ligne du bas (isobathes et sondes) apparaît dès que des profondeurs sont
+affichées ; les valeurs soulignées se modifient d'un clic. Couleurs de
+profondeur masquées, elle reste seule (avec l'imagerie s'il y en a). Le
+trait sur la rampe marque la profondeur de sécurité. **Faites glisser le
 bandeau** à la souris pour le placer n'importe où sur la carte (la position
 est gardée). Dans *Affichage*, on peut le masquer, choisir une position fixe
 (en bas au centre, en haut au centre, en bas à gauche, libre) et **verrouiller
@@ -119,26 +128,28 @@ sa position**.
 
 ![Bandeau : déplacement, A/M, préréglage, orientation](images/gif/g1-banner.gif)
 
-> 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne, la
-> carte ne se déplace pas quand on clique sur le bandeau ou qu'on le fait
-> glisser, et le bandeau verrouillé ne se déplace pas.
+> 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne (y
+> compris la ligne isobathes / sondes), la carte ne se déplace pas quand on
+> clique sur le bandeau ou qu'on le fait glisser, et le bandeau verrouillé ne
+> se déplace pas.
 
 ## 3. Le panneau principal
 
-Le panneau est découpé en cinq onglets :
+Le panneau est découpé en trois onglets :
 
 | Onglet | Contenu |
 |---|---|
-| **Base** | Dossier de la base, liste des fichiers `.pdb` (case : afficher / masquer), *Tout* / *Aucun*, *Centrer*, **Gestion des données…**, *Arrêter* |
+| **Données** | En haut : dossier de la base (bathymétrie `.pdb` et imagerie `.pdi`), *Arrêter* et ligne d'état de l'opération en cours. À gauche : liste des fichiers `.pdb` (case : afficher / masquer), **Gestion des données (import)…**, *Tout* / *Aucun*, *Centrer*, puis *Trait de côte* (§ 5). À droite : images importées, *Importer…* et réglages d'import de l'imagerie (§ 9), puis *Surfaces de référence verticale* (§ 5) |
 | **Marée** | Source et moment de la marée, ligne d'information, **Courbe de marée…** (§ 8) |
-| **Palette** | Couleurs, seuils, mode automatique, zone dangereuse, dossier de palettes (§ 6) |
-| **Isobathes et sondes** | Isobathes (intervalle, maîtresses, valeurs) et sondes chiffrées (espacement, décimales, taille du texte) (§ 7) |
-| **Affichage** | Opacité, ombrage, lissage, zones interpolées, lecture au curseur, bandeau de palette (§ 7) |
+| **Affichage** | Tous les réglages d'aspect, sans défilement : en haut, couches affichées et référence verticale des profondeurs (§ 5) ; à gauche, palette et seuils (§ 6), isobathes et sondes (§ 7) ; à droite, relief et lissage, imagerie (§ 9), bandeau et curseur (§ 7). |
 
 La ligne *Curseur : …* (profondeur sous le curseur) reste affichée sous les
 onglets, quel que soit l'onglet ouvert. Le dernier onglet ouvert est retenu.
 
-![Onglet Base](images/fr/03-tab-database.png)
+![Onglet Données](images/fr/03-tab-database.png)
+
+Le panneau prend à l'ouverture la taille qui fait tenir chaque onglet sans
+défilement (dans les limites de l'écran).
 
 Chaque réglage s'applique immédiatement sur la carte. Le panneau peut rester
 ouvert pendant l'utilisation d'OpenCPN ; le fermer conserve l'affichage.
@@ -152,7 +163,7 @@ comparer avec la carte officielle.
 
 ## 4. Importer un levé
 
-*Base de bathymétrie* › **Gestion des données…** › **Importer…**
+Onglet *Données* › **Gestion des données (import)…** › **Importer…**
 
 ![Fenêtre d'import](images/fr/04-import.png)
 
@@ -167,8 +178,9 @@ référence verticale…) sont masquées.
 fichiers de bathymétrie du dossier et de ses sous-dossiers). Formats : XYZ
 texte (`.xyz .txt .csv .dat`, tout séparateur, entêtes ignorés), grilles ESRI
 ASCII (`.asc`), TIN LandXML (`.xml`), traces de sondeur GPX (`.gpx`) et
-journaux sonar Lowrance / Simrad / B&G (`.sl2 .sl3`) ; GeoTIFF / BAG si le
-plugin est compilé avec GDAL.
+journaux sonar Lowrance / Simrad / B&G (`.sl2 .sl3`), grilles GeoTIFF
+(`.tif .tiff`, lecteur intégré : le système de coordonnées est lu dans le
+fichier) ; BAG si le plugin est compilé avec GDAL.
 
 **Traces de sondeur** — GPX : points de trace, de route et waypoints portant
 une profondeur (extension `gpxx:Depth` des Garmin, `gpxtpx:depth`…, en
@@ -180,6 +192,25 @@ profondeurs en mètres (les réglages de colonnes, de sens et d'unité de Z
 sont ignorés). Le **décalage Z** ajoute l'enfoncement du transducteur ; les
 **hauteurs d'eau observées** corrigent chaque sonde à son heure. Pour un lac,
 choisir la référence verticale *non rattachée*.
+
+**Décalage sonde / GPS des traces** (section *Avancé*). Les journaux
+enregistrent la position de l'antenne GPS (souvent dans l'écran, au poste de
+barre), pas celle de la sonde (souvent au tableau arrière), et les fichiers
+n'indiquent jamais si c'est corrigé. Sur une pente, une sonde est alors
+décalée le long de la route : les deux sens d'un levé ne s'accordent pas,
+d'où des marches entre lignes et des isobathes en dents de scie. *Traces :
+décalage sonde / GPS estimé* le calcule sur les lignes parcourues en sens
+opposés : d'abord sur les profondeurs (il faut une pente qui varie le long
+des lignes : cuvette, haut-fond, tombant ; sur une pente uniforme, le
+décalage ne se distingue pas d'un changement de niveau), sinon sur le sonar
+latéral du journal. La valeur trouvée sur les profondeurs comprend aussi le
+retard de la profondeur affichée par le sondeur (lissage), qui décale les
+sondes de la même façon. Case cochée, les champs *avant* et *tribord* sont
+grisés et montrent le décalage obtenu au dernier import (celui de la source
+quand on modifie ses réglages). Case décochée, on y saisit le décalage mesuré
+sur le bateau (*avant*, négatif si la sonde est en arrière ; *tribord*) ;
+ces valeurs saisies s'appliquent aussi quand l'estimation échoue. Le
+décalage utilisé figure dans l'analyse de la source (*Gestion des données*).
 
 **Réglages courants** (toujours visibles)
 
@@ -427,14 +458,17 @@ Chaque fichier `.pdb` garde aussi une copie des surfaces de son emprise : un
 `PersonalDepth_datum.sqlite`) apporte ses surfaces, reprises à l'ouverture de
 la base, et s'affiche au même zéro des cartes.
 
-Dans l'onglet **Base**, cadre *Référence verticale* :
+Le rattachement des profondeurs affichées se choisit dans l'onglet
+**Affichage**, cadre *Référence verticale des profondeurs* ; la référence
+des données d'origine reste définie à l'import (§ 4). Les surfaces utilisées
+se règlent dans l'onglet **Données**, cadre *Surfaces de référence verticale*.
 
-- **Profondeurs** : référence des profondeurs affichées (couleurs, sondes,
+- **Profondeurs** (onglet *Affichage*) : référence des profondeurs affichées (couleurs, sondes,
   isobathes, curseur). Par défaut le *zéro des cartes officiel du pays* : les valeurs
   sont celles des cartes (ENC, RNC) et une source importée au zéro des cartes
   s'affiche exactement avec ses valeurs d'origine. Avec la marée, l'affichage
   est toujours la hauteur d'eau réelle (zéro des cartes + marée).
-- **MSS** : fichier de la surface moyenne océanique (`.pdgrid`), pour les
+- **MSS** (onglet *Données*, comme les réglages suivants) : fichier de la surface moyenne océanique (`.pdgrid`), pour les
   hauteurs GNSS et l'affichage à l'ellipsoïde hors de France.
 - **Pays** : dossier des fichiers officiels des autres pays (grilles NOAA
   VDatum des États-Unis…), reconnus tout seuls ; changer de dossier
@@ -467,7 +501,7 @@ local, comme les cartes.
 ### Trait de côte
 
 Entre deux lignes de sondes, la surface interpolée peut enjamber une île ou
-une pointe. Le cadre *Trait de côte* de l'onglet **Base** l'évite :
+une pointe. Le cadre *Trait de côte* de l'onglet **Données** l'évite :
 
 - **Dossier** : dossier des fonds de carte téléchargés par le gestionnaire de
   cartes d'OpenCPN, **OSMSHP** (polygones de terre d'OpenStreetMap,
@@ -511,7 +545,9 @@ et préparer un trait de côte depuis OpenStreetMap.
 
 ## 6. Palette et seuils de profondeur
 
-![Onglet Palette](images/fr/06-palette.png)
+Onglet **Affichage**, cadre *Palette et seuils de profondeur* (à gauche).
+
+![Onglet Affichage](images/fr/06-palette.png)
 
 ![Palette modifiée en direct](images/gif/g2-palette-live.gif)
 
@@ -556,37 +592,36 @@ au-dessus de la référence affichée (estran, terre).
 
 ![Isobathes et sondes](images/fr/07-contours-soundings.png)
 
-![Onglet Isobathes et sondes](images/fr/07-tab-contours.png)
+Onglet **Affichage**, cadre *Isobathes et sondes* (sous la palette).
+Les libellés sont courts ; chaque réglage a sa bulle d'aide.
 
-**Onglet Isobathes et sondes**
+**Isobathes** — *Isobathes* (afficher) et leur couleur ; niveaux à
+*Intervalle régulier* ou sur les *Seuils de la palette* ; *Valeurs* sur les
+lignes (chiffres pleins, à la couleur des lignes) ; *Intervalle* ;
+*Maîtresse* tous les N unités (trait épais) ; *Lissage des lignes*
+(purement graphique). Aucune ligne n'est tracée dans les trous du levé.
+L'isobathe de sécurité (rouge) suit la zone dangereuse de la palette.
 
-**Isobathes** — *Afficher les isobathes* ; niveaux à *Intervalle régulier* ou
-sur les *Seuils de la palette* ; *Maîtresse tous les* N unités (trait épais) ;
-*Valeurs sur les lignes* (chiffres pleins, à la couleur des lignes) ;
-*Lissage des lignes* (purement graphique). Aucune
-ligne n'est tracée dans les trous du levé.
-
-**Sondes chiffrées** — *Afficher les sondes* : sondes exactes (la plus
+**Sondes chiffrées** — *Sondes* (afficher) : sondes exactes (la plus
 faible par case d'écran), jamais prises dans les zones interpolées ;
 *Espacement* (écart minimal entre deux sondes à l'écran) ; *Décimales* ;
 *Taille du texte* (sondes et valeurs des isobathes).
 
-**Onglet Affichage**
-
-![Onglet Affichage](images/fr/07-tab-display.png)
+**Relief, bandeau et curseur** (colonne de droite de l'onglet *Affichage*,
+voir la capture du § 6)
 
 ![Zones interpolées : masquer, éclaircir, curseur](images/gif/g3-interpolation.gif)
 
 | Réglage | Effet |
 |---|---|
 | Opacité | Transparence de la surface colorée sur la carte |
-| Ombrage du relief | Ombrage et son intensité |
-| Exagération verticale | Accentue le relief de l'ombrage |
-| Adoucir le relief | Lisse l'ombrage seul (couleurs, isobathes et sondes gardent les vraies profondeurs) |
-| Lissage (interpolation) | Couleurs fondues entre les mailles |
-| Zones interpolées de la base | Affiche la surface interpolée à l'import entre les sondes ; *les distinguer (plus claires)* éclaircit ses couleurs |
+| Ombrage | Ombrage du relief et son intensité |
+| Exagération | Exagération verticale : accentue le relief de l'ombrage |
+| Adoucir | Lisse l'ombrage seul (couleurs, isobathes et sondes gardent les vraies profondeurs) |
+| Lissage | Interpolation : couleurs fondues entre les mailles |
+| Zones interpolées de la base | Affiche la surface interpolée à l'import entre les sondes ; *plus claires* éclaircit ses couleurs |
+| Bandeau | Bandeau de palette sur la carte et sa position ; *Verrouiller* sa position |
 | Lecture au curseur | Profondeur et source à côté du curseur |
-| Bandeau de palette sur la carte | Affiche le bandeau et choisit sa position |
 
 > 🧪 **Testeurs — à vérifier :** isobathes et sondes lisibles, sans trop de
 > chevauchements ; la lecture au curseur donne la même valeur que la sonde
@@ -599,7 +634,7 @@ faible par case d'écran), jamais prises dans les zones interpolées ;
 ![Curseur de marée ±12 h](images/gif/g4-tide.gif)
 
 Sans marée, les profondeurs sont affichées dans la référence choisie (onglet
-*Base*, par défaut le zéro des cartes local). Le cadre *Marée* ajoute la
+*Affichage*, par défaut le zéro des cartes local). Le cadre *Marée* ajoute la
 hauteur d'eau d'un moment donné au zéro des cartes, pixel par pixel :
 
 - **Source** : *Stations de marée OpenCPN* (hauteur unique de la station la
@@ -629,7 +664,127 @@ données).
 > fenêtre de marée d'OpenCPN ; le trait rouge de la courbe suit le moment
 > choisi dans le panneau.
 
-## 9. Unités et langue
+## 9. Imagerie du fond
+
+PersonalDepth affiche l'**imagerie du fond** : réflectivité,
+rétrodiffusion ou mosaïques de sonar latéral, par exemple les mosaïques
+diffusées gratuitement par l'Ifremer, Infomar ou EMODnet. Les images sont
+importées une fois dans une base d'imagerie (fichiers `PD_*.pdi`, dans le
+même dossier que les fichiers `.pdb` de la bathymétrie). Les valeurs
+d'origine (dB, niveaux de gris) sont conservées, comme les profondeurs pour
+la bathymétrie.
+
+**Import.** Cliquer sur *Importer…* et choisir un ou plusieurs fichiers
+GeoTIFF (`.tif`, `.tiff` : dB en réels, niveaux de gris 8 ou 16 bits,
+palette). Le système de coordonnées est lu dans le fichier. Les mosaïques ont
+souvent un fond uniforme blanc (255) ou noir (0) autour du levé. Ce fond est
+détecté automatiquement et écarté. Au besoin, choisir *aucun* ou *valeur :*
+dans *Fond hors levé à l'import*. Une mosaïque de 50 millions de pixels
+s'importe en 20 s environ.
+
+**Sonar latéral des sondeurs de plaisance.** *Importer…* accepte aussi les
+journaux Lowrance / Simrad / B&G (`.sl2`, `.sl3`) enregistrés avec une sonde
+de sonar latéral (StructureScan, SideImaging). Les lignes du sonar sont
+assemblées en mosaïque :
+
+- la hauteur au-dessus du fond est lue sur l'image même (premier écho du
+  fond), à défaut prise dans la profondeur du journal ;
+- la distance oblique est ramenée à la distance au sol et chaque ping est
+  rééchantillonné au sol ; la colonne d'eau est écartée ;
+- les positions sont interpolées entre les points GPS et la route est
+  lissée ; le cap vient de la route (le journal a rarement un compas) ;
+- les rayures (un ping plus clair ou plus sombre que ses voisins) sont
+  corrigées ;
+- les traits brefs sur un seul ping (parasites des autres sondeurs) sont
+  retirés ;
+- *Égaliser* (coché par défaut) donne la même luminosité moyenne du centre
+  au bord de la fauchée, malgré les changements de gain ou de portée pendant
+  le levé, et coupe le bruit au-delà de la portée acoustique ;
+- là où les lignes se recouvrent, la partie au signal fort de chaque ligne
+  l'emporte sur les bords faibles de ses voisines.
+
+**Décalage sonde / GPS.** Le journal donne la position de l'antenne GPS,
+souvent intégrée à l'écran au poste de barre, alors que la sonde est en
+général au tableau arrière : les deux sens d'une ligne sont alors décalés
+l'un de l'autre et la mosaïque est floue là où les lignes se recouvrent.
+*Décalage sonde / GPS estimé* le calcule sur les lignes parcourues en sens
+opposés (comme le « patch test » des hydrographes : une même tache du fond
+vue des deux sens est décalée de deux fois l'écart). Il faut des
+allers-retours sur un fond reconnaissable (roches, rides, herbiers). Case
+cochée, les champs *avant* et *tribord* sont grisés et montrent le décalage
+obtenu sur le dernier journal importé. Case décochée, on y saisit le
+décalage mesuré : sonde *vers l'avant* de l'antenne (négatif si elle est en
+arrière) et *vers tribord* (négatif vers bâbord) ; ces valeurs s'appliquent
+aussi quand l'estimation échoue. Une mesure au demi-mètre près sur le bateau suffit.
+Le décalage utilisé est indiqué dans les informations de l'image.
+
+*Sonar latéral : pixel (m)* règle le pas de la mosaïque ; 0 = automatique
+(portée / 400, entre 0,1 et 1 m). Pour un levé très étendu, le pas est
+élargi pour limiter la mémoire (indiqué dans les informations de l'image).
+Les journaux sans canal de sonar latéral (sonar 2D et DownScan seulement)
+sont refusés avec un message. Les profondeurs de ces mêmes journaux
+s'importent en bathymétrie depuis *Gestion des données*.
+
+![Mosaïque de sonar latéral d'un sondeur de plaisance (palette cuivre)](images/fr/15-sidescan-mosaic.png)
+
+*Mosaïque assemblée depuis un journal `.sl3` (palette cuivre, contraste
+automatique sur la zone affichée) ; bathymétrie masquée, le bandeau ne garde
+que la rampe de l'imagerie.*
+
+Les images importées et les réglages d'import sont dans l'onglet *Données*,
+cadre *Imagerie* ; les réglages d'affichage des deux couches sont réunis
+dans l'onglet *Affichage*.
+
+**Couches** (onglet *Affichage*). Les interrupteurs *Bathymétrie* et *Imagerie* affichent ou
+masquent chaque couche. *Imagerie sous / au-dessus de la bathymétrie* choisit
+la couche du dessus. Son opacité règle ce qui transparaît de la couche du
+dessous. Isobathes, sondes, bandeau de palette et lecture au curseur restent
+toujours au-dessus ; isobathes et sondes restent affichées (si elles sont
+cochées) quand les couleurs *Bathymétrie* sont masquées, par exemple pour
+lire les profondeurs sur une mosaïque.
+
+**Rendu** (onglet *Affichage*, cadre *Imagerie*). Chaque image est étirée pour l'affichage entre ses valeurs à 2 %
+et 98 %, mesurées à l'import : des images d'unités différentes s'affichent
+ainsi ensemble. Les réglages suivants agissent sur cet étirement et
+s'appliquent aussitôt, sans rien relire :
+
+- *Palette* : niveaux de gris, cuivre ou sépia ; *Inverser* affiche la
+  réflectivité forte en sombre.
+- *Noir à (%)* et *Blanc à (%)* : contraste, en pourcentage de
+  l'étirement.
+- *Gamma* : plus de 1 éclaircit les tons moyens, moins de 1 les assombrit.
+- *Opacité* et *Lissage* (interpolation entre pixels).
+
+*Contraste automatique* (comme la palette automatique de la bathymétrie)
+place le noir et le blanc aux valeurs à 2 % et 98 % de la *zone affichée*,
+ou à l'étirement d'import de chaque image (*toutes les images*) ; déplacer
+une borne repasse en manuel.
+
+**Bandeau.** Quand l'imagerie est affichée, le bandeau de palette reçoit une
+seconde rampe, grise, sous les couleurs de profondeur (ou seule si la
+bathymétrie est masquée) : bornes noir et blanc en % de l'étirement (clic
+pour les saisir), **A** / **M** contraste automatique ou manuel, **Vue** /
+**Tout**, et un clic sur la rampe grise ouvre la palette (niveaux de gris,
+cuivre, sépia) et *Inverser*.
+
+La lecture au curseur donne la valeur d'origine et l'image, par exemple
+`Imagerie -18.4 dB [mosaique_BS.tif]`, après la profondeur quand les deux
+couches sont affichées.
+
+La liste montre les images importées : affichage, plage de valeurs, taille du
+pixel et date. *Afficher / masquer*, *Zoom* (ou double-clic) et *Retirer*
+agissent sur la sélection. Retirer une image ne touche jamais au fichier
+d'origine.
+
+> 🧪 **Testeurs — à vérifier :** un journal `.sl2` / `.sl3` avec sonar
+> latéral donne une mosaïque calée sur la carte (pontons, corps-morts,
+> bancs) ; merci d'indiquer le modèle du sondeur et une capture.
+
+> 🧪 **Testeurs — à vérifier :** importer une mosaïque de réflectivité ; son
+> fond blanc ou noir disparaît ; le curseur indique des dB ou des niveaux ;
+> l'ordre et l'opacité des deux couches modifient aussitôt la superposition.
+
+## 10. Unités et langue
 
 - Les **unités** suivent OpenCPN : *Options › Affichage › Unités* (mètres ou
   pieds ; les brasses sont affichées en pieds). Sondes, isobathes, légende,
@@ -657,7 +812,7 @@ données).
 > tout l'affichage ; textes anglais ou russes erronés ou restés en français
 > (merci de les citer).
 
-## 10. Signaler un problème
+## 11. Signaler un problème
 
 Utiliser le [formulaire de signalement](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
 (compte GitHub gratuit nécessaire) ou le
@@ -677,7 +832,7 @@ Indiquer :
    | Linux, Raspberry Pi | `~/.opencpn/opencpn.log` |
    | macOS | `~/Library/Preferences/opencpn/opencpn.log` |
 
-## 11. Questions fréquentes et limites connues
+## 12. Questions fréquentes et limites connues
 
 **Toute la surface est d'une seule couleur.** Les données contiennent
 probablement des valeurs de remplissage (ex. −9999 ou 999). Utiliser *Gestion

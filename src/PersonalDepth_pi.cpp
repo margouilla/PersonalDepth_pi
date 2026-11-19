@@ -43,6 +43,8 @@
 #include "core/SurveyShape.h"
 #include "core/Triangulate.h"
 #include "core/GeoGrid.h"
+#include "core/Imagery.h"
+#include "core/SideScan.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -96,7 +98,7 @@ wxString PersonalDepth_pi::GetShortDescription() {
 
 wxString PersonalDepth_pi::GetLongDescription() {
   return U8("Affiche de volumineux levés bathymétriques personnels (XYZ, ESRI ASCII, "
-            "LandXML TIN, GeoTIFF/BAG avec GDAL) sous forme de surface colorée ombrée "
+            "LandXML TIN, GeoTIFF, BAG avec GDAL) sous forme de surface colorée ombrée "
             "et de sondes chiffrées exactes. Palette, seuils de profondeur, zone "
             "dangereuse et ombrage se modifient instantanément, sans régénérer les "
             "données — à la manière du module PBG de TimeZero.");
@@ -104,6 +106,7 @@ wxString PersonalDepth_pi::GetLongDescription() {
 
 int PersonalDepth_pi::Init() {
   m_renderer = std::make_unique<BathyRenderer>();
+  m_imgRenderer = std::make_unique<BathyRenderer>();
   LoadConfig();
   UpdateLanguage();  // langue de l'interface d'OpenCPN
   UpdateUnits();  // unités d'affichage d'OpenCPN (m / ft)
@@ -139,12 +142,8 @@ bool PersonalDepth_pi::DeInit() {
   StopFes();
   m_dbCancel = true;
   if (m_dbThread.joinable()) m_dbThread.join();
-  if (m_dbViewStop) *m_dbViewStop = true;
-  if (m_dbViewNext) m_dbViewNext->cancel();
-  if (m_renderer) m_renderer->ClearPending();
-  m_dbViewNext.reset();
-  m_dbViewDying.clear();
-  m_dbView.reset();
+  ResetView(m_vd, m_renderer.get());
+  ResetView(m_vi, m_imgRenderer.get());
   // Fenêtres supprimées tout de suite : Destroy() les laisse à wxWidgets, qui
   // les supprime plus tard, quand OpenCPN a déjà déchargé le plugin (mise à
   // jour, désinstallation) -> appel de code disparu et plantage.
@@ -154,6 +153,7 @@ bool PersonalDepth_pi::DeInit() {
   for (auto& l : m_layers) l->cancel();
   m_layers.clear();  // attend la fin des threads de chargement
   m_renderer.reset();
+  m_imgRenderer.reset();
   return true;
 }
 
@@ -210,6 +210,7 @@ void PersonalDepth_pi::ZoomToLayer(size_t i) {
 void PersonalDepth_pi::ColorsChanged() {
   ++m_set.version;  // la LUT et les tuiles visibles seront recolorées au prochain rendu
   SaveConfig();
+  if (!m_set.bathyShow) UpdateDbView();
   RequestRefresh(GetOCPNCanvasWindow());
 }
 
@@ -233,6 +234,7 @@ void PersonalDepth_pi::ExaggerationChanged() {
 
 void PersonalDepth_pi::ViewChanged() {
   SaveConfig();
+  if (!m_set.bathyShow) UpdateDbView();  // isobathes / sondes sans les couleurs : vue à charger ou libérer
   RequestRefresh(GetOCPNCanvasWindow());
 }
 
@@ -320,7 +322,7 @@ void PersonalDepth_pi::PerfLogTick() {
         p.frames, span / 1000.0, p.frames * 1000.0 / span, p.totalMs / n, p.maxMs, p.tileMs / n, p.uploads,
         p.uploadMs, p.contourMs / n, p.labelRuns, p.labelMs, m_perfViewsStarted, m_perfViewsCancelled,
         m_perfViewsReady, m_perfViewsReady ? m_perfViewMs / m_perfViewsReady : 0.0, m_perfViewMaxMs,
-        m_dbViewTarget);
+        m_vd.target);
   }
   p = BathyRenderer::Perf();
   m_perfViewsStarted = m_perfViewsCancelled = m_perfViewsReady = 0;
@@ -379,22 +381,49 @@ void PersonalDepth_pi::OnTick() {
   // base : fin d'une opération, puis mise à jour de la vue
   if (m_dbThread.joinable() && !m_dbBusy) {
     m_dbThread.join();
-    m_dbSources = m_dbSourcesNew;
-    m_dbCells = m_dbCellsNew;
-    m_dbCellDeg = m_dbCellDegNew;
-    ++m_dbEpoch;
+    if (m_dbJobKind == DbKind::Imagery) {
+      m_imgSources = m_imgSourcesNew;
+      ++m_imgEpoch;
+    } else {
+      m_dbSources = m_dbSourcesNew;
+      m_dbCells = m_dbCellsNew;
+      m_dbCellDeg = m_dbCellDegNew;
+      ++m_dbEpoch;
+    }
     {
       std::lock_guard<std::mutex> lk(m_dbMx);
       m_dbLast = m_dbErr.empty() ? m_dbTitle + U8(" : terminé").ToStdString(wxConvUTF8)
                                  : m_dbTitle + " : " + m_dbErr;
     }
+    bool estAny = false;
+    {  // décalage sonde / antenne estimé : affiché dans les réglages
+      std::lock_guard<std::mutex> lk(m_dbMx);
+      bool& any = estAny;
+      if (m_estTracks.set) {
+        m_set.importAntEstOk = m_estTracks.ok;
+        m_set.importAntEstFwd = (float)m_estTracks.fwd;
+        m_set.importAntEstStbd = (float)m_estTracks.stbd;
+        m_estTracks = LeverEstimate();
+        any = true;
+      }
+      if (m_estSonar.set) {
+        m_set.imgSonarOffsetEstOk = m_estSonar.ok;
+        m_set.imgSonarOffsetEstFwd = m_estSonar.fwd;
+        m_set.imgSonarOffsetEstStbd = m_estSonar.stbd;
+        m_estSonar = LeverEstimate();
+        any = true;
+      }
+    }
+    if (estAny) SaveConfig();
     if (m_dlg) m_dlg->RefreshDb();
+    if (m_dlg) m_dlg->RefreshImageryDisplay();
     if (m_set.tideMode) UpdateTide(false);
   } else if (m_dbBusy && m_dlg) {
     m_dlg->SetDbStatus(DbStatus());
   }
   UpdateDbView();
   UpdateAutoPalette(false);
+  UpdateImgAuto(false);
   // marée maillée : fin de préparation de zone
   if (m_fesThread.joinable() && !m_fesBusy) {
     m_fesThread.join();
@@ -773,19 +802,44 @@ void PersonalDepth_pi::StoreViewport(PlugIn_ViewPort* vp) {
   if (m_vpQuadOk && m_vpQuad.area() <= 0) m_vpQuadOk = false;
 }
 
+// Bathymétrie et imagerie : l'imagerie dessous (par défaut) ou au-dessus des
+// couleurs de profondeur ; isobathes, sondes, bandeau et curseur toujours
+// au-dessus de tout
 bool PersonalDepth_pi::RenderOverlayMultiCanvas(wxDC& dc, PlugIn_ViewPort* vp, int,
                                                 int priority) {
   if (!vp) return false;
   StoreViewport(vp);
   const auto layers = DrawLayers();
-  if (layers.empty()) return false;
+  const auto img = ImgLayers();
+  if (layers.empty() && img.empty()) return false;
   if (priority == OVERLAY_OVER_UI && m_hostHasChartsPriority) {
     m_renderer->RenderCursorDC(dc, vp, CursorTextFor(priority), m_set.fontSize);
     return true;
   }
   if (!ShouldDraw(priority)) return false;
-  m_renderer->RenderDC(dc, vp, layers, m_set, CursorTextFor(priority));
-  m_lastPpd = m_renderer->LastPixelsPerDegLon();
+  const wxString cur = CursorTextFor(priority);
+  m_set.bannerBathy = !layers.empty() && m_set.bathyShow;  // sections du bandeau
+  m_set.bannerImg = !img.empty();
+  m_set.bannerChart = !layers.empty();
+  // couleurs de profondeur masquées : isobathes et sondes seules
+  const bool tiles = m_set.bathyShow;
+  m_renderer->SetTilesHidden(!tiles);
+  const int bathyAll = tiles ? BathyRenderer::kAll : BathyRenderer::kOverlays;
+  if (img.empty()) {
+    m_renderer->RenderDC(dc, vp, layers, m_set, cur, bathyAll);
+  } else if (layers.empty()) {
+    m_imgRenderer->RenderDC(dc, vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderBannerDC(dc, vp, m_set);
+    m_renderer->RenderCursorDC(dc, vp, cur, m_set.fontSize);
+  } else if (m_set.imgOnTop && tiles) {
+    m_renderer->RenderDC(dc, vp, layers, m_set, cur, BathyRenderer::kTiles);
+    m_imgRenderer->RenderDC(dc, vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderDC(dc, vp, layers, m_set, cur, BathyRenderer::kOverlays);
+  } else {  // isobathes, sondes, bandeau et curseur au-dessus de l'imagerie
+    m_imgRenderer->RenderDC(dc, vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderDC(dc, vp, layers, m_set, cur, bathyAll);
+  }
+  m_lastPpd = (layers.empty() ? m_imgRenderer : m_renderer)->LastPixelsPerDegLon();
   m_lastRenderGL = false;
   return true;
 }
@@ -795,24 +849,47 @@ bool PersonalDepth_pi::RenderGLOverlayMultiCanvas(wxGLContext*, PlugIn_ViewPort*
   if (!vp) return false;
   StoreViewport(vp);
   const auto layers = DrawLayers();
-  if (layers.empty()) return false;
+  const auto img = ImgLayers();
+  if (layers.empty() && img.empty()) return false;
   if (priority == OVERLAY_OVER_UI && m_hostHasChartsPriority) {
     m_renderer->RenderCursorGL(vp, CursorTextFor(priority), m_set.fontSize);
     return true;
   }
   if (!ShouldDraw(priority)) return false;
-  m_renderer->RenderGL(vp, layers, m_set, CursorTextFor(priority));
-  m_lastPpd = m_renderer->LastPixelsPerDegLon();
+  const wxString cur = CursorTextFor(priority);
+  m_set.bannerBathy = !layers.empty() && m_set.bathyShow;  // sections du bandeau
+  m_set.bannerImg = !img.empty();
+  m_set.bannerChart = !layers.empty();
+  // couleurs de profondeur masquées : isobathes et sondes seules
+  const bool tiles = m_set.bathyShow;
+  m_renderer->SetTilesHidden(!tiles);
+  const int bathyAll = tiles ? BathyRenderer::kAll : BathyRenderer::kOverlays;
+  if (img.empty()) {
+    m_renderer->RenderGL(vp, layers, m_set, cur, bathyAll);
+  } else if (layers.empty()) {
+    m_imgRenderer->RenderGL(vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderBannerGL(vp, m_set);
+    m_renderer->RenderCursorGL(vp, cur, m_set.fontSize);
+  } else if (m_set.imgOnTop && tiles) {
+    m_renderer->RenderGL(vp, layers, m_set, cur, BathyRenderer::kTiles);
+    m_imgRenderer->RenderGL(vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderGL(vp, layers, m_set, cur, BathyRenderer::kOverlays);
+  } else {  // isobathes, sondes, bandeau et curseur au-dessus de l'imagerie
+    m_imgRenderer->RenderGL(vp, img, ImgSettings(), wxString(), BathyRenderer::kTiles);
+    m_renderer->RenderGL(vp, layers, m_set, cur, bathyAll);
+  }
+  m_lastPpd = (layers.empty() ? m_imgRenderer : m_renderer)->LastPixelsPerDegLon();
   m_lastRenderGL = true;
   // nouvelle vue en préparation : images suivantes demandées tout de suite
-  if (m_renderer->Pending() && !m_renderer->PendingDone() && m_cursorRefresh && !m_cursorRefresh->IsRunning())
-    m_cursorRefresh->StartOnce(20);
+  const bool pending = (m_renderer->Pending() && !m_renderer->PendingDone()) ||
+                       (m_imgRenderer->Pending() && !m_imgRenderer->PendingDone());
+  if (pending && m_cursorRefresh && !m_cursorRefresh->IsRunning()) m_cursorRefresh->StartOnce(20);
   return true;
 }
 
 void PersonalDepth_pi::SetCursorLatLon(double lat, double lon) {
   m_curLat = lat; m_curLon = lon;
-  if (!m_set.legend || DrawLayers().empty()) {
+  if (!m_set.legend || (DrawLayers().empty() && ImgLayers().empty())) {
     if (!m_cursorText.empty()) {
       m_cursorText.clear();
       m_renderer->SetCursor(false, lat, lon);
@@ -876,8 +953,10 @@ void PersonalDepth_pi::UpdateCursorText() {
           base += "  [" + n + " " + wxString(d.date.substr(0, 4)) + "]";
         }
     m_cursorText = base;
-    return;
+    break;
   }
+  const wxString im = ImgCursorText();  // imagerie sous le curseur (valeur d'origine)
+  if (!im.empty()) m_cursorText = m_cursorText.empty() ? im : m_cursorText + "  |  " + im;
 }
 
 // ---------------------------------------------------------- configuration
@@ -906,6 +985,28 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("BannerLock", m_set.bannerLock);
   c->Write("PanelTab", m_set.panelTab);
   c->Write("BannerVertical", m_set.bannerVertical);
+  c->Write("BathyShow", m_set.bathyShow);
+  c->Write("ImgShow", m_set.imgShow);
+  c->Write("ImgOpacity", m_set.imgOpacity);
+  c->Write("ImgOnTop", m_set.imgOnTop);
+  c->Write("ImgPalette", m_set.imgPalette);
+  c->Write("ImgInvert", m_set.imgInvert);
+  c->Write("ImgMin", m_set.imgMin);
+  c->Write("ImgMax", m_set.imgMax);
+  c->Write("ImgGamma", (double)m_set.imgGamma);
+  c->Write("ImgSmooth", m_set.imgSmooth);
+  c->Write("ImgBgMode", m_set.imgBgMode);
+  c->Write("ImgBgValue", m_set.imgBgValue);
+  c->Write("ImgAuto", m_set.imgAuto);
+  c->Write("ImgAutoSource", m_set.imgAutoSource);
+  c->Write("ImgSonarPixel", m_set.imgSonarPixel);
+  c->Write("ImgSonarEqualize", m_set.imgSonarEqualize);
+  c->Write("ImgSonarOffsetAuto", m_set.imgSonarOffsetAuto);
+  c->Write("ImgSonarOffsetFwd", m_set.imgSonarOffsetFwd);
+  c->Write("ImgSonarOffsetStbd", m_set.imgSonarOffsetStbd);
+  c->Write("ImgSonarOffsetEstOk", m_set.imgSonarOffsetEstOk);
+  c->Write("ImgSonarOffsetEstFwd", m_set.imgSonarOffsetEstFwd);
+  c->Write("ImgSonarOffsetEstStbd", m_set.imgSonarOffsetEstStbd);
   c->Write("Contours", m_set.contours);
   c->Write("ContourMode", m_set.contourMode);
   c->Write("ContourStep", (double)m_set.contourStep);
@@ -929,6 +1030,12 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("ImportOrder", m_set.importOrder);
   c->Write("ImportSign", m_set.importSign);
   c->Write("ImportOffset", (double)m_set.importOffset);
+  c->Write("ImportAntAuto", m_set.importAntAuto);
+  c->Write("ImportAntFwd", (double)m_set.importAntFwd);
+  c->Write("ImportAntStbd", (double)m_set.importAntStbd);
+  c->Write("ImportAntEstOk", m_set.importAntEstOk);
+  c->Write("ImportAntEstFwd", (double)m_set.importAntEstFwd);
+  c->Write("ImportAntEstStbd", (double)m_set.importAntEstStbd);
   c->Write("ImportZFeet", m_set.importZFeet);
   c->Write("ImportRes", (double)m_set.importRes);
   c->Write("ImportInstrument", m_set.importInstrument);
@@ -1014,6 +1121,32 @@ void PersonalDepth_pi::LoadConfig() {
   c->Read("BannerLock", &m_set.bannerLock, m_set.bannerLock);
   c->Read("PanelTab", &m_set.panelTab, m_set.panelTab);
   c->Read("BannerVertical", &m_set.bannerVertical, m_set.bannerVertical);
+  c->Read("BathyShow", &m_set.bathyShow, m_set.bathyShow);
+  c->Read("ImgShow", &m_set.imgShow, m_set.imgShow);
+  c->Read("ImgOpacity", &m_set.imgOpacity, m_set.imgOpacity);
+  m_set.imgOpacity = std::max(0, std::min(100, m_set.imgOpacity));
+  c->Read("ImgOnTop", &m_set.imgOnTop, m_set.imgOnTop);
+  c->Read("ImgPalette", &m_set.imgPalette, m_set.imgPalette);
+  m_set.imgPalette = std::max(0, std::min(2, m_set.imgPalette));
+  c->Read("ImgInvert", &m_set.imgInvert, m_set.imgInvert);
+  c->Read("ImgMin", &m_set.imgMin, m_set.imgMin);
+  c->Read("ImgMax", &m_set.imgMax, m_set.imgMax);
+  m_set.imgMin = std::max(0, std::min(99, m_set.imgMin));
+  m_set.imgMax = std::max(m_set.imgMin + 1, std::min(100, m_set.imgMax));
+  if (c->Read("ImgGamma", &d) && d >= 0.1 && d <= 5) m_set.imgGamma = (float)d;
+  c->Read("ImgSmooth", &m_set.imgSmooth, m_set.imgSmooth);
+  c->Read("ImgBgMode", &m_set.imgBgMode, m_set.imgBgMode);
+  c->Read("ImgBgValue", &m_set.imgBgValue, m_set.imgBgValue);
+  c->Read("ImgAuto", &m_set.imgAuto, m_set.imgAuto);
+  c->Read("ImgAutoSource", &m_set.imgAutoSource, m_set.imgAutoSource);
+  if (c->Read("ImgSonarPixel", &d) && d >= 0 && d <= 5) m_set.imgSonarPixel = d;
+  c->Read("ImgSonarEqualize", &m_set.imgSonarEqualize, m_set.imgSonarEqualize);
+  c->Read("ImgSonarOffsetAuto", &m_set.imgSonarOffsetAuto, m_set.imgSonarOffsetAuto);
+  if (c->Read("ImgSonarOffsetFwd", &d) && std::fabs(d) <= 50) m_set.imgSonarOffsetFwd = d;
+  if (c->Read("ImgSonarOffsetStbd", &d) && std::fabs(d) <= 50) m_set.imgSonarOffsetStbd = d;
+  c->Read("ImgSonarOffsetEstOk", &m_set.imgSonarOffsetEstOk, m_set.imgSonarOffsetEstOk);
+  if (c->Read("ImgSonarOffsetEstFwd", &d) && std::fabs(d) <= 50) m_set.imgSonarOffsetEstFwd = d;
+  if (c->Read("ImgSonarOffsetEstStbd", &d) && std::fabs(d) <= 50) m_set.imgSonarOffsetEstStbd = d;
   c->Read("Contours", &m_set.contours, m_set.contours);
   c->Read("ContourMode", &m_set.contourMode, m_set.contourMode);
   if (c->Read("ContourStep", &d) && d > 0) m_set.contourStep = (float)d;
@@ -1046,6 +1179,12 @@ void PersonalDepth_pi::LoadConfig() {
   {
     double v;
     if (c->Read("ImportOffset", &v)) m_set.importOffset = (float)v;
+    c->Read("ImportAntAuto", &m_set.importAntAuto, m_set.importAntAuto);
+    if (c->Read("ImportAntFwd", &v) && std::fabs(v) <= 50) m_set.importAntFwd = (float)v;
+    if (c->Read("ImportAntStbd", &v) && std::fabs(v) <= 50) m_set.importAntStbd = (float)v;
+    c->Read("ImportAntEstOk", &m_set.importAntEstOk, m_set.importAntEstOk);
+    if (c->Read("ImportAntEstFwd", &v) && std::fabs(v) <= 50) m_set.importAntEstFwd = (float)v;
+    if (c->Read("ImportAntEstStbd", &v) && std::fabs(v) <= 50) m_set.importAntEstStbd = (float)v;
   }
   c->Read("ImportCache", &m_set.importCache, m_set.importCache);
   c->Read("ImportZFeet", &m_set.importZFeet, m_set.importZFeet);
@@ -1114,9 +1253,12 @@ void PersonalDepth_pi::LoadConfig() {
 }
 
 // ================================================================ base
+// Couches de profondeur : couleurs (interrupteur Bathymétrie), mais aussi
+// isobathes et sondes, affichées même quand les couleurs sont masquées
 std::vector<LayerPtr> PersonalDepth_pi::DrawLayers() const {
   std::vector<LayerPtr> v;
-  if (m_dbView && m_dbView->state() == BathyLayer::Ready) v.push_back(m_dbView);  // dessous
+  if (!BathyNeeded()) return v;
+  if (m_vd.view && m_vd.view->state() == BathyLayer::Ready) v.push_back(m_vd.view);  // dessous
   v.insert(v.end(), m_layers.begin(), m_layers.end());
   return v;
 }
@@ -1132,7 +1274,14 @@ wxString PersonalDepth_pi::DbStatus() {
 void PersonalDepth_pi::DbOpen() {
   m_dbSources.clear();
   m_dbCells.clear();
+  m_imgSources.clear();
+  ++m_imgEpoch;
   if (m_set.dbFolder.empty() || m_dbBusy) return;
+  {  // base d'imagerie (.pdi) du même dossier
+    BathyDb idb;
+    std::string ie;
+    if (idb.open(m_set.dbFolder, ie, 0, DbKind::Imagery)) m_imgSources = idb.sources();
+  }
   BathyDb db;
   std::string err;
   const bool opened = db.open(m_set.dbFolder, err);
@@ -1166,7 +1315,7 @@ void PersonalDepth_pi::DbOpen() {
 
 void PersonalDepth_pi::StartDbJob(
     const std::string& title,
-    std::function<bool(BathyDb&, std::string&, const DbProgress&)> job) {
+    std::function<bool(BathyDb&, std::string&, const DbProgress&)> job, DbKind kind) {
   if (m_dbBusy || m_dbThread.joinable() || m_set.dbFolder.empty()) return;
   {
     std::lock_guard<std::mutex> lk(m_dbMx);
@@ -1177,10 +1326,31 @@ void PersonalDepth_pi::StartDbJob(
   m_dbProgress = 0.f;
   m_dbCancel = false;
   m_dbBusy = true;
+  m_dbJobKind = kind;
   const std::string folder = m_set.dbFolder;
   const DatumConfig dcfg = DatumCfg();
   const Datum vk = ViewDatum();
-  m_dbThread = std::thread([this, folder, job, dcfg, vk]() {
+  m_dbThread = std::thread([this, folder, job, dcfg, vk, kind]() {
+    if (kind == DbKind::Imagery) {  // imagerie : sans référence verticale
+      BathyDb db;
+      std::string err;
+      DbProgress prog = [this](float f, const std::string& step) {
+        m_dbProgress = f;
+        std::lock_guard<std::mutex> lk(m_dbMx);
+        m_dbStep = step;
+      };
+      bool ok = db.open(folder, err, 0, DbKind::Imagery) && job(db, err, prog);
+      if (!ok && err.empty()) err = pd::tr("échec");
+      std::string e2;
+      db.reloadSources(e2);
+      {
+        std::lock_guard<std::mutex> lk(m_dbMx);
+        m_dbErr = ok ? std::string() : (err == "Annulé" ? std::string(pd::tr("arrêté")) : err);
+        m_imgSourcesNew = db.sources();
+      }
+      m_dbBusy = false;
+      return;
+    }
     BathyDb db;
     DatumProvider prov(dcfg);  // surfaces de référence calculées au besoin
     db.setDatumProvider(&prov);
@@ -1222,8 +1392,15 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
   const DbPriority prio = (DbPriority)m_set.dbPriority;
   const std::atomic<bool>* cancel = &m_dbCancel;
   const LandCfg landCfg = LandConfig();
+  {
+    std::lock_guard<std::mutex> lk(m_dbMx);
+    m_estTracks = LeverEstimate();
+  }
+  LeverEstimate* est = &m_estTracks;
+  std::mutex* estMx = &m_dbMx;
   StartDbJob(JobLabel("Import (%d fichier(s))", files.size()),
-             [files, prio, cancel, group, replace, landCfg](BathyDb& db, std::string& err, const DbProgress& prog) {
+             [files, prio, cancel, group, replace, landCfg, est, estMx](BathyDb& db, std::string& err,
+                                                                       const DbProgress& prog) {
                std::string errors;
                LandMask land;  // pas de surface interpolée sur la terre
                if (landCfg.any()) {
@@ -1282,6 +1459,7 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  m.name = name;
                  m.path = p.path;
                  m.info = shape.describe();
+                 m.info += cloud.posInfo;  // traces : décalage sonde / antenne
                  if (p.interpD > 0 && !gridded && p.interpolate) m.info += pd::tr(" ; D imposée");
                  m.interpD = (!gridded && p.interpolate) ? (p.interpD > 0 ? p.interpD : shape.maxEdge) : 0;
                  // méthode : automatique = voisin naturel pour un levé en lignes (pas de
@@ -1292,6 +1470,7 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  // déduit d'une distance max imposée (une grande D rendait la
                  // surface grossière) ; la base garde au moins D / 128 (coût borné)
                  m.res = m.interpD <= 0 ? shape.storeRes : shape.interpRes;
+                 if (gridded) { m.gridStepX = shape.dx; m.gridStepY = shape.dy; }
                  if (p.storeRes > 0) m.res = p.storeRes;  // résolution imposée à l'import
                  // date du levé : imposée, sinon première date de la colonne
                  // date du fichier, sinon nom du fichier ou date du fichier
@@ -1300,6 +1479,18 @@ void PersonalDepth_pi::DbImport(const std::vector<LayerParams>& files, const std
                  if (m.date.empty() && cloud.tMin != 0) m.date = pd::FormatTime(cloud.tMin).substr(0, 10);
                  if (m.date.empty()) m.date = GuessSurveyDate(p.path);
                  m.params = p.importPrefs;
+                 if (p.load.antAuto) {  // décalage sonde / antenne estimé sur ce fichier
+                   char b[160];
+                   std::snprintf(b, sizeof b, "antEstOk=%d\nantEstFwd=%.9g\nantEstStbd=%.9g\n", cloud.antEstOk ? 1 : 0,
+                                 cloud.antEstFwd, cloud.antEstStbd);
+                   if (!m.params.empty() && m.params.back() != '\n') m.params += '\n';
+                   m.params += b;
+                   std::lock_guard<std::mutex> lk(*estMx);
+                   est->set = true;
+                   est->ok = cloud.antEstOk;
+                   est->fwd = cloud.antEstFwd;
+                   est->stbd = cloud.antEstStbd;
+                 }
                  m.crs = L.crsUsed().empty() ? "WGS84" : L.crsUsed();
                  m.datum = p.datum;
                  m.vref = p.vref.active() ? (p.vref.label.empty() ? "converti" : p.vref.label)
@@ -1702,66 +1893,69 @@ void PersonalDepth_pi::DbUpdateDatum() {
 
 // Vue de la base : reconstruite en tâche de fond quand la carte sort de la
 // zone déjà préparée (marge de 50 %) ou quand le niveau de détail change
-void PersonalDepth_pi::UpdateDbView() {
-  if (m_set.dbFolder.empty() || m_dbSources.empty()) {
-    if (m_dbView || m_dbViewNext) {
-      if (m_dbViewNext) m_dbViewNext->cancel();
-      m_renderer->ClearPending();
-      m_dbViewNext.reset();
-      m_dbView.reset();
-      m_renderer->Invalidate();
+void PersonalDepth_pi::UpdateView(DbViewSlot& V, DbKind kind, BathyRenderer& R) {
+  const bool depth = kind == DbKind::Depth;
+  const auto& sources = depth ? m_dbSources : m_imgSources;
+  if (m_set.dbFolder.empty() || sources.empty() || (depth ? !BathyNeeded() : !m_set.imgShow)) {
+    if (V.view || V.next) {
+      if (V.next) V.next->cancel();
+      R.ClearPending();
+      V.next.reset();
+      V.view.reset();
+      R.Invalidate();
       RequestRefresh(GetOCPNCanvasWindow());
     }
+    V.target = -1;  // couche réaffichée : vue recalculée
     return;
   }
   // vues abandonnées : libérées une fois leur calcul arrêté
-  m_dbViewDying.erase(std::remove_if(m_dbViewDying.begin(), m_dbViewDying.end(),
+  V.dying.erase(std::remove_if(V.dying.begin(), V.dying.end(),
                                      [](const LayerPtr& l) { return l->state() != BathyLayer::Loading; }),
-                      m_dbViewDying.end());
-  bool swapNow = m_dbViewNext && m_dbViewNext->state() != BathyLayer::Loading;
-  if (swapNow && m_dbViewNext->state() == BathyLayer::Ready && m_dbView && m_lastRenderGL) {
+                      V.dying.end());
+  bool swapNow = V.next && V.next->state() != BathyLayer::Loading;
+  if (swapNow && V.next->state() == BathyLayer::Ready && V.view && m_lastRenderGL) {
     // OpenGL : la nouvelle vue est d'abord préparée (textures, isobathes) par
     // petits lots pendant que l'actuelle reste affichée, puis la remplace
     const wxLongLong now = wxGetLocalTimeMillis();
-    if (m_renderer->Pending() != m_dbViewNext) {
-      m_renderer->SetPending(m_dbViewNext);
-      m_pendingSince = now;
+    if (R.Pending() != V.next) {
+      R.SetPending(V.next);
+      V.pendingSince = now;
       RequestRefresh(GetOCPNCanvasWindow());
       swapNow = false;
-    } else if (!m_renderer->PendingDone() && (now - m_pendingSince).ToDouble() < 2000) {
+    } else if (!R.PendingDone() && (now - V.pendingSince).ToDouble() < 2000) {
       swapNow = false;
     }
   }
   if (swapNow) {
-    const auto st = m_dbViewNext->state();
-    const bool first = !m_dbView;
-    m_dbView = st == BathyLayer::Ready ? m_dbViewNext : nullptr;
-    if (st == BathyLayer::Ready) {
+    const auto st = V.next->state();
+    const bool first = !V.view;
+    V.view = st == BathyLayer::Ready ? V.next : nullptr;
+    if (depth && st == BathyLayer::Ready) {
       const double ms = (wxGetLocalTimeMillis() - m_perfViewStart).ToDouble();
       ++m_perfViewsReady;
       m_perfViewMs += ms;
       m_perfViewMaxMs = std::max(m_perfViewMaxMs, ms);
     }
-    if (m_dbViewResult && st == BathyLayer::Ready) {  // zone réellement préparée
-      m_dbViewQuad = m_dbViewResult->quad;
-      for (int k = 0; k < 4; ++k) m_dbViewBox[k] = m_dbViewResult->box[k];
+    if (V.result && st == BathyLayer::Ready) {  // zone réellement préparée
+      V.quad = V.result->quad;
+      for (int k = 0; k < 4; ++k) V.box[k] = V.result->box[k];
     }
-    if (m_dbViewOriginNext) m_datumOrigin = m_dbViewOriginNext->load();
-    if (m_dlg) m_dlg->RefreshDatum();
-    if (m_renderer->Pending() == m_dbViewNext && st == BathyLayer::Ready) {
-      m_renderer->AdoptPending();  // textures déjà prêtes : pas d'à-coup
+    if (depth && V.originNext) m_datumOrigin = V.originNext->load();
+    if (depth && m_dlg) m_dlg->RefreshDatum();
+    if (R.Pending() == V.next && st == BathyLayer::Ready) {
+      R.AdoptPending();  // textures déjà prêtes : pas d'à-coup
     } else {
-      m_renderer->ClearPending();
-      m_renderer->Invalidate();
+      R.ClearPending();
+      R.Invalidate();
     }
-    m_dbViewNext.reset();
-    ++m_set.version;
-    if (first && m_dbView && m_set.tideMode && !m_set.tideOk) UpdateTide(true);
+    V.next.reset();
+    if (depth) ++m_set.version;
+    if (depth && first && V.view && m_set.tideMode && !m_set.tideOk) UpdateTide(true);
     if (m_dlg && m_dlg->IsShown()) m_dlg->RefreshLayers();
     RequestRefresh(GetOCPNCanvasWindow());
   }
   if (!m_vpValid) return;
-  if (m_set.tideMode) {  // zone de la marée : sources à l'écran
+  if (depth && m_set.tideMode) {  // zone de la marée : sources à l'écran
     std::string sig;
     double zb[4];
     TideZone(zb, &sig);
@@ -1777,25 +1971,26 @@ void PersonalDepth_pi::UpdateDbView() {
   const double* v = m_vpBox;
   // Écran (carte tournée comprise) encore dans la zone préparée ?
   bool inside;
-  if (m_vpQuadOk && m_dbViewHasQuad) {
+  if (m_vpQuadOk && V.hasQuad) {
     inside = true;
-    for (int k = 0; k < 4 && inside; ++k) inside = m_dbViewQuad.contains(m_vpQuad.x[k], m_vpQuad.y[k]);
+    for (int k = 0; k < 4 && inside; ++k) inside = V.quad.contains(m_vpQuad.x[k], m_vpQuad.y[k]);
   } else {
-    inside = !m_dbViewHasQuad && v[0] >= m_dbViewBox[0] && v[1] <= m_dbViewBox[1] &&
-             v[2] >= m_dbViewBox[2] && v[3] <= m_dbViewBox[3];
+    inside = !V.hasQuad && v[0] >= V.box[0] && v[1] <= V.box[1] &&
+             v[2] >= V.box[2] && v[3] <= V.box[3];
   }
-  const Datum vk = ViewDatum();
-  if (inside && target == m_dbViewTarget && m_dbViewEpoch == m_dbEpoch && m_dbViewDatum == (int)vk) return;
+  const Datum vk = depth ? ViewDatum() : Datum::Free;
+  const unsigned epoch = depth ? m_dbEpoch : m_imgEpoch;
+  if (inside && target == V.target && V.epoch == epoch && V.datum == (int)vk) return;
   if (m_dbBusy) return;  // la base est en cours de modification
   // Vue en cours de calcul devenue inutile (zoom, déplacement) : arrêtée tout
   // de suite plutôt que d'enchaîner des vues périmées (latence au zoom)
-  if (m_dbViewNext) {
-    if (m_dbViewStop) *m_dbViewStop = true;
-    m_dbViewNext->cancel();
-    if (m_renderer->Pending() == m_dbViewNext) m_renderer->ClearPending();
-    ++m_perfViewsCancelled;
-    m_dbViewDying.push_back(m_dbViewNext);
-    m_dbViewNext.reset();
+  if (V.next) {
+    if (V.stop) *V.stop = true;
+    V.next->cancel();
+    if (R.Pending() == V.next) R.ClearPending();
+    if (depth) ++m_perfViewsCancelled;
+    V.dying.push_back(V.next);
+    V.next.reset();
   }
   // Marge autour de l'écran pour suivre un déplacement sans recharger. Carte
   // tournée : seules les cellules de l'écran tourné (et de sa marge) sont
@@ -1830,7 +2025,7 @@ void PersonalDepth_pi::UpdateDbView() {
   // zone réellement préparée, connue du calcul (marge selon le niveau des données)
   auto result = std::make_shared<Prep>(prov);
   LayerParams p;
-  p.label = U8("Base de bathymétrie").ToStdString(wxConvUTF8);
+  p.label = U8(depth ? "Base de bathymétrie" : "Base d'imagerie").ToStdString(wxConvUTF8);
   p.useCache = false;
   p.exaggeration = m_set.exaggeration;
   p.shadeSmooth = m_set.shadeSmooth;
@@ -1838,14 +2033,14 @@ void PersonalDepth_pi::UpdateDbView() {
   p.stop = stop.get();
   const std::string folder = m_set.dbFolder;
   const std::set<std::string> hidden = m_set.dbHidden;
-  const bool skipInterp = !m_set.interpShow;
+  const bool skipInterp = depth && !m_set.interpShow;
   auto origin = std::make_shared<std::atomic<int>>(0);
-  p.custom = [folder, hidden, target, skipInterp, vk, origin, stop, useQuad, screen, result, expand](
+  p.custom = [folder, hidden, kind, target, skipInterp, vk, origin, stop, useQuad, screen, result, expand](
                  PointCloud& pc, double& dl, double& dt, std::vector<int64_t>& src,
                  std::vector<uint8_t>& interp, std::string& err) {
     BathyDb db;
     int used = 0, org = 0;
-    if (!db.open(folder, err)) return false;
+    if (!db.open(folder, err, 0, kind)) return false;
     db.setHiddenCells(hidden);
     Prep r = *result;
     if (useQuad) {
@@ -1868,19 +2063,35 @@ void PersonalDepth_pi::UpdateDbView() {
     *origin = org;
     return ok;
   };
-  for (int k = 0; k < 4; ++k) m_dbViewBox[k] = prov.box[k];
-  m_dbViewQuad = prov.quad;
-  m_dbViewHasQuad = useQuad;
-  m_dbViewResult = result;
-  m_dbViewStop = stop;
-  m_dbViewTarget = target;
-  m_dbViewEpoch = m_dbEpoch;
-  m_dbViewDatum = (int)vk;
-  m_dbViewOriginNext = origin;
-  m_dbViewNext = std::make_shared<BathyLayer>(p);
-  m_dbViewNext->startLoad();
-  ++m_perfViewsStarted;
-  m_perfViewStart = wxGetLocalTimeMillis();
+  for (int k = 0; k < 4; ++k) V.box[k] = prov.box[k];
+  V.quad = prov.quad;
+  V.hasQuad = useQuad;
+  V.result = result;
+  V.stop = stop;
+  V.target = target;
+  V.epoch = epoch;
+  V.datum = (int)vk;
+  V.originNext = origin;
+  V.next = std::make_shared<BathyLayer>(p);
+  V.next->startLoad();
+  if (depth) {
+    ++m_perfViewsStarted;
+    m_perfViewStart = wxGetLocalTimeMillis();
+  }
+}
+
+void PersonalDepth_pi::UpdateDbView() {
+  UpdateView(m_vd, DbKind::Depth, *m_renderer);
+  UpdateView(m_vi, DbKind::Imagery, *m_imgRenderer);
+}
+
+void PersonalDepth_pi::ResetView(DbViewSlot& V, BathyRenderer* R) {
+  if (V.stop) *V.stop = true;
+  if (V.next) V.next->cancel();
+  if (R) R->ClearPending();
+  V.next.reset();
+  V.dying.clear();
+  V.view.reset();
 }
 
 // ======================================================= palette automatique
@@ -1947,7 +2158,7 @@ bool PersonalDepth_pi::MouseEventHook(wxMouseEvent& e) {
                       e.GetEventType() == wxEVT_MOUSEWHEEL;
   const bool pressed = m_bannerDown != BannerHit::NoPart || m_bannerDrag;
   if (!button && !(pressed && (e.Dragging() || e.Moving()))) return false;
-  if (DrawLayers().empty()) { m_renderer->HideBanner(); return false; }  // rien d'affiché
+  if (DrawLayers().empty() && ImgLayers().empty()) { m_renderer->HideBanner(); return false; }  // rien d'affiché
   // coordonnées souris (points) -> pixels du point de vue (écrans haute densité)
   wxWindow* win = wxDynamicCast(e.GetEventObject(), wxWindow);
   double k = 1.0;
@@ -2041,6 +2252,80 @@ void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
       if (id >= 10000 && id < 10000 + (int)list.size()) ApplyPreset(list[id - 10000].key);
       break;
     }
+    // ---- imagerie
+    case BannerHit::ImgMode:
+      m_set.imgAuto = !m_set.imgAuto;
+      UpdateImgAuto(true);
+      ImageryChanged();
+      break;
+    case BannerHit::ImgSource:
+      m_set.imgAutoSource = m_set.imgAutoSource == 1 ? 0 : 1;
+      UpdateImgAuto(true);
+      ImageryChanged();
+      break;
+    case BannerHit::ImgMin:
+    case BannerHit::ImgMax: {
+      const bool isMin = part == BannerHit::ImgMin;
+      const int cur = isMin ? m_set.imgMin : m_set.imgMax;
+      const wxString def = wxString::Format("%d", cur);
+      wxString txt = wxGetTextFromUser(isMin ? U8("Imagerie : noir à (en pour cent de l'étirement de chaque image, 0 – 99)")
+                                             : U8("Imagerie : blanc à (en pour cent de l'étirement de chaque image, 1 – 100)"),
+                                       U8("Imagerie"), def, win);
+      txt.Trim(true).Trim(false);
+      long v;
+      if (txt.empty() || txt.IsSameAs(def) || !txt.ToLong(&v)) break;
+      if (isMin) m_set.imgMin = (int)std::max(0L, std::min(99L, v));
+      else m_set.imgMax = (int)std::max(1L, std::min(100L, v));
+      if (m_set.imgMax <= m_set.imgMin) {  // bornes croisées : l'autre suit
+        if (isMin) m_set.imgMax = std::min(100, m_set.imgMin + 1);
+        else m_set.imgMin = std::max(0, m_set.imgMax - 1);
+      }
+      m_set.imgAuto = false;  // borne saisie : contraste manuel
+      ImageryChanged();
+      break;
+    }
+    case BannerHit::ImgBar: {
+      wxMenu menu;
+      const char* pal[] = {"Niveaux de gris", "Cuivre", "Sépia"};
+      for (int k = 0; k < 3; ++k) menu.AppendRadioItem(10000 + k, U8(pal[k]))->Check(m_set.imgPalette == k);
+      menu.AppendSeparator();
+      menu.AppendCheckItem(10010, U8("Inverser (réflectivité forte en sombre)"))->Check(m_set.imgInvert);
+      const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
+      if (id >= 10000 && id < 10003) m_set.imgPalette = id - 10000;
+      else if (id == 10010) m_set.imgInvert = !m_set.imgInvert;
+      else break;
+      ImageryChanged();
+      break;
+    }
+    // ---- isobathes et sondes
+    case BannerHit::CtOn:
+      m_set.contours = !m_set.contours;
+      ChartTextChanged(true);
+      break;
+    case BannerHit::SdOn:
+      m_set.soundings = !m_set.soundings;
+      ChartTextChanged(false);
+      break;
+    case BannerHit::SdDec:  // 0 -> 1 -> 2 -> 0 décimales
+      m_set.decimals = (std::max(0, m_set.decimals) + 1) % 3;
+      ChartTextChanged(false);
+      break;
+    case BannerHit::CtStep:
+    case BannerHit::CtMajor:
+      BannerContourValue(part == BannerHit::CtMajor, win, pos);
+      break;
+    case BannerHit::SdSize: {
+      wxMenu menu;
+      const int sizes[] = {7, 8, 9, 10, 11, 12, 14, 16, 18, 20};
+      for (int k = 0; k < 10; ++k)
+        menu.AppendRadioItem(10000 + k, wxString::Format("%d pt", sizes[k]))->Check(m_set.fontSize == sizes[k]);
+      menu.SetTitle(U8("Taille du texte (sondes, valeurs des isobathes)"));
+      const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
+      if (id < 10000 || id >= 10010) break;
+      m_set.fontSize = sizes[id - 10000];
+      ChartTextChanged(true);
+      break;
+    }
     case BannerHit::Gear:
       if (!m_dlg) m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
       m_dlg->Show();
@@ -2050,6 +2335,65 @@ void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
     default:
       break;
   }
+}
+
+// Isobathes / sondes changées depuis le bandeau
+void PersonalDepth_pi::ChartTextChanged(bool contours) {
+  if (contours) ++m_set.contourVersion;  // isobathes recalculées
+  ViewChanged();
+  if (m_dlg) m_dlg->RefreshPalette();
+}
+
+// Intervalle (ou maîtresse) des isobathes depuis le bandeau : menu de valeurs
+// rondes dans l'unité affichée, seuils de la palette (intervalle), ou saisie
+void PersonalDepth_pi::BannerContourValue(bool major, wxWindow* win, wxPoint pos) {
+  DisplaySettings& s = m_set;
+  const float k = s.depthK > 0 ? s.depthK : 1.f;
+  const bool feet = k > 1.5f;
+  const std::vector<double> vals = major ? (feet ? std::vector<double>{5, 10, 20, 50, 100, 200}
+                                                 : std::vector<double>{2, 5, 10, 20, 50, 100})
+                                         : (feet ? std::vector<double>{1, 2, 5, 10, 20, 50, 100}
+                                                 : std::vector<double>{0.5, 1, 2, 5, 10, 20, 50});
+  const double cur = (major ? s.contourMajor : s.contourStep) * k;
+  wxMenu menu;
+  if (major) menu.AppendRadioItem(9990, U8("Aucune isobathe maîtresse"))->Check(!(s.contourMajor > 0));
+  else menu.AppendRadioItem(9990, U8("Seuils de la palette"))->Check(s.contourMode == 1);
+  menu.AppendSeparator();
+  bool found = false;
+  for (size_t i = 0; i < vals.size(); ++i) {
+    const bool on = (major ? s.contourMajor > 0 : s.contourMode == 0) && std::fabs(cur - vals[i]) < 1e-3;
+    found = found || on;
+    menu.AppendRadioItem(10000 + (int)i, wxString::Format("%g %s", vals[i], s.depthUnit))->Check(on);
+  }
+  menu.AppendSeparator();
+  menu.Append(9991, U8("Autre valeur…"));
+  menu.SetTitle(major ? U8("Isobathe maîtresse tous les") : U8("Intervalle des isobathes"));
+  const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
+  double v = -1;
+  if (id == 9990) {
+    if (major) s.contourMajor = 0;
+    else s.contourMode = 1;
+    ChartTextChanged(true);
+    return;
+  } else if (id >= 10000 && id < 10000 + (int)vals.size()) {
+    v = vals[id - 10000];
+  } else if (id == 9991) {
+    const wxString def = wxString::Format("%g", std::round(cur * 100.0) / 100.0);
+    wxString txt = wxGetTextFromUser(
+        (major ? U8("Isobathe maîtresse tous les") : U8("Intervalle des isobathes")) + " (" + s.depthUnit + ")",
+        U8("Isobathes"), def, win);
+    txt.Trim(true).Trim(false);
+    txt.Replace(",", ".");
+    if (txt.empty() || !txt.ToCDouble(&v) || !(v > 0)) return;
+  } else {
+    return;
+  }
+  if (major) s.contourMajor = (float)(v / k);
+  else {
+    s.contourStep = (float)std::max(0.01, v / k);
+    s.contourMode = 0;
+  }
+  ChartTextChanged(true);
 }
 
 // Saisie d'une borne de la palette. Automatique : borne imposée (vide = calculée) ;
@@ -2205,6 +2549,247 @@ void PersonalDepth_pi::DbZoomTo(const std::vector<int64_t>& ids) {
   JumpToPosition(lat, lon, 0.9 * std::min(sz.x / std::max(wm, 1.0), sz.y / std::max(hm, 1.0)));
 }
 
+// ================================================================ imagerie
+std::vector<LayerPtr> PersonalDepth_pi::ImgLayers() const {
+  std::vector<LayerPtr> v;
+  if (m_set.imgShow && m_vi.view && m_vi.view->state() == BathyLayer::Ready) v.push_back(m_vi.view);
+  return v;
+}
+
+// Palette de l'imagerie : valeur étirée (0 – 1 entre les 2 % et 98 % de chaque
+// source) -> niveau de gris (ou teinte) ; bornes du contraste, gamma, inversion
+ColorRamp ImageryRamp(const DisplaySettings& s) {
+  ColorRamp r;
+  r.mode = ColorRamp::Mode::Continuous;
+  float lo = std::max(0, std::min(99, s.imgMin)) / 100.f;
+  float hi = std::max(1, std::min(100, s.imgMax)) / 100.f;
+  if (hi < lo + 0.01f) hi = lo + 0.01f;
+  const float g = std::max(0.1f, std::min(5.f, s.imgGamma));
+  const int n = 32;
+  for (int k = 0; k <= n; ++k) {
+    const float t = (float)k / n;
+    float v = std::pow(t, 1.f / g);
+    if (s.imgInvert) v = 1.f - v;
+    float R, G, B;
+    switch (s.imgPalette) {
+      case 1:  // cuivre (rendu « sonar » des mosaïques)
+        R = std::min(1.f, v * 1.25f); G = v * 0.78f; B = v * 0.5f;
+        break;
+      case 2: {  // sépia
+        R = 0.08f + 0.92f * v; G = 0.06f + 0.88f * v; B = 0.04f + 0.74f * v;
+        break;
+      }
+      default:
+        R = G = B = v;
+    }
+    r.stops.push_back({lo + (hi - lo) * t, RGBA((int)std::lround(R * 255), (int)std::lround(G * 255),
+                                                (int)std::lround(B * 255))});
+  }
+  return r;
+}
+
+const DisplaySettings& PersonalDepth_pi::ImgSettings() {
+  if (m_imgSetVersion == m_set.imgVersion) return m_imgSet;
+  DisplaySettings& d = m_imgSet;
+  d.ramp = ImageryRamp(m_set);
+  d.opacity = m_set.imgOpacity;
+  d.hillshade = false;
+  d.soundings = false;
+  d.contours = false;
+  d.banner = false;
+  d.legend = false;
+  d.smooth = m_set.imgSmooth;
+  d.interpShow = true;
+  d.interpDistinct = false;
+  d.tideMode = 0;
+  d.tide.reset();
+  d.tideOk = false;
+  d.version = m_set.imgVersion;
+  m_imgSetVersion = m_set.imgVersion;
+  return d;
+}
+
+wxString PersonalDepth_pi::ImgCursorText() {
+  const auto img = ImgLayers();
+  if (img.empty()) return wxString();
+  const double radiusDeg = 2.0 / std::max(m_lastPpd, 1e-3);
+  float gz, sz;
+  double dist;
+  int64_t sid = 0;
+  bool gi = false;
+  if (!img[0]->probe(m_curLon, m_curLat, radiusDeg, gz, sz, dist, &sid, &gi)) return wxString();
+  const float n = !std::isnan(gz) ? gz : sz;
+  if (std::isnan(n)) return wxString();
+  for (const auto& d : m_imgSources)
+    if (d.id == sid) {
+      const double v = d.vlo + n * (d.vhi - d.vlo);  // valeur d'origine
+      wxString t = d.vunit == "dB" ? wxString::Format("%.1f dB", v)
+                   : d.vunit.empty() ? wxString::Format("%.4g", v)
+                                     : wxString::Format("%.0f", v) + " " + U8(d.vunit.c_str());
+      wxString nm = wxString::FromUTF8(d.name.c_str());
+      if (nm.size() > 24) nm = nm.Left(22) + "..";
+      return U8("Imagerie") + " " + t + "  [" + nm + "]";
+    }
+  return U8("Imagerie") + wxString::Format(" %.0f %%", n * 100.f);
+}
+
+void PersonalDepth_pi::ImageryChanged() {
+  ++m_set.imgVersion;
+  SaveConfig();
+  if (m_dlg) m_dlg->RefreshImageryDisplay();
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+// Contraste automatique de l'imagerie : noir et blanc aux valeurs à 2 % et
+// 98 % de la zone affichée, ou étirement d'import de chaque image (0 – 100 %)
+void PersonalDepth_pi::UpdateImgAuto(bool force) {
+  if (!m_set.imgAuto) return;
+  int lo = 0, hi = 100;
+  if (m_set.imgAutoSource == 1) {
+    const auto img = ImgLayers();
+    if (img.empty() || !m_vpValid) return;
+    const BathyLayer& l = *img[0];
+    const GridLevel& g = l.grid.levels[l.grid.levelFor(m_lastPpd, 2.0)];
+    const double* v = m_vpBox;
+    const int i0 = std::max(0, (int)std::floor((v[0] - g.lonW) / g.dlon));
+    const int i1 = std::min(g.nx - 1, (int)std::floor((v[1] - g.lonW) / g.dlon));
+    const int j0 = std::max(0, (int)std::floor((g.latN - v[3]) / g.dlat));
+    const int j1 = std::min(g.ny - 1, (int)std::floor((g.latN - v[2]) / g.dlat));
+    std::vector<long long> hist(201, 0);  // 0 – 100 % par demi-pour-cent
+    long long n = 0;
+    for (int j = j0; j <= j1; ++j)
+      for (int i = i0; i <= i1; ++i) {
+        const float z = g.at(i, j);
+        if (std::isnan(z)) continue;
+        ++hist[(size_t)std::max(0, std::min(200, (int)std::lround(z * 200.f)))];
+        ++n;
+      }
+    if (n < 100) return;
+    long long acc = 0;
+    bool loSet = false;
+    for (int k = 0; k <= 200; ++k) {
+      acc += hist[k];
+      if (!loSet && acc > n * 0.02) { lo = k / 2; loSet = true; }
+      if (acc >= n * 0.98) { hi = (k + 1) / 2; break; }
+    }
+    lo = std::max(0, std::min(99, lo));
+    hi = std::max(lo + 1, std::min(100, hi));
+  }
+  if (!force && lo == m_set.imgMin && hi == m_set.imgMax) return;
+  if (lo == m_set.imgMin && hi == m_set.imgMax) return;
+  m_set.imgMin = lo;
+  m_set.imgMax = hi;
+  ++m_set.imgVersion;
+  if (m_dlg) m_dlg->RefreshImageryDisplay();
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void PersonalDepth_pi::LayersShownChanged() {
+  SaveConfig();
+  if (m_renderer) m_renderer->Invalidate();
+  if (m_imgRenderer) m_imgRenderer->Invalidate();
+  UpdateDbView();
+  if (m_dlg && m_dlg->IsShown()) m_dlg->RefreshLayers();
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const std::string& group) {
+  if (files.empty()) return;
+  ImageryOptions o;
+  if (m_set.imgBgMode == 1) o.noBackground = true;
+  else if (m_set.imgBgMode == 2) o.background = m_set.imgBgValue;
+  SideScanOptions so;
+  so.pixel = m_set.imgSonarPixel;
+  so.equalize = m_set.imgSonarEqualize;
+  so.autoOffset = m_set.imgSonarOffsetAuto;
+  so.offsetFwd = m_set.imgSonarOffsetFwd;
+  so.offsetStbd = m_set.imgSonarOffsetStbd;
+  const std::atomic<bool>* cancel = &m_dbCancel;
+  {
+    std::lock_guard<std::mutex> lk(m_dbMx);
+    m_estSonar = LeverEstimate();
+  }
+  LeverEstimate* est = &m_estSonar;
+  std::mutex* estMx = &m_dbMx;
+  StartDbJob(JobLabel("Import d'imagerie (%d fichier(s))", files.size()),
+             [files, o, so, group, cancel, est, estMx](BathyDb& db, std::string& err, const DbProgress& prog) {
+               std::string errors;
+               size_t done = 0;
+               for (size_t i = 0; i < files.size(); ++i) {
+                 if (*cancel) { err = pd::tr("arrêté"); return false; }
+                 const std::string name = std::filesystem::u8path(files[i]).filename().u8string();
+                 const float f0 = (float)i / files.size(), f1 = (float)(i + 1) / files.size();
+                 const std::string tag = "[" + std::to_string(i + 1) + "/" + std::to_string(files.size()) + "] ";
+                 DbSource m;
+                 m.name = name;
+                 m.path = files[i];
+                 m.date = GuessSurveyDate(files[i]);
+                 m.group = !group.empty() ? group : GuessSourceGroup(files[i]);
+                 std::string e;
+                 auto sub = [&](float f, const std::string& step) { prog(f0 + (f1 - f0) * f, tag + name + " : " + step); };
+                 // journal de sondeur (sonar latéral) ou image GeoTIFF
+                 const bool sonar = IsSonarLogFile(files[i]);
+                 SideScanInfo info;
+                 const bool ok = sonar ? ImportSideScan(db, files[i], so, m, DbPriority::ResolutionDate, e, sub, cancel,
+                                                        nullptr, &info)
+                                       : ImportImagery(db, files[i], o, m, DbPriority::ResolutionDate, e, sub, cancel);
+                 if (ok && sonar && so.autoOffset) {  // décalage estimé sur ce journal
+                   std::lock_guard<std::mutex> lk(*estMx);
+                   est->set = true;
+                   est->ok = info.offsetAuto;
+                   est->fwd = info.offsetFwd;
+                   est->stbd = info.offsetStbd;
+                 }
+                 if (!ok) {
+                   if (*cancel || e == "Annulé") { err = pd::tr("arrêté"); return false; }
+                   errors += name + " : " + e + "\n";
+                   continue;
+                 }
+                 ++done;
+               }
+               if (!errors.empty()) {
+                 err = std::to_string(done) + "/" + std::to_string(files.size()) +
+                       U8(" importé(s)\n").ToStdString(wxConvUTF8) + errors;
+                 return false;
+               }
+               return true;
+             },
+             DbKind::Imagery);
+}
+
+void PersonalDepth_pi::ImgRemove(const std::vector<int64_t>& ids) {
+  if (ids.empty()) return;
+  StartDbJob(JobLabel("Retrait de %d image(s)", ids.size()),
+             [ids](BathyDb& db, std::string& err, const DbProgress& prog) {
+               return db.removeSources(ids, DbPriority::ResolutionDate, err, prog);
+             },
+             DbKind::Imagery);
+}
+
+void PersonalDepth_pi::ImgSetVisible(const std::vector<int64_t>& ids, bool visible) {
+  if (ids.empty()) return;
+  StartDbJob(JobLabel(visible ? "Affichage de %d image(s)" : "Masquage de %d image(s)", ids.size()),
+             [ids, visible](BathyDb& db, std::string& err, const DbProgress& prog) {
+               return db.setVisible(ids, visible, DbPriority::ResolutionDate, err, prog);
+             },
+             DbKind::Imagery);
+}
+
+void PersonalDepth_pi::ImgZoomTo(const std::vector<int64_t>& ids) {
+  double lo0 = 1e9, lo1 = -1e9, la0 = 1e9, la1 = -1e9;
+  for (const auto& d : m_imgSources)
+    if (std::find(ids.begin(), ids.end(), d.id) != ids.end()) {
+      lo0 = std::min(lo0, d.lonMin); lo1 = std::max(lo1, d.lonMax);
+      la0 = std::min(la0, d.latMin); la1 = std::max(la1, d.latMax);
+    }
+  if (lo0 > lo1) return;
+  const double lat = 0.5 * (la0 + la1), lon = 0.5 * (lo0 + lo1);
+  const double wm = (lo1 - lo0) * 111320.0 * std::cos(lat * M_PI / 180.0), hm = (la1 - la0) * 110540.0;
+  wxWindow* cv = GetOCPNCanvasWindow();
+  const wxSize sz = cv ? cv->GetClientSize() : wxSize(1000, 800);
+  JumpToPosition(lat, lon, 0.9 * std::min(sz.x / std::max(wm, 1.0), sz.y / std::max(hm, 1.0)));
+}
+
 // ------------------------------------------------- réglages d'import d'une source
 static std::string EscPref(const std::string& v) {
   std::string o;
@@ -2238,6 +2823,12 @@ std::string SerializeImportPrefs(const DisplaySettings& s) {
   num("order", s.importOrder);
   num("sign", s.importSign);
   num("offset", s.importOffset);
+  num("antAuto", s.importAntAuto);
+  num("antFwd", s.importAntFwd);
+  num("antStbd", s.importAntStbd);
+  num("antEstOk", s.importAntEstOk);
+  num("antEstFwd", s.importAntEstFwd);
+  num("antEstStbd", s.importAntEstStbd);
   num("zFeet", s.importZFeet);
   num("res", s.importRes);
   num("instr", s.importInstrument);
@@ -2270,6 +2861,10 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
   s.importInterpMethod = 0;
   s.importFormat.clear();
   s.importWaterOn = false;  // réglages antérieurs : pas de hauteurs d'eau
+  s.importAntAuto = false;  // ni de décalage sonde / antenne
+  s.importAntFwd = s.importAntStbd = 0.f;
+  s.importAntEstOk = false;
+  s.importAntEstFwd = s.importAntEstStbd = 0.f;
   std::istringstream in(text);
   std::string line;
   while (std::getline(in, line)) {
@@ -2297,6 +2892,12 @@ bool ApplyImportPrefs(const std::string& text, DisplaySettings& s) {
     else if (k == "order") s.importOrder = (int)d;
     else if (k == "sign") s.importSign = (int)d;
     else if (k == "offset") s.importOffset = (float)d;
+    else if (k == "antAuto") s.importAntAuto = d != 0;
+    else if (k == "antFwd") s.importAntFwd = (float)d;
+    else if (k == "antStbd") s.importAntStbd = (float)d;
+    else if (k == "antEstOk") s.importAntEstOk = d != 0;
+    else if (k == "antEstFwd") s.importAntEstFwd = (float)d;
+    else if (k == "antEstStbd") s.importAntEstStbd = (float)d;
     else if (k == "zFeet") s.importZFeet = d != 0;
     else if (k == "res") s.importRes = (float)d;
     else if (k == "instr") s.importInstrument = std::max(0, std::min(5, (int)d));

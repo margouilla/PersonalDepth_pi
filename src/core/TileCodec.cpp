@@ -72,9 +72,13 @@ bool EncodeTile(const DepthTile& t, std::vector<uint8_t>& out) {
   static const int kDiv[4] = {1, 10, 100, 1000};
   const bool partial = valid < (size_t)N;
   const bool plane = t.srcIds.size() > 1 && t.src.size() == (size_t)N;
-  bool hasInterp = false;
+  bool hasInterp = false, hasFill = false;
   if (t.interp.size() == (size_t)N)
-    for (int k = 0; k < N && !hasInterp; ++k) hasInterp = t.interp[k] && t.v[k] != DepthTile::kEmpty;
+    for (int k = 0; k < N; ++k)
+      if (t.v[k] != DepthTile::kEmpty) {
+        hasInterp = hasInterp || (t.interp[k] & 1);
+        hasFill = hasFill || (t.interp[k] & 2);
+      }
   std::vector<uint8_t> raw;
   raw.reserve((partial ? N / 8 : 0) + 4 * N + (plane ? N : 0));
   if (partial) {
@@ -101,11 +105,17 @@ bool EncodeTile(const DepthTile& t, std::vector<uint8_t>& out) {
     const size_t b0 = raw.size();
     raw.resize(b0 + N / 8, 0);
     for (int k = 0; k < N; ++k)
-      if (t.interp[k] && t.v[k] != DepthTile::kEmpty) raw[b0 + (k >> 3)] |= (uint8_t)(1u << (k & 7));
+      if ((t.interp[k] & 1) && t.v[k] != DepthTile::kEmpty) raw[b0 + (k >> 3)] |= (uint8_t)(1u << (k & 7));
+  }
+  if (hasFill) {  // masque des pixels comblés entre les nœuds d'une grille (beta.13)
+    const size_t b0 = raw.size();
+    raw.resize(b0 + N / 8, 0);
+    for (int k = 0; k < N; ++k)
+      if ((t.interp[k] & 2) && t.v[k] != DepthTile::kEmpty) raw[b0 + (k >> 3)] |= (uint8_t)(1u << (k & 7));
   }
 
   out.push_back('P'); out.push_back('T'); out.push_back(2);
-  out.push_back((uint8_t)((partial ? 1 : 0) | (plane ? 2 : 0) | (unit << 2) | (hasInterp ? 16 : 0)));
+  out.push_back((uint8_t)((partial ? 1 : 0) | (plane ? 2 : 0) | (unit << 2) | (hasInterp ? 16 : 0) | (hasFill ? 32 : 0)));
   Put<int32_t>(out, zmin);
   Put<int32_t>(out, zmax);
   Put<uint16_t>(out, (uint16_t)t.srcIds.size());
@@ -125,7 +135,8 @@ bool EncodeTile(const DepthTile& t, std::vector<uint8_t>& out) {
 bool DecodeTile(const uint8_t* p, size_t n, DepthTile& t, std::string& err) {
   t.reset();
   if (n < 16 || p[0] != 'P' || p[1] != 'T' || p[2] != 2) { err = "Tuile illisible"; return false; }
-  const bool partial = p[3] & 1, plane = (p[3] & 2) != 0, hasInterp = (p[3] & 16) != 0;
+  const bool partial = p[3] & 1, plane = (p[3] & 2) != 0, hasInterp = (p[3] & 16) != 0,
+             hasFill = (p[3] & 32) != 0;
   static const int kDiv[4] = {1, 10, 100, 1000};
   const int mul = kDiv[(p[3] >> 2) & 3];
   const uint16_t nIds = Get<uint16_t>(p + 12);
@@ -136,7 +147,8 @@ bool DecodeTile(const uint8_t* p, size_t n, DepthTile& t, std::string& err) {
   const uint32_t rawLen = Get<uint32_t>(p + pos);
   pos += 4;
   const int N = DepthTile::kN;
-  const size_t want = (partial ? N / 8 : 0) + 4u * N + (plane ? N : 0) + (hasInterp ? N / 8 : 0);
+  const size_t want = (partial ? N / 8 : 0) + 4u * N + (plane ? N : 0) + (hasInterp ? N / 8 : 0) +
+                      (hasFill ? N / 8 : 0);
   if (rawLen != want) { err = pd::tr("Tuile incohérente"); return false; }
   std::vector<uint8_t> raw(rawLen);
   mz_ulong len = rawLen;
@@ -159,10 +171,15 @@ bool DecodeTile(const uint8_t* p, size_t n, DepthTile& t, std::string& err) {
       }
     }
   if (plane) t.src.assign(planes + 4 * N, planes + 5 * N);
+  const uint8_t* im = planes + 4 * N + (plane ? N : 0);
   if (hasInterp) {
-    const uint8_t* im = planes + 4 * N + (plane ? N : 0);
     t.interp.assign(N, 0);
     for (int k = 0; k < N; ++k) t.interp[k] = (im[k >> 3] >> (k & 7)) & 1;
+    im += N / 8;
+  }
+  if (hasFill) {
+    if (t.interp.empty()) t.interp.assign(N, 0);
+    for (int k = 0; k < N; ++k) t.interp[k] |= (uint8_t)(((im[k >> 3] >> (k & 7)) & 1) << 1);
   }
   return true;
 }

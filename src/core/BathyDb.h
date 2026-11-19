@@ -52,8 +52,15 @@ struct DbCellInfo {
   int sources = 0;
 };
 constexpr double kDefaultCellDeg = 0.25;  // découpage des nouvelles bases (15')
-std::string CellFileName(double lon, double lat, double deg);
-bool ParseCellFileName(const std::string& name, double& lonW, double& latS, bool& legacy);
+// ext : « .pdb » (bathymétrie) ou « .pdi » (imagerie, réflectivité du fond)
+std::string CellFileName(double lon, double lat, double deg, const char* ext = ".pdb");
+bool ParseCellFileName(const std::string& name, double& lonW, double& latS, bool& legacy,
+                       const char* ext = ".pdb");
+
+// Nature d'une base : profondeurs (.pdb) ou imagerie (.pdi : réflectivité du
+// fond, rétrodiffusion en dB ou niveaux de gris ; valeurs d'origine gardées,
+// pyramide par moyenne, pas de référence verticale)
+enum class DbKind { Depth, Imagery };
 
 enum class DbPriority { ResolutionDate = 0, Shoalest = 1, Newest = 2, Manual = 3 };
 
@@ -80,8 +87,15 @@ struct DbSource {
   // entre les sondes d'un nuage, 0 = pas de surface interpolée ; en retour,
   // nombre de pixels interpolés au niveau natif
   double interpD = 0;
+  // Import seulement : pas d'une grille (m, est-ouest et nord-sud), 0 = inconnu ;
+  // les pixels vides entre deux nœuds sont comblés par le nœud le plus proche
+  double gridStepX = 0, gridStepY = 0;
   int interpMethod = 0;          // InterpMethod : 0 TIN, 1 voisin naturel, 2 IDW
   long long interpCount = 0;
+  // Imagerie : unité des valeurs (« dB », « niveau »…) et étirement d'affichage
+  // (valeurs ramenées à 0 – 1 entre vlo et vhi, 2 % et 98 % des valeurs à l'import)
+  std::string vunit;
+  double vlo = 0, vhi = 0;
 };
 
 using DbProgress = std::function<void(float, const std::string&)>;
@@ -105,7 +119,9 @@ class BathyDb {
 
   // Ouvre (ou crée) le dossier de la base et lit la liste des sources
   // `newDeg` : taille des cellules si le dossier ne contient pas encore de base
-  bool open(const std::string& folder, std::string& err, double newDeg = 0);
+  bool open(const std::string& folder, std::string& err, double newDeg = 0, DbKind kind = DbKind::Depth);
+  DbKind kind() const { return kind_; }
+  const char* ext() const { return kind_ == DbKind::Imagery ? ".pdi" : ".pdb"; }
   double cellDeg() const { return cellDeg_; }
   std::vector<DbCellInfo> cellInfo();
   // Fichiers .pdb masqués : leur emprise est exclue de la vue et des sondes
@@ -268,6 +284,7 @@ class BathyDb {
                         std::string& err, const DbProgress& progress,
                         const std::atomic<bool>* cancel, long long* removed);
   std::string folder_;
+  DbKind kind_ = DbKind::Depth;
   double cellDeg_ = kDefaultCellDeg;
   std::set<std::pair<int, int>> hidden_;
   std::vector<DbSource> sources_;

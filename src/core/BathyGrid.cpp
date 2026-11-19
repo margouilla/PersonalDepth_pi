@@ -133,8 +133,8 @@ bool BathyGrid::build(const PointCloud& pc, const GridParams& p,
                       const std::vector<uint32_t>* tris, std::string& err,
                       const std::vector<uint8_t>* pinterp) {
   if (pinterp && (pinterp->size() != pc.size() ||
-                  std::find(pinterp->begin(), pinterp->end(), 1) == pinterp->end()))
-    pinterp = nullptr;  // aucune sonde interpolée
+                  std::all_of(pinterp->begin(), pinterp->end(), [](uint8_t v) { return v == 0; })))
+    pinterp = nullptr;  // aucune sonde interpolée ni comblée
   levels.clear();
   nativeLattice = false;
   filledGaps = 0;
@@ -197,13 +197,15 @@ bool BathyGrid::build(const PointCloud& pc, const GridParams& p,
     }
     for (size_t c = 0; c < N; ++c) if (cnt[c]) g.z[c] = (float)(sum[c] / cnt[c]);
   } else if (pinterp) {  // mesuré avant interpolé, puis plus faible
+    // drapeaux de la base : 1 interpolé -> bit 0 ; 2 comblé (grille) -> bit 2
     g.interp.assign(N, 0);
     for (size_t k = 0; k < pc.size(); ++k) {
       int i, j;
       if (!g.cellOf(pc.lon(k), pc.lat(k), i, j)) continue;
       const size_t c = (size_t)j * g.nx + i;
-      const uint8_t pi = (*pinterp)[k];
-      if (std::isnan(g.z[c]) || (g.interp[c] && !pi) || (g.interp[c] == pi && pc.z[k] < g.z[c])) {
+      const uint8_t pi = (*pinterp)[k] == 1 ? 1 : (*pinterp)[k] == 2 ? 4 : 0;
+      const bool ci = g.interp[c] & 1, ki = pi & 1;
+      if (std::isnan(g.z[c]) || (ci && !ki) || (ci == ki && pc.z[k] < g.z[c])) {
         g.z[c] = pc.z[k];
         g.interp[c] = pi;
       }
@@ -335,7 +337,7 @@ void GridLevel::markInterpNear() {
     }
     for (int j = 0; j < ny; ++j) {
       uint8_t& v = interp[(size_t)j * nx + i];
-      v = (v & 1) ? (uint8_t)(col[j] ? 3 : 1) : 0;
+      v = (uint8_t)((v & 4) | ((v & 1) ? (col[j] ? 3 : 1) : 0));  // bit 2 (comblé) gardé
     }
   }
 }
@@ -354,16 +356,19 @@ void BathyGrid::buildPyramid() {
     for (int j = 0; j < d.ny; ++j)
       for (int i = 0; i < d.nx; ++i) {
         float acc = mean ? 0.f : NaNf; int n = 0;
-        uint8_t ai = 1;  // interpolée seulement si aucune cellule mesurée
+        uint8_t ai = 1;  // interpolée seulement si aucune cellule mesurée (bit 0)
         for (int dj = 0; dj < 2; ++dj)
           for (int di = 0; di < 2; ++di) {
             int ii = 2 * i + di, jj = 2 * j + dj;
             if (ii >= s.nx || jj >= s.ny) continue;
             float v = s.at(ii, jj);
             if (std::isnan(v)) continue;
-            const uint8_t vi = fl ? s.interp[(size_t)jj * s.nx + ii] : 0;
+            const uint8_t vi = fl ? (uint8_t)(s.interp[(size_t)jj * s.nx + ii] & 5) : 0;  // sans « proche »
             if (mean) acc += v;
-            else if (std::isnan(acc) || (ai && !vi) || (ai == vi && v < acc)) { acc = v; ai = vi; }
+            else if (std::isnan(acc) || ((ai & 1) && !(vi & 1)) || ((ai & 1) == (vi & 1) && v < acc)) {
+              acc = v;
+              ai = vi;
+            }
             ++n;
           }
         if (n) {

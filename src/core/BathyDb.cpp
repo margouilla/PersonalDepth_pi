@@ -90,7 +90,7 @@ class DbCell {
       if (!exec(m, err)) return false;
     }
     // bases plus anciennes : colonne « classe » ajoutée
-    bool hasGrp = false, hasParams = false, hasInfo = false, hasDatum = false;
+    bool hasGrp = false, hasParams = false, hasInfo = false, hasDatum = false, hasUnit = false;
     sqlite3_stmt* q = nullptr;
     sqlite3_prepare_v2(db, "PRAGMA table_info(sources)", -1, &q, nullptr);
     while (q && sqlite3_step(q) == SQLITE_ROW) {
@@ -99,6 +99,7 @@ class DbCell {
       if (n && std::strcmp((const char*)n, "params") == 0) hasParams = true;
       if (n && std::strcmp((const char*)n, "info") == 0) hasInfo = true;
       if (n && std::strcmp((const char*)n, "datum") == 0) hasDatum = true;
+      if (n && std::strcmp((const char*)n, "vunit") == 0) hasUnit = true;
     }
     sqlite3_finalize(q);
     // bases plus anciennes : paramètres d'import de chaque source (relecture)
@@ -107,7 +108,11 @@ class DbCell {
            (hasInfo || exec("ALTER TABLE sources ADD COLUMN info TEXT", err)) &&
            // bases antérieures au niveau moyen : colonne vide = profondeurs au
            // zéro des cartes, à migrer (Datum::Legacy)
-           (hasDatum || exec("ALTER TABLE sources ADD COLUMN datum INTEGER", err));
+           (hasDatum || exec("ALTER TABLE sources ADD COLUMN datum INTEGER", err)) &&
+           // imagerie (beta.13) : unité et étirement d'affichage des valeurs
+           (hasUnit || (exec("ALTER TABLE sources ADD COLUMN vunit TEXT", err) &&
+                        exec("ALTER TABLE sources ADD COLUMN vlo REAL", err) &&
+                        exec("ALTER TABLE sources ADD COLUMN vhi REAL", err)));
   }
   bool exec(const char* sql, std::string& err) {
     char* msg = nullptr;
@@ -159,12 +164,12 @@ class DbCell {
 // ================================================================ outils
 // Fichier d'une cellule : « PD_N48W005.pdb » (1°, ancien découpage) ou
 // « PD_N4815W00430.pdb » (coin sud-ouest en degrés et minutes, cellules < 1°)
-std::string CellFileName(double lon, double lat, double deg) {
+std::string CellFileName(double lon, double lat, double deg, const char* ext) {
   const double la = std::floor(lat / deg + 1e-9) * deg, lo = std::floor(lon / deg + 1e-9) * deg;
   char b[40];
   if (deg >= 1.0 - 1e-9) {
-    std::snprintf(b, sizeof b, "PD_%c%02d%c%03d.pdb", la < 0 ? 'S' : 'N', (int)std::lround(std::fabs(la)),
-                  lo < 0 ? 'W' : 'E', (int)std::lround(std::fabs(lo)));
+    std::snprintf(b, sizeof b, "PD_%c%02d%c%03d%s", la < 0 ? 'S' : 'N', (int)std::lround(std::fabs(la)),
+                  lo < 0 ? 'W' : 'E', (int)std::lround(std::fabs(lo)), ext);
     return b;
   }
   auto dm = [](double v, int& d, int& m) {
@@ -174,12 +179,12 @@ std::string CellFileName(double lon, double lat, double deg) {
   int ad, am, od, om;
   dm(la, ad, am);
   dm(lo, od, om);
-  std::snprintf(b, sizeof b, "PD_%c%02d%02d%c%03d%02d.pdb", la < 0 ? 'S' : 'N', ad, am,
-                lo < 0 ? 'W' : 'E', od, om);
+  std::snprintf(b, sizeof b, "PD_%c%02d%02d%c%03d%02d%s", la < 0 ? 'S' : 'N', ad, am,
+                lo < 0 ? 'W' : 'E', od, om, ext);
   return b;
 }
 
-bool ParseCellFileName(const std::string& n, double& lonW, double& latS, bool& legacy) {
+bool ParseCellFileName(const std::string& n, double& lonW, double& latS, bool& legacy, const char* ext) {
   char ns, ew;
   int a, b, c, d;
   char tail[8];
@@ -195,7 +200,7 @@ bool ParseCellFileName(const std::string& n, double& lonW, double& latS, bool& l
   } else {
     return false;
   }
-  return (ns == 'N' || ns == 'S') && (ew == 'E' || ew == 'W') && std::string(tail) == ".pdb";
+  return (ns == 'N' || ns == 'S') && (ew == 'E' || ew == 'W') && std::string(tail) == ext;
 }
 
 static std::string Today() {
@@ -292,10 +297,11 @@ static bool Before(const DbSource& a, const DbSource& b, DbPriority p) {
 BathyDb::BathyDb() = default;
 BathyDb::~BathyDb() = default;
 
-bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
+bool BathyDb::open(const std::string& folder, std::string& err, double newDeg, DbKind kind) {
   cells_.clear();
   sources_.clear();
   folder_ = folder;
+  kind_ = kind;
   datum_.close();
   std::error_code ec;
   fs::create_directories(fs::u8path(folder), ec);
@@ -312,7 +318,7 @@ bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
     const std::string n = e.path().filename().u8string();
     double lw, ls;
     bool lg;
-    if (!ParseCellFileName(n, lw, ls, lg)) continue;
+    if (!ParseCellFileName(n, lw, ls, lg, ext())) continue;
     if (lg) legacy = true;
     else if (first.empty()) first = n;
   }
@@ -329,7 +335,7 @@ bool BathyDb::open(const std::string& folder, std::string& err, double newDeg) {
       sqlite3_finalize(q);
     }
   }
-  if (!datum_.open(folder, err)) return false;
+  if (kind_ == DbKind::Depth && !datum_.open(folder, err)) return false;  // imagerie : sans référence verticale
   return reloadSources(err);
 }
 
@@ -340,7 +346,7 @@ std::vector<DbCellInfo> BathyDb::cellInfo() {
     DbCellInfo i;
     i.name = fs::u8path(c->path).filename().u8string();
     bool lg;
-    if (!ParseCellFileName(i.name, i.lonW, i.latS, lg)) continue;
+    if (!ParseCellFileName(i.name, i.lonW, i.latS, lg, ext())) continue;
     i.deg = lg ? 1.0 : cellDeg_;
     std::error_code ec;
     i.bytes = (long long)fs::file_size(fs::u8path(c->path), ec);
@@ -363,7 +369,7 @@ void BathyDb::setHiddenCells(const std::set<std::string>& names) {
   for (const auto& n : names) {
     double lw, ls;
     bool lg;
-    if (!ParseCellFileName(n, lw, ls, lg)) continue;
+    if (!ParseCellFileName(n, lw, ls, lg, ext())) continue;
     const double d = lg ? 1.0 : cellDeg_;
     hidden_.insert({(int)std::floor(lw / d + 1e-6), (int)std::floor(ls / d + 1e-6)});
   }
@@ -390,7 +396,7 @@ DbCell* BathyDb::cellByName(const std::string& name, bool create, std::string& e
 DbCell* BathyDb::cellFor(int z, int x, int y, bool create, std::string& err) {
   double lon, lat;
   PixelToLonLat(z, (x + 0.5) * kTileSize, (y + 0.5) * kTileSize, lon, lat);
-  return cellByName(CellFileName(lon, lat, cellDeg_), create, err);
+  return cellByName(CellFileName(lon, lat, cellDeg_, ext()), create, err);
 }
 
 std::vector<DbCell*> BathyDb::allCells(std::string& err) {
@@ -399,7 +405,7 @@ std::vector<DbCell*> BathyDb::allCells(std::string& err) {
     const std::string n = e.path().filename().u8string();
     double lw, ls;
     bool lg;
-    if (ParseCellFileName(n, lw, ls, lg)) cellByName(n, false, err);
+    if (ParseCellFileName(n, lw, ls, lg, ext())) cellByName(n, false, err);
   }
   std::vector<DbCell*> v;
   for (auto& kv : cells_) v.push_back(kv.second.get());
@@ -412,7 +418,7 @@ bool BathyDb::reloadSources(std::string& err) {
     sqlite3_stmt* s = nullptr;
     if (sqlite3_prepare_v2(c->db,
                            "SELECT id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,count,"
-                           "lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum FROM sources",
+                           "lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum,vunit,vlo,vhi FROM sources",
                            -1, &s, nullptr) != SQLITE_OK)
       continue;
     while (sqlite3_step(s) == SQLITE_ROW) {
@@ -438,6 +444,9 @@ bool BathyDb::reloadSources(std::string& err) {
       d.params = txt(19);
       d.info = txt(20);
       d.datum = sqlite3_column_type(s, 21) == SQLITE_NULL ? (int)Datum::Legacy : sqlite3_column_int(s, 21);
+      d.vunit = txt(22);
+      d.vlo = sqlite3_column_double(s, 23);
+      d.vhi = sqlite3_column_double(s, 24);
       if (d.group.empty()) d.group = GuessSourceGroup(d.name);  // bases antérieures aux classes
       m[d.id] = d;  // même ligne dans chaque fichier touché
     }
@@ -603,8 +612,8 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(c->db,
                        "INSERT OR REPLACE INTO sources (id,name,path,date,level,res,rank,visible,crs,vref,zmin,zmax,"
-                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum) "
-                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
+                       "count,lonmin,lonmax,latmin,latmax,imported,grp,params,info,datum,vunit,vlo,vhi) "
+                       "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1,
                        &s, nullptr);
     int k = 1;
     sqlite3_bind_int64(s, k++, d.id);
@@ -630,6 +639,9 @@ bool BathyDb::upsertSource(const DbSource& d, std::string& err) {
     sqlite3_bind_text(s, k++, d.info.c_str(), -1, SQLITE_TRANSIENT);
     if (d.datum == (int)Datum::Legacy) sqlite3_bind_null(s, k++);
     else sqlite3_bind_int(s, k++, d.datum);
+    sqlite3_bind_text(s, k++, d.vunit.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(s, k++, d.vlo);
+    sqlite3_bind_double(s, k++, d.vhi);
     const int rc = sqlite3_step(s);
     sqlite3_finalize(s);
     if (rc != SQLITE_DONE) { err = std::string(pd::tr("Base : ")) + sqlite3_errmsg(c->db); return false; }
@@ -647,6 +659,8 @@ bool BathyDb::commitAll(std::string& err) {
 
 // ------------------------------------------------------------- fusion
 bool BathyDb::remergeTile(int z, int x, int y, DbPriority prio, std::string& err) {
+  // imagerie : « plus faible valeur » sans objet -> meilleure résolution puis plus récente
+  if (kind_ == DbKind::Imagery && prio == DbPriority::Shoalest) prio = DbPriority::ResolutionDate;
   double lonW, lonE, latS, latN;
   TileBounds(z, x, y, lonW, lonE, latS, latN);
   std::vector<const DbSource*> cand;
@@ -680,7 +694,7 @@ bool BathyDb::remergeTile(int z, int x, int y, DbPriority prio, std::string& err
           for (int i = 0; i < 256; ++i) {
             const long long si = ((gx0 + i) >> d) - px0;
             t.v[j * 256 + i] = p.v[sj * 256 + si];
-            if (p.isInterp((int)(sj * 256 + si))) t.setInterp(j * 256 + i, true);
+            if (const uint8_t f = p.flags((int)(sj * 256 + si))) t.setFlags(j * 256 + i, f);
           }
         }
       }
@@ -709,7 +723,7 @@ bool BathyDb::remergeTile(int z, int x, int y, DbPriority prio, std::string& err
         }
         m.v[k] = v;
         idx[k] = (uint8_t)slotOf[g];
-        if (pass == 1) m.setInterp(k, true);
+        m.setFlags(k, pass == 1 ? 1 : (uint8_t)(t.flags(k) & 2));
       }
     }
   }
@@ -806,6 +820,7 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
   // Référence d'origine : profondeurs ramenées au niveau moyen à la répartition
   // (profondeur_NM = profondeur + S), surfaces calculées au besoin
   if (meta.datum == (int)Datum::Legacy) meta.datum = (int)Datum::Cd;
+  if (kind_ == DbKind::Imagery) meta.datum = (int)Datum::Free;  // imagerie : valeurs gardées telles quelles
   const bool convert = DatumHasSurface((Datum)meta.datum);
   DatumSampler vS(datum_, (Datum)meta.datum);
   size_t noDatum = 0;
@@ -1007,56 +1022,72 @@ bool BathyDb::importCloudImpl(const PointCloud* whole, const CloudFeed* feed, do
     return &it->second;
   };
 
-  // 2) levé maillé rééchantillonné : comble les pixels isolés restés vides
-  //    entre deux sondes (rangées « sautées » par le changement de maillage)
+  // 2) levé maillé rééchantillonné : pixels vides entre deux nœuds de la grille
+  //    (pixel plus fin que la maille, rangées et colonnes « sautées ») comblés
+  //    par interpolation linéaire entre les deux nœuds, d'abord le long des
+  //    lignes puis des colonnes (bilinéaire) ; seulement entre deux nœuds
+  //    (bords et trous de la grille gardés). Pixels marqués « comblés » :
+  //    jamais pris comme sondes chiffrées. Écart toléré : la maille en pixels
+  //    (1 pixel vide si elle est inconnue).
   if (gridded) {
+    const double pxM = 156543.03392804097 * std::cos(midLat * M_PI / 180.0) / std::ldexp(1.0, zs);
+    auto span = [&](double step) {
+      return step > 0 ? std::max(2, std::min(16, (int)std::ceil(step / pxM + 0.25))) : 2;
+    };
+    const int kx = span(meta.gridStepX), ky = span(meta.gridStepY);
     size_t q = 0;
-    std::map<TK, std::vector<int32_t>> filled;
-    for (const TK& key : keysZs) {
-      const DepthTile* tp = tileAt(key);
-      if (!tp) continue;
-      const DepthTile t = *tp;
-      auto at = [&](int i, int j) -> int32_t {
-        TK o = key;
-        if (i < 0) { o.first--; i += 256; } else if (i > 255) { o.first++; i -= 256; }
-        if (j < 0) { o.second--; j += 256; } else if (j > 255) { o.second++; j -= 256; }
-        if (o == key) return t.v[j * 256 + i];
-        const DepthTile* n2 = tileAt(o);
-        return n2 ? n2->v[j * 256 + i] : DepthTile::kEmpty;
-      };
-      bool changed = false;
-      std::vector<int32_t> out = t.v;
-      const int32_t* V = t.v.data();
-      for (int j = 0; j < 256; ++j)
-        for (int i = 0; i < 256; ++i) {
-          const int k = j * 256 + i;
-          if (V[k] != DepthTile::kEmpty) continue;
-          int32_t best = DepthTile::kEmpty;
-          int32_t a, b, c, d;
-          if (i > 0 && i < 255 && j > 0 && j < 255) {  // intérieur : accès direct
-            a = V[k - 1]; b = V[k + 1]; c = V[k - 256]; d = V[k + 256];
-          } else {
-            a = at(i - 1, j); b = at(i + 1, j); c = at(i, j - 1); d = at(i, j + 1);
+    for (int pass = 0; pass < 2; ++pass) {
+      const bool horiz = pass == 0;
+      const int k = horiz ? kx : ky;  // deux nœuds au plus k pixels l'un de l'autre
+      std::map<TK, DepthTile> filled;
+      for (const TK& key : keysZs) {
+        const DepthTile* tp = tileAt(key);
+        if (!tp) continue;
+        const DepthTile t = *tp;
+        auto at = [&](int i, int j) -> int32_t {
+          TK o = key;
+          while (i < 0) { o.first--; i += 256; }
+          while (i > 255) { o.first++; i -= 256; }
+          while (j < 0) { o.second--; j += 256; }
+          while (j > 255) { o.second++; j -= 256; }
+          if (o == key) return t.v[j * 256 + i];
+          const DepthTile* n2 = tileAt(o);
+          return n2 ? n2->v[j * 256 + i] : DepthTile::kEmpty;
+        };
+        bool changed = false;
+        DepthTile out = t;
+        for (int j = 0; j < 256; ++j)
+          for (int i = 0; i < 256; ++i) {
+            if (t.v[j * 256 + i] != DepthTile::kEmpty) continue;
+            int32_t va = DepthTile::kEmpty, vb = DepthTile::kEmpty;
+            int da = 0, db = 0;
+            for (int d = 1; d < k && va == DepthTile::kEmpty; ++d) {
+              va = horiz ? at(i - d, j) : at(i, j - d);
+              da = d;
+            }
+            if (va == DepthTile::kEmpty) continue;
+            for (int d = 1; d + da <= k && vb == DepthTile::kEmpty; ++d) {
+              vb = horiz ? at(i + d, j) : at(i, j + d);
+              db = d;
+            }
+            if (vb == DepthTile::kEmpty) continue;
+            out.v[j * 256 + i] = (int32_t)std::llround(va + (double)(vb - va) * da / (da + db));
+            out.setFill(j * 256 + i, true);
+            changed = true;
           }
-          if (a != DepthTile::kEmpty && b != DepthTile::kEmpty) best = std::min(a, b);
-          if (c != DepthTile::kEmpty && d != DepthTile::kEmpty)
-            best = best == DepthTile::kEmpty ? std::min(c, d) : std::min(best, std::min(c, d));
-          if (best != DepthTile::kEmpty) { out[j * 256 + i] = best; changed = true; }
-        }
-      if (changed) filled[key].swap(out);  // appliqué après le parcours (voisins inchangés)
-      if (progress && (++q % 32 == 0)) progress(0.4f + 0.1f * q / keysZs.size(), pd::tr("Comblement des trous"));
-    }
-    for (auto& kv : filled) {
-      if (inMemory) {
-        mem[kv.first].v.swap(kv.second);
-      } else {
-        DepthTile t;
-        t.reset();
-        t.v.swap(kv.second);
-        if (!writeSrc(meta.id, zs, kv.first.first, kv.first.second, t, err)) return false;
+        if (changed) filled.emplace(key, std::move(out));  // appliqué après le parcours (voisins inchangés)
+        if (progress && (++q % 32 == 0))
+          progress(0.4f + 0.1f * q / (2 * keysZs.size()), pd::tr("Comblement des trous"));
       }
+      for (auto& kv : filled) {
+        if (inMemory) {
+          mem[kv.first] = std::move(kv.second);
+        } else if (!writeSrc(meta.id, zs, kv.first.first, kv.first.second, kv.second, err)) {
+          return false;
+        }
+      }
+      rcache.clear();
     }
-    rcache.clear();
   }
 
   // 2 bis) nuage : surface interpolée dans les pixels vides, au niveau même des
@@ -1367,7 +1398,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
     const std::string n = ep.filename().u8string();
     double lw, ls;
     bool lg;
-    if (!ParseCellFileName(n, lw, ls, lg)) continue;
+    if (!ParseCellFileName(n, lw, ls, lg, ext())) continue;
     // un fichier encore ouvert ailleurs (lecture de la vue) : quelques essais
     bool gone = false;
     for (int k = 0; k < 50 && !gone; ++k) {
@@ -1387,7 +1418,7 @@ bool BathyDb::resplit(double deg, std::string& err, const DbProgress& progress,
     const std::string n = ep.filename().u8string();
     double lw, ls;
     bool lg;
-    if (!ParseCellFileName(n, lw, ls, lg)) continue;
+    if (!ParseCellFileName(n, lw, ls, lg, ext())) continue;
     fs::rename(ep, dir / ep.filename(), ec);
     if (ec) { err = pd::tr("Déplacement impossible : ") + n + " (" + ec.message() + ")"; return false; }
   }
@@ -1424,6 +1455,12 @@ bool BathyDb::buildPyramid(int64_t id, int zs, std::set<std::pair<int, int>> chi
       DepthTile out;
       out.reset();
       bool any = false;
+      // imagerie : moyenne des 2 × 2 pixels (une image se réduit en moyenne,
+      // la plus faible sonde n'y a pas de sens)
+      const bool mean = kind_ == DbKind::Imagery;
+      std::vector<int64_t> sum;
+      std::vector<uint8_t> cnt;
+      if (mean) { sum.assign(DepthTile::kN, 0); cnt.assign(DepthTile::kN, 0); }
       for (int dy = 0; dy < 2; ++dy)
         for (int dx = 0; dx < 2; ++dx) {
           const TK ck(2 * p.first + dx, 2 * p.second + dy);
@@ -1439,17 +1476,26 @@ bool BathyDb::buildPyramid(int64_t id, int zs, std::set<std::pair<int, int>> chi
               const int32_t v = c->v[j * 256 + i];
               if (v == DepthTile::kEmpty) continue;
               const int ko = (dy * 128 + j / 2) * 256 + dx * 128 + i / 2;
+              if (mean) {
+                sum[ko] += v;
+                ++cnt[ko];
+                any = true;
+                continue;
+              }
               int32_t& o = out.v[ko];
               // une sonde mesurée l'emporte sur une valeur interpolée, puis la plus faible
               const bool vi = c->isInterp(j * 256 + i), oi = out.isInterp(ko);
               if (o == DepthTile::kEmpty || (oi && !vi) || (oi == vi && v < o)) {
                 o = v;
-                out.setInterp(ko, vi);
+                out.setFlags(ko, c->flags(j * 256 + i));
               }
               any = true;
             }
         }
       if (!any) continue;
+      if (mean)
+        for (int k = 0; k < DepthTile::kN; ++k)
+          if (cnt[k]) out.v[k] = (int32_t)((sum[k] + (sum[k] >= 0 ? cnt[k] / 2 : -cnt[k] / 2)) / cnt[k]);
       if (!writeSrc(id, z, p.first, p.second, out, err)) return false;
       touched.insert(Key(z, p.first, p.second));
       if (keepAll || parent.size() <= 700) next.emplace(p, std::move(out));
@@ -1865,7 +1911,7 @@ bool BathyDb::syncDatum(std::string& err, int* adopted, int* copied) {
   auto rangeOf = [&](DbCell* c, Range& r) {
     double lonW, latS;
     bool lg;
-    if (!ParseCellFileName(fs::u8path(c->path).filename().u8string(), lonW, latS, lg)) return false;
+    if (!ParseCellFileName(fs::u8path(c->path).filename().u8string(), lonW, latS, lg, ext())) return false;
     const double deg = lg ? 1.0 : cellDeg_;
     r.c = c;
     DatumStore::TileOf(lonW + 1e-9, latS + 1e-9, r.tx0, r.ty0);
@@ -2359,7 +2405,7 @@ int BathyDb::maxMergedLevel(double lonMin, double lonMax, double latMin, double 
     const std::string n = fs::u8path(c->path).filename().u8string();
     double lon0, lat0;
     bool lg;
-    if (ParseCellFileName(n, lon0, lat0, lg)) {
+    if (ParseCellFileName(n, lon0, lat0, lg, ext())) {
       const double d = lg ? 1.0 : cellDeg_;
       if (lat0 > latMax + 1 || lat0 + d < latMin - 1 || lon0 > lonMax + 1 || lon0 + d < lonMin - 1) continue;
     }
@@ -2486,13 +2532,17 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
   std::unordered_map<int64_t, int> srcLevel, srcDatum;
   for (const DbSource& m : sources_) { srcLevel[m.id] = m.level; srcDatum[m.id] = m.datum; }
   // Référence d'affichage : profondeur = valeur rangée (sous le NM) − S
-  const bool shift = DatumHasSurface(display);
+  const bool shift = kind_ == DbKind::Depth && DatumHasSurface(display);
+  std::map<int64_t, std::pair<double, double>> norm;  // imagerie : source -> (vlo, 1 / (vhi - vlo))
+  if (kind_ == DbKind::Imagery)
+    for (const DbSource& s : sources_)
+      if (s.vhi > s.vlo) norm[s.id] = {s.vlo, 1.0 / (s.vhi - s.vlo)};
   DatumSampler dS(datum_, display);
   // Valeur d'un pixel : celle du niveau de la vue ; sinon (tuile absente ou
   // pixel vide) celle d'une source plus grossière, à son propre niveau
   // seulement. On ne remonte jamais aux agrégats d'une source plus fine : la
   // surface d'une source et son emprise sont les mêmes à toutes les échelles.
-  auto pixel = [&](long long gx, long long gy, int32_t& v, int64_t& src, bool& ip) -> bool {
+  auto pixel = [&](long long gx, long long gy, int32_t& v, int64_t& src, bool& ip, bool& fill) -> bool {
     for (int d = 0; zz - d >= kDbMinLevel && d <= 10; ++d) {
       const long long px = gx >> d, py = gy >> d;
       const DepthTile* t = tileOf(zz - d, px >> 8, py >> 8);
@@ -2507,6 +2557,7 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
       v = t->v[k];
       src = s;
       ip = t->isInterp(k);
+      fill = t->isFill(k);
       return true;
     }
     return false;
@@ -2525,10 +2576,10 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
     for (int i = i0; i <= i1; ++i) {
       int32_t v;
       int64_t src;
-      bool ip = false;
+      bool ip = false, fill = false;
       const double lon = lon0 + (i + 0.5) * dlon;
       if (hiddenAt(lon, lat)) continue;  // fichier .pdb masqué
-      if (!pixel(gxs[i], gys[j], v, src, ip)) continue;
+      if (!pixel(gxs[i], gys[j], v, src, ip, fill)) continue;
       if (ip && skipInterp) continue;    // zones interpolées masquées
       if (shift) {
         auto it = srcDatum.find(src);
@@ -2541,9 +2592,14 @@ bool BathyDb::buildView(double lonMin, double lonMax, double latMin, double latM
           if (originMask) *originMask |= o;
         }
       }
-      out.add(lon, lat, v / 1000.f);
+      if (kind_ == DbKind::Imagery) {  // valeur ramenée à 0 – 1 (étirement de sa source)
+        auto it = norm.find(src);
+        out.add(lon, lat, it == norm.end() ? v / 1000.f : (float)((v / 1000.0 - it->second.first) * it->second.second));
+      } else {
+        out.add(lon, lat, v / 1000.f);
+      }
       if (srcIds) srcIds->push_back(src);
-      if (interp) interp->push_back(ip ? 1 : 0);
+      if (interp) interp->push_back(ip ? 1 : fill ? 2 : 0);  // 2 : comblé entre les nœuds d'une grille
     }
     if (tiles.size() > 600) tiles.clear();  // mémoire bornée (vues très larges)
   }

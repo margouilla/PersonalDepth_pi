@@ -22,6 +22,7 @@
 #include <wx/notebook.h>
 #include <wx/combobox.h>
 #include <wx/treelist.h>
+#include <wx/listctrl.h>
 
 #include <set>
 #include <string>
@@ -57,13 +58,39 @@ class BathyDialog : public wxDialog {
   void SetWrapped(wxStaticText* w, const wxString& t);  // texte coupé + page réorganisée
   void RelayoutPage(wxWindow* w);                       // page d'onglet contenant w
   wxString m_tideRaw, m_dbRaw;                          // textes avant coupure
-  wxSizer* BuildChartTextBox(wxWindow* p);  // isobathes + sondes chiffrées
-  wxSizer* BuildSoundingsBox(wxWindow* p);
-  wxSizer* BuildContourBox(wxWindow* p);
+  wxSizer* BuildChartTextBox(wxWindow* p);  // isobathes + sondes chiffrées (onglet Affichage)
   wxSizer* BuildTideBox(wxWindow* p);
-  wxSizer* BuildDbBox(wxWindow* p);
+  wxSizer* BuildDataBox(wxWindow* p);  // onglet Données : bathymétrie et imagerie
+  wxSizer* BuildDbBox(wxWindow* p);    // cadre Bathymétrie (et cadre du dossier, m_dbTopBox)
+  wxSizer* m_dbTopBox = nullptr;
   wxSizer* BuildDatumBox(wxWindow* p);  // référence verticale de l'affichage
+  wxSizer* BuildDispDatumBox(wxWindow* p);  // référence verticale affichée (onglet Affichage)
   wxSizer* BuildLandBox(wxWindow* p);   // trait de côte (pas d'interpolation sur la terre)
+  wxSizer* BuildImageryBox(wxWindow* p);  // imagerie du fond : images de la base, import
+  void BuildImageryDisplay(wxWindow* p);  // couches affichées et rendu de l'imagerie (onglet Affichage)
+  wxStaticBoxSizer *m_layersBox = nullptr, *m_imgRenderBox = nullptr;
+  wxCheckBox* m_imgAuto = nullptr;
+  wxChoice* m_imgAutoSrc = nullptr;
+ public:
+  void RefreshImageryDisplay();           // rendu de l'imagerie (bandeau, contraste automatique)
+ private:
+  void RefreshImagery();                  // liste des images de la base
+  void UpdateImgButtons();
+  void OnImgDisplay();
+  std::vector<int64_t> SelectedImages() const;
+  wxCheckBox *m_bathyShow = nullptr, *m_imgShow = nullptr, *m_imgInvert = nullptr, *m_imgSmooth = nullptr;
+  wxChoice *m_imgOrder = nullptr, *m_imgPalette = nullptr, *m_imgBg = nullptr;
+  wxSlider *m_imgOpacity = nullptr, *m_imgMin = nullptr, *m_imgMax = nullptr;
+  wxStaticText *m_imgMinV = nullptr, *m_imgMaxV = nullptr;  // valeurs des bornes noir / blanc
+  wxSpinCtrlDouble *m_imgGamma = nullptr, *m_imgBgValue = nullptr, *m_imgSonarPix = nullptr;
+  wxCheckBox *m_imgSonarEq = nullptr, *m_imgOffAuto = nullptr;
+  wxSpinCtrlDouble *m_imgOffFwd = nullptr, *m_imgOffStbd = nullptr;
+  void UpdateSonarOffsetFields();
+  wxListCtrl* m_imgList = nullptr;
+  wxButton *m_imgAdd = nullptr, *m_imgDel = nullptr, *m_imgVis = nullptr, *m_imgZoom = nullptr,
+           *m_imgStop = nullptr;
+  wxStaticText* m_imgStatus = nullptr;
+  wxString m_imgRaw;
   void RefreshLand();
   wxTextCtrl* m_land = nullptr;
   wxButton *m_landBtn = nullptr, *m_landApply = nullptr;
@@ -153,6 +180,7 @@ class BathyDialog : public wxDialog {
   wxSpinCtrlDouble* m_exag;
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
   wxNotebook* m_tabs = nullptr;
+  void FitPages();  // panneau assez grand pour chaque onglet, sans défilement
   wxStaticText* m_cursor;
   // Isobathes
   wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth;

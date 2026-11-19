@@ -13,7 +13,7 @@ instantly, without regenerating anything.
 > 🧪 **Testers** — boxes like this one list what to check in each section.
 > Everything works? Send a short [test report](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=test_report.yml).
 > Something wrong? [Report a problem](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
-> — see [§10](#10-reporting-a-problem) for what to include.
+> — see [§11](#11-reporting-a-problem) for what to include.
 
 **Contents**
 1. [Installation](#1-installation)
@@ -24,9 +24,10 @@ instantly, without regenerating anything.
 6. [Palette and depth thresholds](#6-palette-and-depth-thresholds)
 7. [Depth contours and display](#7-depth-contours-and-display)
 8. [Tide](#8-tide)
-9. [Units and language](#9-units-and-language)
-10. [Reporting a problem](#10-reporting-a-problem)
-11. [FAQ and known limitations](#11-faq-and-known-limitations)
+9. [Seabed imagery](#9-seabed-imagery)
+10. [Units and language](#10-units-and-language)
+11. [Reporting a problem](#11-reporting-a-problem)
+12. [FAQ and known limitations](#12-faq-and-known-limitations)
 
 ---
 
@@ -70,7 +71,7 @@ anything. They need version 0.1.0-beta.10 or later.
 1. Download the `.pdb` files **and `PersonalDepth_datum.sqlite`** of the
    [data-litto3d-finistere-samples](https://github.com/margouilla/PersonalDepth_pi/releases/tag/data-litto3d-finistere-samples)
    release and put them **in one empty folder** (e.g. `Documents/PersonalDepth/base`).
-2. In the PersonalDepth panel, *Bathymetry database* section: click **…** and
+2. In the PersonalDepth panel, *Data* tab, *Database folder* box: click **…** and
    choose this folder. The `.pdb` files appear in the list.
 3. Select the files and click **Centre**: the chart moves to the Iroise Sea.
 4. Zoom in: the colour surface appears, then the exact soundings at large
@@ -101,8 +102,16 @@ At the bottom of the chart, a banner shows the colour palette:
 | Colour bar | Choose a colour preset |
 | Small colour bar (next to ⚙) | Switch the banner between **horizontal** and **vertical**; the vertical banner also shows the intermediate thresholds |
 | ⚙ | Open the main panel |
+| *Contours* / *Soundings* box (bottom line) | Show or hide the depth contours / the soundings |
+| Contour interval (e.g. *5 m*) | Menu: *Palette thresholds*, round values, *Other value…* (typed) |
+| *major* and its value | Major contour: *none*, round values, *Other value…* |
+| *1 dec.* | Decimals of the soundings: 0, 1, 2 at each click |
+| *9 pt* | Text size of the soundings and contour values |
 
-The mark on the colour bar is the safety depth. **Drag the banner** with the
+The bottom line (contours and soundings) appears as soon as depths are
+shown; the underlined values change with a click. With the depth colours
+hidden, it stays alone (with the imagery, if any). The mark on the colour
+bar is the safety depth. **Drag the banner** with the
 mouse to put it anywhere on the chart (the position is kept). In *Display*
 you can hide it, choose a fixed position (bottom centre, top centre, bottom
 left, free) and **lock its position**.
@@ -111,26 +120,27 @@ left, free) and **lock its position**.
 
 ![Banner: drag, A/M, preset, orientation](images/gif/g1-banner.gif)
 
-> 🧪 **Testers — check:** every click on the banner works, the chart does
-> not move when clicking on or dragging the banner, and the locked banner
-> cannot be dragged.
+> 🧪 **Testers — check:** every click on the banner works (including the
+> contours / soundings line), the chart does not move when clicking on or
+> dragging the banner, and the locked banner cannot be dragged.
 
 ## 3. The main panel
 
-The panel is divided into five tabs:
+The panel is divided into three tabs:
 
 | Tab | Content |
 |---|---|
-| **Database** | Database folder, list of `.pdb` files (tick to show or hide), *All* / *None*, *Centre*, **Data management…**, *Stop* |
+| **Data** | At the top: database folder (bathymetry `.pdb` and imagery `.pdi`), *Stop* and status line of the running operation. On the left: list of `.pdb` files (tick to show or hide), **Data management (import)…**, *All* / *None*, *Centre*, then *Coastline* (§ 5). On the right: imported images, *Import…* and imagery import settings (§ 9), then *Vertical reference surfaces* (§ 5) |
 | **Tide** | Tide source and moment, information line, **Tide curve…** (§ 8) |
-| **Palette** | Colours, thresholds, automatic mode, danger zone, palette folder (§ 6) |
-| **Contours and soundings** | Depth contours (interval, major lines, values) and soundings (spacing, decimals, text size) (§ 7) |
-| **Display** | Opacity, relief shading, smoothing, interpolated areas, cursor readout, palette banner (§ 7) |
+| **Display** | Every appearance setting, without scrolling: at the top, layers shown and vertical reference of the depths (§ 5); on the left, palette and thresholds (§ 6), contours and soundings (§ 7); on the right, relief and smoothing, imagery (§ 9), banner and cursor (§ 7). |
 
 The *Cursor: …* line (depth under the cursor) stays visible below the tabs,
 whatever the open tab. The last open tab is remembered.
 
-![Database tab](images/en/03-tab-database.png)
+![Data tab](images/en/03-tab-database.png)
+
+When opened, the panel takes the size that fits every tab without scrolling
+(within the screen).
 
 Every change is applied immediately on the chart. The panel can stay open
 while you use OpenCPN; closing it keeps the display.
@@ -144,7 +154,7 @@ compare with the official chart.
 
 ## 4. Importing a survey
 
-*Bathymetry database* › **Data management…** › **Import…**
+*Data* tab › **Data management (import)…** › **Import…**
 
 ![Import window](images/en/04-import.png)
 
@@ -158,7 +168,8 @@ zone, vertical reference files…) are hidden.
 folder and its sub-folders). Supported: XYZ text (`.xyz .txt .csv .dat`, any
 separator, headers skipped), ESRI ASCII grids (`.asc`), LandXML TIN
 (`.xml`), GPX echo sounder tracks (`.gpx`) and Lowrance / Simrad / B&G sonar
-logs (`.sl2 .sl3`); GeoTIFF / BAG on builds with GDAL.
+logs (`.sl2 .sl3`), GeoTIFF grids (`.tif .tiff`, built-in reader: the
+coordinate system is read from the file); BAG on builds with GDAL.
 
 **Echo sounder tracks** — GPX: track, route and waypoints carrying a depth
 (Garmin `gpxx:Depth` extension, `gpxtpx:depth`…, in metres) and their time.
@@ -169,6 +180,24 @@ Coordinates are always WGS84 and depths metres (column, Z direction and Z
 unit settings are ignored). The **Z offset** adds the transducer depth;
 **observed water levels** correct each sounding at its time. For a lake,
 choose the *not tied* vertical reference.
+
+**Transducer / GPS offset of tracks** (*Advanced* section). Logs record the
+position of the GPS antenna (often in the display at the helm), not of the
+transducer (often on the transom), and the files never say whether this is
+corrected. On a slope, a sounding is then shifted along the track: the two
+directions of a survey disagree, which gives steps between lines and jagged
+contours. *Tracks: estimate transducer / GPS offset* works it out on lines
+run in opposite directions: first on the depths (a slope that varies along
+the lines is needed: basin, shoal, drop-off; on a uniform slope the offset
+cannot be told apart from a water level change), otherwise on the side-scan
+of the log. The value found on the depths also includes the lag of the
+sounder's depth reading (smoothing), which shifts soundings in the same way.
+With the box ticked, the *forward* and *starboard* fields are greyed out and
+show the offset obtained at the last import (the source's own when editing
+its settings). With the box unticked, enter the offset measured on the boat
+(*forward*, negative when the transducer is aft; *starboard*); these entered
+values also apply when the estimate fails. The offset used is shown in the
+source analysis (*Data management*).
 
 **Everyday settings** (always shown)
 
@@ -408,14 +437,17 @@ copied alone to another folder (or shared without
 `PersonalDepth_datum.sqlite`) brings its surfaces, taken back when the
 database is opened, and is shown at the same chart datum.
 
-In the **Database** tab, *Vertical datum* box:
+The datum of the depths shown is chosen in the **Display** tab, *Vertical
+reference of depths* box; the datum of the original data is still set at
+import (§ 4). The surfaces used are set in the **Data** tab, *Vertical
+reference surfaces* box.
 
-- **Depths**: datum of the depths shown (colours, soundings, contours,
+- **Depths** (*Display* tab): datum of the depths shown (colours, soundings, contours,
   cursor). Default: *official chart datum of the country*, so values match the charts (ENC,
   RNC) and a source imported at chart datum shows exactly its original
   values. With the tide, the display is always the actual water depth (chart
   datum + tide).
-- **MSS**: mean sea surface file (`.pdgrid`), for GNSS heights and the
+- **MSS** (*Data* tab, like the following settings): mean sea surface file (`.pdgrid`), for GNSS heights and the
   display at the ellipsoid outside France.
 - **Countries**: folder of the official files of other countries (NOAA
   VDatum grids of the United States…), recognised automatically; changing
@@ -446,7 +478,7 @@ charts.
 ### Coastline
 
 Between two sounding lines, the interpolated surface may bridge an island or
-a headland. The *Coastline* box of the **Database** tab prevents it:
+a headland. The *Coastline* box of the **Data** tab prevents it:
 
 - **Folder**: folder of the basemaps downloaded by OpenCPN's chart
   downloader, **OSMSHP** (OpenStreetMap land polygons, `basemap_*.shp`,
@@ -491,7 +523,9 @@ prepare a shoreline from OpenStreetMap.
 
 ## 6. Palette and depth thresholds
 
-![Palette tab](images/en/06-palette.png)
+**Display** tab, *Palette and depth thresholds* box (on the left).
+
+![Display tab](images/en/06-palette.png)
 
 ![Palette changed live](images/gif/g2-palette-live.gif)
 
@@ -532,37 +566,36 @@ Depths are positive downwards; negative values are above the datum shown
 
 ![Depth contours and soundings](images/en/07-contours-soundings.png)
 
-![Contours and soundings tab](images/en/07-tab-contours.png)
+**Display** tab, *Contours and soundings* box (below the palette). Labels
+are short; every setting has its tooltip.
 
-**Contours and soundings tab**
+**Depth contours** — *Contours* (show) and their colour; levels at a
+*Regular interval* or on the *Palette thresholds*; *Values* on lines (solid
+figures, in the line colour); *Interval*; *Major* every N units (thick
+line); *Line smoothing* (display only). No line is drawn in the gaps of the
+survey. The safety contour (red) follows the danger zone of the palette.
 
-**Depth contours** — *Show depth contours*; levels at a *Regular interval*
-or on the *Palette thresholds*; *Major every* N units (thick line); *Values on
-lines* (solid figures, in the line colour); *Line smoothing* (display
-only). No line is drawn in the gaps of the
-survey.
-
-**Soundings** — *Show soundings*: exact soundings (shoalest per screen
+**Soundings** — *Soundings* (show): exact soundings (shoalest per screen
 cell), never taken from interpolated areas; *Spacing* (minimum gap between
 two soundings on screen); *Decimals*; *Text size* (soundings and contour
 values).
 
-**Display tab**
+**Relief, banner and cursor** (right-hand column of the *Display* tab, see
+the screenshot in § 6)
 
-![Display tab](images/en/07-tab-display.png)
 
 ![Interpolated areas: hide, lighten, cursor](images/gif/g3-interpolation.gif)
 
 | Setting | Effect |
 |---|---|
 | Opacity | Transparency of the colour surface over the chart |
-| Relief shading | Hillshading and its strength |
-| Vertical exaggeration | Accentuates the relief of the shading |
-| Soften relief | Smooths the shading only (colours, contours and soundings keep the true depths) |
-| Smoothing (interpolation) | Smooth colours between grid cells |
-| Interpolated areas of the database | Show the surface interpolated at import between soundings; *distinguish them (lighter)* lightens its colours |
+| Shading | Relief shading and its strength |
+| Exaggeration | Vertical exaggeration: accentuates the relief of the shading |
+| Soften | Smooths the shading only (colours, contours and soundings keep the true depths) |
+| Smoothing | Interpolation: smooth colours between grid cells |
+| Interpolated areas of the database | Show the surface interpolated at import between soundings; *lighter* lightens its colours |
+| Banner | Palette banner on the chart and where it sits; *Lock* its position |
 | Cursor readout | Depth and source next to the cursor |
-| Palette banner on the chart | Show the banner and choose where it sits |
 
 > 🧪 **Testers — check:** contours and soundings are readable and do not
 > overlap too much; the cursor readout gives the same value as the sounding
@@ -574,7 +607,7 @@ values).
 
 ![Tide slider ±12 h](images/gif/g4-tide.gif)
 
-Without tide, depths are shown in the chosen datum (*Database* tab, local
+Without tide, depths are shown in the chosen datum (*Display* tab, local
 chart datum by default). The *Tide* section adds the water height of a given
 moment above chart datum, pixel by pixel:
 
@@ -603,7 +636,123 @@ W, Centre, E, SW, S, SE — spread over your data).
 > window; the red line of the tide curve follows the moment chosen in the
 > panel.
 
-## 9. Units and language
+## 9. Seabed imagery
+
+PersonalDepth displays **seabed imagery**: reflectivity, backscatter or
+side-scan sonar mosaics, for instance the mosaics that Ifremer, Infomar or
+EMODnet distribute free of charge. The images are imported once into an
+imagery database (`PD_*.pdi` files, in the same folder as the bathymetry
+`.pdb` files). The original values (dB, grey levels) are kept, as the
+depths are for the bathymetry.
+
+**Importing.** Click *Import…* and choose one or more GeoTIFF files (`.tif`,
+`.tiff`: dB in floating point, 8- or 16-bit grey levels, palette). The
+coordinate system is read from the file. Mosaics often have a uniform white
+(255) or black (0) background around the survey. This background is detected
+automatically and discarded. If needed, choose *none* or a *value:* in
+*Background outside the survey at import*. A 50 million pixel mosaic imports
+in about 20 s.
+
+**Side-scan sonar of recreational sounders.** *Import…* also takes
+Lowrance / Simrad / B&G logs (`.sl2`, `.sl3`) recorded with a side-scan
+transducer (StructureScan, SideImaging). The sonar lines are assembled into a
+mosaic:
+
+- the height above the bottom is read on the image itself (first bottom
+  echo), or else taken from the depth of the log;
+- the slant range is converted to ground range and each ping is resampled on
+  the ground; the water column is left out;
+- positions are interpolated between GPS fixes and the track is smoothed;
+  the heading comes from the track (the log rarely has a compass);
+- stripes (one ping brighter or darker than its neighbours) are corrected;
+- short streaks on a single ping (interference from other sounders) are
+  removed;
+- *Equalise* (on by default) gives the same mean brightness from the centre
+  to the edge of the swath, despite gain or range changes made during the
+  survey, and cuts the noise beyond the acoustic range;
+- where lines overlap, the strong-signal part of each line wins over the
+  weak edges of its neighbours.
+
+**Transducer / GPS offset.** The log gives the position of the GPS antenna,
+often built into the display at the helm, while the transducer is usually
+on the transom: the two directions of a line are then offset from each
+other and the mosaic is blurred where lines overlap. *Estimate transducer /
+GPS offset* works it out from lines run in opposite directions (as in the
+hydrographers' patch test: the same seabed patch seen both ways is shifted
+by twice the offset). It needs reciprocal lines over a recognisable seabed
+(rocks, ripples, weed beds). With the box ticked, the *forward* and
+*starboard* fields are greyed out and show the offset obtained on the last
+imported log. With the box unticked, enter the measured offset: transducer
+*forward* of the antenna (negative when it is aft) and to *starboard*
+(negative to port); these values also apply when the estimate fails. An estimate to the nearest
+half-metre, measured on the boat, is enough. The offset used is shown in the
+image information.
+
+*Side-scan: pixel (m)* sets the mosaic step; 0 = automatic (range / 400,
+between 0.1 and 1 m). For a very large survey the step is widened to keep
+memory use reasonable (noted in the image information). Logs without a
+side-scan channel (2D sonar and DownScan only) are refused with a message.
+The depths of the same logs are imported as bathymetry from *Data
+management*.
+
+![Side-scan mosaic from a recreational sounder (copper palette)](images/en/15-sidescan-mosaic.png)
+
+*Mosaic assembled from a `.sl3` log (copper palette, automatic contrast over
+the displayed area); bathymetry hidden, so the banner keeps only the imagery
+bar.*
+
+The imported images and the import settings are in the *Data* tab,
+*Imagery* box; the display settings of both layers are together in the
+*Display* tab.
+
+**Layers** (*Display* tab). The *Bathymetry* and *Imagery* switches show or hide each layer.
+*Imagery below / above bathymetry* chooses the top layer. Its opacity sets
+how much of the layer underneath shows through. Contours, soundings, the
+palette banner and the cursor readout always stay on top; contours and
+soundings (when ticked) stay shown with the *Bathymetry* colours switched
+off, e.g. to read depths over a mosaic.
+
+**Rendering** (*Display* tab, *Imagery* box). Each image is stretched for display between its 2 % and 98 %
+values, measured at import, so that images in different units can be shown
+together. The settings below act on this stretch and apply at once, without
+re-reading anything:
+
+- *Palette*: greyscale, copper or sepia; *Invert* shows strong reflectivity
+  dark.
+- *Black at (%)* and *White at (%)*: contrast, as a percentage of the
+  stretch.
+- *Gamma*: above 1 brightens the mid-tones, below 1 darkens them.
+- *Opacity* and *Smoothing* (interpolation between pixels).
+
+*Automatic contrast* (like the automatic palette of the bathymetry) sets
+black and white at the 2 % and 98 % values of the *displayed area*, or at the
+import stretch of each image (*all images*); moving a bound switches back to
+manual.
+
+**Banner.** When imagery is shown, the palette banner gets a second, grey
+bar below the depth colours (or alone if the bathymetry is hidden): black
+and white bounds in % of the stretch (click to type them), **A** / **M**
+automatic or manual contrast, **View** / **All**, and a click on the grey bar
+opens the palette (greyscale, copper, sepia) and *Invert*.
+
+The cursor readout shows the original value and the image, e.g.
+`Imagery -18.4 dB [BS_mosaic.tif]`, after the depth when both layers are
+shown.
+
+The list shows the imported images, whether they are shown, their value
+range, pixel size and date. *Show / hide*, *Zoom* (or double-click) and
+*Remove* act on the selection. Removing an image never touches the original
+file.
+
+> 🧪 **Testers — check:** a `.sl2` / `.sl3` log with side-scan gives a
+> mosaic that lines up with the chart (piers, moorings, banks); please send
+> the sounder model and a screenshot.
+
+> 🧪 **Testers — check:** import a reflectivity mosaic; its white or black
+> background disappears; the cursor shows dB or grey levels; the order and
+> opacity of the two layers change the overlay at once.
+
+## 10. Units and language
 
 - **Units** follow OpenCPN: *Options › Display › Units* (metres or feet;
   fathoms are shown in feet). Soundings, contours, legend, thresholds, danger
@@ -630,7 +779,7 @@ W, Centre, E, SW, S, SE — spread over your data).
 > the whole display; English or Russian texts that are wrong or still in
 > French (please quote them).
 
-## 10. Reporting a problem
+## 11. Reporting a problem
 
 Use the [problem report form](https://github.com/margouilla/PersonalDepth_pi/issues/new?template=bug_report.yml)
 (free GitHub account needed) or the
@@ -650,7 +799,7 @@ Please include:
    | Linux, Raspberry Pi | `~/.opencpn/opencpn.log` |
    | macOS | `~/Library/Preferences/opencpn/opencpn.log` |
 
-## 11. FAQ and known limitations
+## 12. FAQ and known limitations
 
 **The whole surface is one colour.** The data probably contain fill values
 (e.g. −9999 or 999). Use *Data management › Clean…* with bounds such as

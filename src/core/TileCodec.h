@@ -39,16 +39,24 @@ struct DepthTile {
   std::vector<int32_t> v;        // profondeur en mm (positive vers le bas), kEmpty = vide
   std::vector<uint8_t> src;      // index dans srcIds (tuiles fusionnées), vide si une source
   std::vector<int64_t> srcIds;   // sources présentes (fusion)
-  // Pixels interpolés (surface TIN entre les sondes d'un nuage) : 1 = interpolé,
-  // vide = aucun. Une sonde mesurée l'emporte toujours sur une valeur interpolée.
+  // Drapeaux par pixel, vide = aucun :
+  //   bit 0 (1) : interpolé (surface TIN entre les sondes d'un nuage) ; une sonde
+  //               mesurée l'emporte toujours sur une valeur interpolée ;
+  //   bit 1 (2) : comblé entre deux nœuds d'une grille (interpolation linéaire) :
+  //               traité comme mesuré (priorité, affichage), mais jamais pris
+  //               comme sonde chiffrée.
   std::vector<uint8_t> interp;
 
   void reset() { v.assign(kN, kEmpty); src.clear(); srcIds.clear(); interp.clear(); }
-  bool isInterp(int k) const { return !interp.empty() && interp[k]; }
-  void setInterp(int k, bool on) {
-    if (interp.empty()) { if (!on) return; interp.assign(kN, 0); }
-    interp[k] = on ? 1 : 0;
+  bool isInterp(int k) const { return !interp.empty() && (interp[k] & 1); }
+  bool isFill(int k) const { return !interp.empty() && (interp[k] & 2); }
+  uint8_t flags(int k) const { return interp.empty() ? 0 : interp[k]; }
+  void setFlags(int k, uint8_t f) {
+    if (interp.empty()) { if (!f) return; interp.assign(kN, 0); }
+    interp[k] = f;
   }
+  void setInterp(int k, bool on) { setFlags(k, on ? 1 : (uint8_t)(flags(k) & ~1)); }
+  void setFill(int k, bool on) { setFlags(k, on ? 2 : (uint8_t)(flags(k) & ~2)); }
   bool allocated() const { return (int)v.size() == kN; }
   size_t count() const;
   int64_t sourceAt(int k) const {

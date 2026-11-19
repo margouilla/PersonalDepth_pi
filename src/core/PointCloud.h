@@ -113,6 +113,12 @@ struct LoadOptions {
   // sondes sans heure (pas de colonne date) : niveau pris à cet instant (UTC,
   // date du levé à midi) ; 0 = sondes sans heure ignorées
   long long waterTime = 0;
+  // Traces de sondeur : position de la sonde par rapport à l'antenne GPS (m,
+  // vers l'avant et vers tribord, cap tiré de la route) ; antAuto : estimé
+  // sur les lignes en sens opposés (profondeurs sur les pentes, sinon sonar
+  // latéral du journal), les valeurs données à défaut
+  double antFwd = 0, antStbd = 0;
+  bool antAuto = false;
 };
 
 // Pas régulier d'une suite de coordonnées entières (en unités), 0 sinon.
@@ -137,6 +143,10 @@ class PointCloud {
   long long waterNoTime = 0, waterMiss = 0;
   float waterCorrMin = 0, waterCorrMax = 0;
   bool waterApplied = false;
+  std::string posInfo;  // traces : décalage sonde / antenne appliqué (texte)
+  // traces : décalage sonde / antenne estimé sur les données (antAuto)
+  bool antEstOk = false;
+  double antEstFwd = 0, antEstStbd = 0;
 
   size_t size() const { return z.size(); }
   bool empty() const { return z.empty(); }

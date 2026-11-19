@@ -61,11 +61,15 @@ struct GridLevel {
   std::vector<float> z;        // NaN = pas de donnée
   std::vector<uint8_t> shade;  // ombrage ; 160 = neutre (relief plat)
   // bit 0 : cellule interpolée (base) ; bit 1 : à moins de kInterpNear cellules
-  // d'une cellule mesurée (petit trou d'un levé, non éclairci) ; vide = aucune
+  // d'une cellule mesurée (petit trou d'un levé, non éclairci) ; bit 2 :
+  // comblée entre deux nœuds d'une grille (traitée comme mesurée, mais jamais
+  // prise comme sonde) ; vide = aucune
   std::vector<uint8_t> interp;
   static constexpr int kInterpNear = 2;
 
   bool isInterp(size_t c) const { return !interp.empty() && (interp[c] & 1); }
+  // bit 2 : comblée entre deux nœuds d'une grille (pas une sonde chiffrée)
+  bool isFill(size_t c) const { return !interp.empty() && (interp[c] & 4); }
   // zone interpolée à montrer plus claire (« les distinguer »)
   bool isInterpFar(size_t c) const { return !interp.empty() && interp[c] == 1; }
   void markInterpNear();

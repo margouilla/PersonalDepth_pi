@@ -85,6 +85,9 @@ class ImportDialog : public wxDialog {
   // aperçu sur `preview`, sinon sur le premier fichier texte de la liste
   void OnFormat(const wxString& preview = wxString());
   wxSpinCtrlDouble* m_offset = nullptr;
+  wxCheckBox* m_antAuto = nullptr;
+  wxSpinCtrlDouble *m_antFwd = nullptr, *m_antStbd = nullptr;
+  double m_antManF = 0, m_antManS = 0;  // décalage saisi (affiché quand l'estimation est décochée)
   wxChoice* m_zUnit = nullptr;             // unité verticale du fichier : m / ft
   double m_unitF = 1.0;                    // unité affichée -> m (1 ou 0,3048)
   wxStaticText *m_offsetL = nullptr, *m_boundsU = nullptr;

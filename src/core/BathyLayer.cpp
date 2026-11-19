@@ -28,6 +28,7 @@
 #include <functional>
 #include <sstream>
 
+#include "GeoTiff.h"
 #include "Projection.h"
 #include "Tracks.h"
 
@@ -177,8 +178,28 @@ void BathyLayer::run() {
       TrackInfo ti;
       ok = LoadTrack(params.path, lo, cloud, err, [this](float f) { progress_ = 0.6f * f; }, stopFlag(), &ti);
       crsUsed_.clear();
-    } else if (ext == ".tif" || ext == ".tiff" || ext == ".bag" || ext == ".nc" ||
-               ext == ".grd") {
+    } else if (ext == ".tif" || ext == ".tiff") {  // lecteur GeoTIFF intégré
+      LoadOptions lt = lo;
+      if (params.readPrj && params.crsDef.empty()) lt.crs = nullptr;  // automatique : système du fichier
+      double cl = 0, ca = 0;
+      std::string used;
+      ok = LoadGeoTiff(params.path, lt, cloud, cl, ca, used, err, stopFlag());
+#ifdef PD_HAVE_GDAL
+      if (!ok && !stopped()) {  // compression ou projection inconnues : GDAL
+        std::string gerr;
+        ok = LoadGdalRaster(params.path, lo, cloud, cl, ca, gerr);
+        if (ok) err.clear();
+      }
+#endif
+      if (ok) {
+        if (!used.empty() && !lo.crs) crsUsed_ = used + " (GeoTIFF)";
+        if (cloud.srcStepX > 0) {
+          if (gp.cellMeters <= 0) gp.cellMeters = std::max(cloud.srcStepX, cloud.srcStepY);
+        } else {
+          gp.forceDLon = cl; gp.forceDLat = ca;
+        }
+      }
+    } else if (ext == ".bag" || ext == ".nc" || ext == ".grd") {
 #ifdef PD_HAVE_GDAL
       double cl, ca;
       ok = LoadGdalRaster(params.path, lo, cloud, cl, ca, err);

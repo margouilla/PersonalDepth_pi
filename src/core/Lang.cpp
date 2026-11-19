@@ -88,8 +88,10 @@ std::string FormatSignature(const char* s) {
   for (const char* p = s; p && *p; ++p) {
     if (*p != '%') continue;
     ++p;
-    if (*p == '%') continue;
-    while (*p && std::strchr("-+ #0123456789.*'", *p)) ++p;
+    // « %% » et « % » suivi d'une espace (texte : « 2 % et 98 % ») ne sont pas
+    // des conversions (aucun format du plugin n'utilise l'indicateur espace)
+    if (*p == '%' || *p == ' ') continue;
+    while (*p && std::strchr("-+#0123456789.*'", *p)) ++p;
     while (*p && std::strchr("hlLqjzt", *p)) ++p;  // longueur (ll, z…)
     if (!*p) break;
     sig += *p;

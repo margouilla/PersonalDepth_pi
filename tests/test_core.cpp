@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <map>
+#include <cstring>
 #include "sqlite3.h"
 #include <random>
 
@@ -45,9 +47,12 @@
 #include "../src/core/Soundings.h"
 #include "../src/core/WaterLevel.h"
 #include "../src/core/SurveyShape.h"
+#include "../src/core/GeoTiff.h"
+#include "../src/core/Imagery.h"
 #include "../src/core/GeoGrid.h"
 #include "../src/core/LandMask.h"
 #include "../src/core/Tracks.h"
+#include "../src/core/SideScan.h"
 #include "../src/core/Shoreline.h"
 #include <cstring>
 #include "../src/core/Projection.h"
@@ -62,7 +67,591 @@ static double ms(clk::time_point a) {
 }
 #define CHECK(c) do { if (!(c)) { std::printf("ÉCHEC %s:%d %s\n", __FILE__, __LINE__, #c); return 1; } } while (0)
 
+// ---- GeoTIFF de test : écrit une image (bandes ou tuiles), compressions et
+// prédicteurs au choix, petit- ou gros-boutien
+namespace tiffw {
+struct Img {
+  int w = 0, h = 0, bits = 32, fmt = 3;  // 1 non signé, 2 signé, 3 réel
+  std::vector<double> v;                 // w × h, ligne 0 en haut
+  bool be = false, tiled = false;
+  int bw = 16, bh = 16;                  // tuile, ou lignes par bande (bh)
+  int comp = 1, pred = 1;                // 1, 5 (LZW), 8 (Deflate) ; prédicteur 1, 2, 3
+  double sx = 1, sy = 1, x0 = 0, y0 = 0; // pas et coin nord-ouest
+  std::vector<uint16_t> keys;            // GeoKeyDirectory (sans l'entête)
+  std::vector<double> dbl;               // GeoDoubleParams
+  std::string nodata;
+};
+static void put(std::vector<uint8_t>& b, uint64_t v, int n, bool be) {
+  for (int k = 0; k < n; ++k) b.push_back((uint8_t)(v >> (8 * (be ? n - 1 - k : k))));
+}
+static std::vector<uint8_t> lzw(const std::vector<uint8_t>& d) {
+  std::vector<uint8_t> out;
+  uint32_t acc = 0; int nb = 0, width = 9, next = 258;
+  auto emit = [&](int code) {
+    acc = (acc << width) | (uint32_t)code; nb += width;
+    while (nb >= 8) { out.push_back((uint8_t)(acc >> (nb - 8))); nb -= 8; }
+  };
+  std::map<std::pair<int, int>, int> dict;
+  emit(256);
+  int w = -1;
+  for (uint8_t c : d) {
+    if (w < 0) { w = c; continue; }
+    auto it = dict.find({w, c});
+    if (it != dict.end()) { w = it->second; continue; }
+    emit(w);
+    dict[{w, c}] = next++;
+    if (next > 511 && width == 9) width = 10;
+    if (next > 1023 && width == 10) width = 11;
+    if (next > 2047 && width == 11) width = 12;
+    if (next >= 4093) { emit(256); dict.clear(); next = 258; width = 9; }
+    w = c;
+  }
+  if (w >= 0) emit(w);
+  emit(257);
+  if (nb > 0) out.push_back((uint8_t)(acc << (8 - nb)));
+  return out;
+}
+static std::vector<uint8_t> zstore(const std::vector<uint8_t>& d) {  // zlib, blocs non compressés
+  std::vector<uint8_t> o = {0x78, 0x01};
+  size_t i = 0;
+  do {
+    const size_t n = std::min<size_t>(65535, d.size() - i);
+    o.push_back(i + n >= d.size() ? 1 : 0);
+    put(o, n, 2, false); put(o, n ^ 0xFFFF, 2, false);
+    o.insert(o.end(), d.begin() + i, d.begin() + i + n);
+    i += n;
+  } while (i < d.size());
+  uint32_t a = 1, b = 0;
+  for (uint8_t c : d) { a = (a + c) % 65521; b = (b + a) % 65521; }
+  put(o, (b << 16) | a, 4, true);
+  return o;
+}
+// bloc (x0, y0, bw × rows) -> octets du fichier
+static std::vector<uint8_t> block(const Img& m, int bx, int by, int bw, int rows) {
+  const int nbytes = m.bits / 8;
+  std::vector<uint8_t> raw;
+  for (int y = 0; y < rows; ++y) {
+    std::vector<uint8_t> row;
+    std::vector<uint64_t> iv(bw);
+    for (int x = 0; x < bw; ++x) {
+      const int X = bx + x, Y = by + y;
+      const double v = (X < m.w && Y < m.h) ? m.v[(size_t)Y * m.w + X] : 0;
+      uint64_t u = 0;
+      if (m.fmt == 3) {
+        if (m.bits == 32) { float f = (float)v; uint32_t t; std::memcpy(&t, &f, 4); u = t; }
+        else std::memcpy(&u, &v, 8);
+      } else {
+        u = (uint64_t)(int64_t)std::llround(v);
+      }
+      iv[x] = u;
+    }
+    if (m.pred == 2)  // différences (entiers), de droite à gauche
+      for (int x = bw - 1; x > 0; --x) iv[x] = iv[x] - iv[x - 1];
+    if (m.pred == 3) {  // octets regroupés (poids fort d'abord) puis différences
+      std::vector<uint8_t> t((size_t)bw * nbytes);
+      for (int x = 0; x < bw; ++x)
+        for (int b = 0; b < nbytes; ++b) t[(size_t)b * bw + x] = (uint8_t)(iv[x] >> (8 * (nbytes - 1 - b)));
+      for (size_t k = t.size() - 1; k > 0; --k) t[k] = (uint8_t)(t[k] - t[k - 1]);
+      row = t;
+    } else {
+      for (int x = 0; x < bw; ++x) put(row, iv[x], nbytes, m.be);
+    }
+    raw.insert(raw.end(), row.begin(), row.end());
+  }
+  if (m.comp == 5) return lzw(raw);
+  if (m.comp == 8) return zstore(raw);
+  return raw;
+}
+static bool write(const std::string& path, const Img& m) {
+  std::vector<std::vector<uint8_t>> blocks;
+  if (m.tiled) {
+    for (int by = 0; by < m.h; by += m.bh)
+      for (int bx = 0; bx < m.w; bx += m.bw) blocks.push_back(block(m, bx, by, m.bw, m.bh));
+  } else {
+    for (int by = 0; by < m.h; by += m.bh) blocks.push_back(block(m, 0, by, m.w, std::min(m.bh, m.h - by)));
+  }
+  // disposition : entête, données des blocs, tableaux, IFD
+  std::vector<uint8_t> f;
+  f.push_back(m.be ? 'M' : 'I'); f.push_back(m.be ? 'M' : 'I');
+  put(f, 42, 2, m.be); put(f, 0, 4, m.be);
+  std::vector<uint32_t> off, cnt;
+  for (auto& b : blocks) { off.push_back((uint32_t)f.size()); cnt.push_back((uint32_t)b.size()); f.insert(f.end(), b.begin(), b.end()); }
+  struct Tag { int tag, typ; uint32_t count; std::vector<uint8_t> data; };
+  std::vector<Tag> tags;
+  auto t16 = [&](int tag, std::vector<uint64_t> v) { Tag t{tag, 3, (uint32_t)v.size(), {}}; for (auto x : v) put(t.data, x, 2, m.be); tags.push_back(t); };
+  auto t32 = [&](int tag, std::vector<uint64_t> v) { Tag t{tag, 4, (uint32_t)v.size(), {}}; for (auto x : v) put(t.data, x, 4, m.be); tags.push_back(t); };
+  auto tdbl = [&](int tag, std::vector<double> v) { Tag t{tag, 12, (uint32_t)v.size(), {}}; for (double x : v) { uint64_t u; std::memcpy(&u, &x, 8); put(t.data, u, 8, m.be); } tags.push_back(t); };
+  t32(256, {(uint64_t)m.w}); t32(257, {(uint64_t)m.h}); t16(258, {(uint64_t)m.bits}); t16(259, {(uint64_t)m.comp});
+  t16(262, {1});
+  if (!m.tiled) { t32(273, std::vector<uint64_t>(off.begin(), off.end())); t32(278, {(uint64_t)m.bh}); t32(279, std::vector<uint64_t>(cnt.begin(), cnt.end())); }
+  t16(277, {1}); t16(284, {1});
+  if (m.pred != 1) t16(317, {(uint64_t)m.pred});
+  if (m.tiled) { t32(322, {(uint64_t)m.bw}); t32(323, {(uint64_t)m.bh}); t32(324, std::vector<uint64_t>(off.begin(), off.end())); t32(325, std::vector<uint64_t>(cnt.begin(), cnt.end())); }
+  t16(339, {(uint64_t)m.fmt});
+  tdbl(33550, {m.sx, m.sy, 0});
+  tdbl(33922, {0, 0, 0, m.x0, m.y0, 0});
+  if (!m.keys.empty()) {
+    std::vector<uint64_t> k = {1, 1, 0, (uint64_t)(m.keys.size() / 4)};
+    k.insert(k.end(), m.keys.begin(), m.keys.end());
+    t16(34735, k);
+  }
+  if (!m.dbl.empty()) tdbl(34736, m.dbl);
+  if (!m.nodata.empty()) { Tag t{42113, 2, (uint32_t)m.nodata.size() + 1, std::vector<uint8_t>(m.nodata.begin(), m.nodata.end())}; t.data.push_back(0); tags.push_back(t); }
+  std::sort(tags.begin(), tags.end(), [](const Tag& a, const Tag& b) { return a.tag < b.tag; });
+  for (auto& t : tags) if (t.data.size() > 4) { const uint32_t o = (uint32_t)f.size(); f.insert(f.end(), t.data.begin(), t.data.end()); if (f.size() & 1) f.push_back(0); t.data.clear(); put(t.data, o, 4, m.be); t.typ = -t.typ; }
+  const uint32_t ifd = (uint32_t)f.size();
+  put(f, tags.size(), 2, m.be);
+  for (auto& t : tags) {
+    put(f, t.tag, 2, m.be); put(f, (uint64_t)std::abs(t.typ), 2, m.be); put(f, t.count, 4, m.be);
+    std::vector<uint8_t> d = t.data; d.resize(4, 0); f.insert(f.end(), d.begin(), d.end());
+  }
+  put(f, 0, 4, m.be);
+  for (int k = 0; k < 4; ++k) f[4 + k] = (uint8_t)(ifd >> (8 * (m.be ? 3 - k : k)));
+  std::ofstream o(path, std::ios::binary);
+  o.write((const char*)f.data(), (std::streamsize)f.size());
+  return (bool)o;
+}
+}  // namespace tiffw
+
+
 int main(int argc, char** argv) {
+  {  // base d'imagerie (.pdi) : mosaïque 8 bits à fond blanc, étirement, moyenne, valeurs d'origine
+    std::string err;
+    const std::string folder = Tmp("pd_test_img");
+    std::filesystem::remove_all(folder);
+    tiffw::Img im;
+    im.w = 300; im.h = 200; im.bits = 8; im.fmt = 1; im.tiled = true; im.bw = 64; im.bh = 64; im.comp = 5;
+    im.sx = 2e-5; im.sy = 2e-5; im.x0 = -4.50; im.y0 = 48.20;
+    im.keys = {1024, 0, 1, 2, 2048, 0, 1, 4326};
+    size_t inside = 0;
+    for (int y = 0; y < im.h; ++y)
+      for (int x = 0; x < im.w; ++x) {
+        const bool in = x > 40 && x < 260 && y > 30 && y < 170;  // levé au milieu, fond blanc autour
+        im.v.push_back(in ? 20 + (x * 7 + y * 3) % 200 : 255);
+        inside += in;
+      }
+    const std::string f = Tmp("pd_test_img.tif");
+    CHECK(tiffw::write(f, im));
+    BathyDb img;
+    CHECK(img.open(folder, err, 0, DbKind::Imagery));
+    DbSource m;
+    m.name = "IMG"; m.date = "2000-05-01";
+    int64_t id = 0;
+    ImageryInfo inf;
+    CHECK(ImportImagery(img, f, ImageryOptions{}, m, DbPriority::ResolutionDate, err, nullptr, nullptr, &id, &inf));
+    const DbSource* s = img.source(id);
+    CHECK(s && inf.hasBackground && inf.backgroundAuto && inf.background == 255 && inf.pixels == (long long)inside);
+    CHECK(s->vunit == pd::tr("niveau") && s->vlo >= 20 && s->vhi <= 219 && s->vhi > s->vlo + 100);
+    // fichiers .pdi seulement ; la base de bathymétrie du même dossier reste vide
+    bool pdi = false, pdb = false;
+    for (auto& e : std::filesystem::directory_iterator(folder)) {
+      pdi |= e.path().extension() == ".pdi";
+      pdb |= e.path().extension() == ".pdb";
+    }
+    CHECK(pdi && !pdb);
+    BathyDb dep;
+    CHECK(dep.open(folder, err) && dep.sources().empty());
+    // vue : valeurs ramenées à 0 – 1, fond absent ; valeur d'origine = vlo + n (vhi - vlo)
+    PointCloud v;
+    double dl, dt;
+    int used;
+    std::vector<int64_t> sid;
+    CHECK(img.buildView(-4.4995, -4.4945, 48.1975, 48.1985, s->level, 20000000, v, dl, dt, used, err, nullptr, &sid));
+    float nmin = 9, nmax = -9;
+    for (size_t k = 0; k < v.size(); ++k) { nmin = std::min(nmin, v.z[k]); nmax = std::max(nmax, v.z[k]); }
+    const double back = s->vlo + v.z[0] * (s->vhi - s->vlo);
+    std::printf("imagerie : %lld pixels, fond %g, étirement %g – %g %s, niveau %d, vue %.2f … %.2f\n", inf.pixels,
+                inf.background, s->vlo, s->vhi, s->vunit.c_str(), s->level, nmin, nmax);
+    CHECK(nmin > -0.2f && nmax < 1.2f && back >= 20 && back <= 219 && sid[0] == id);
+    // niveau plus grossier : moyenne (et non la plus faible valeur)
+    CHECK(img.buildView(-4.4995, -4.4945, 48.1975, 48.1985, s->level - 3, 20000000, v, dl, dt, used, err));
+    double mean = 0;
+    for (float z : v.z) mean += z;
+    mean /= std::max<size_t>(1, v.size());
+    CHECK(used == s->level - 3 && mean > 0.25 && mean < 0.75);
+    std::printf("Base d'imagerie .pdi (fond écarté, étirement, moyenne) : OK\n");
+  }
+  {  // Sonar latéral SL3 (canal 5) : mosaïque géoréférencée
+    // Bateau vers le nord à 1 m/s, GPS à 1 Hz, pings à 10 Hz, 10 m d'eau,
+    // portée ±40 m ; fond 60 jusqu'à 30 m au sol, bruit (5) au-delà ; cible
+    // brillante à tribord, 20 m au sol, 100 m après le départ ; un parasite
+    // sur un seul ping à bâbord.
+    const std::string f = Tmp("pd_sidescan.sl3");
+    const double lon0 = -4.5, lat0 = 48.3, R = 6356752.3142, depth = 10, range = 40;
+    const int n = 400, pings = 2000;
+    {
+      std::vector<uint8_t> F(8, 0);
+      const uint16_t hdr[4] = {3, 1, 3200, 0};
+      std::memcpy(F.data(), hdr, 8);
+      uint32_t idx = 0;
+      for (int k = 0; k < pings; ++k) {
+        const int gps = k / 10;  // position du dernier point GPS (1 Hz)
+        const double lat = lat0 + gps * 1.0 / 111194.92664;
+        std::vector<uint8_t> h(168 + 2 * n, 0);
+        const uint32_t pos = (uint32_t)F.size();
+        const uint16_t size = (uint16_t)h.size(), ch = 5, pk = (uint16_t)(2 * n);
+        const float up = (float)(-range / 0.3048), lo = (float)(range / 0.3048), ft = (float)(depth / 0.3048);
+        const int32_t e = (int32_t)std::lround(lon0 * M_PI / 180 * R);
+        const int32_t nn = (int32_t)std::lround(R * std::log(std::tan(M_PI / 4 + lat * M_PI / 360)));
+        const int32_t ms = k * 100;
+        const float cog = 0.f;
+        std::memcpy(&h[0], &pos, 4); std::memcpy(&h[8], &size, 2); std::memcpy(&h[12], &ch, 2);
+        std::memcpy(&h[16], &idx, 4); std::memcpy(&h[20], &up, 4); std::memcpy(&h[24], &lo, 4);
+        std::memcpy(&h[44], &pk, 2); std::memcpy(&h[48], &ft, 4); std::memcpy(&h[92], &e, 4);
+        std::memcpy(&h[96], &nn, 4); std::memcpy(&h[104], &cog, 4); std::memcpy(&h[124], &ms, 4);
+        ++idx;
+        const double along = k * 0.1;
+        for (int side = 0; side < 2; ++side)
+          for (int j = 0; j < n; ++j) {
+            const double r = (j + 0.5) * range / n;
+            const double g = r > depth ? std::sqrt(r * r - depth * depth) : -1;
+            int v = 20;  // colonne d'eau
+            if (g >= 0) v = g < 30 ? 55 + (int)((j * 7 + k * 13) % 11) : 4 + (j + k) % 3;
+            if (side == 1 && std::fabs(g - 20) < 1.0 && std::fabs(along - 100) < 1.5) v = 250;
+            if (side == 0 && k == 500 && j > 150 && j < 170) v = 255;  // parasite
+            h[168 + (side == 0 ? n - 1 - j : n + j)] = (uint8_t)v;
+          }
+        F.insert(F.end(), h.begin(), h.end());
+      }
+      FILE* o = std::fopen(f.c_str(), "wb");
+      std::fwrite(F.data(), 1, F.size(), o);
+      std::fclose(o);
+    }
+    CHECK(IsSonarLogFile(f));
+    SideScanMosaic m;
+    SideScanInfo si;
+    std::string err;
+    CHECK(BuildSideScanMosaic(f, SideScanOptions{}, m, si, err));
+    std::printf("sonar latéral : %lld pings, portée %.1f m, pixel %.2f m, route %.3f km, %lld pixels, étirement %.1f – %.1f\n",
+                si.used, si.rangeM, si.pixel, si.lengthKm, si.pixels, si.lo, si.hi);
+    CHECK(si.kind == "SL3" && si.pings == pings && si.used > pings - 20 && std::fabs(si.rangeM - range) < 0.1);
+    CHECK(std::fabs(si.pixel - 0.1) < 1e-9 && std::fabs(si.lengthKm - 0.1999) < 0.002);
+    CHECK(si.picked > pings - 50);  // hauteur lue sur l'image (premier écho du fond)
+    // cible : centre des pixels brillants à 20 m à l'est de la route, 100 m au nord
+    const double kx = 111194.92664 * std::cos(lat0 * M_PI / 180);
+    double sx = 0, sy = 0, cnt = 0, far = 0, port500 = 0;
+    m.forEach([&](double lon, double lat, float v) {
+      const double x = (lon - lon0) * kx, y = (lat - lat0) * 111194.92664;
+      if (std::fabs(x) > 33) ++far;  // au-delà de la portée utile (bruit coupé)
+      if (v > 200) { sx += x; sy += y; ++cnt; }
+      if (x < -5 && x > -20 && std::fabs(y - 50) < 0.3 && v > 200) ++port500;
+    });
+    CHECK(cnt > 50);
+    const double tx = sx / std::max(1.0, cnt), ty = sy / std::max(1.0, cnt);
+    std::printf("cible : %.0f pixels, x %.2f m, y %.2f m ; hors portée %.0f\n", cnt, tx, ty, far);
+    CHECK(std::fabs(tx - 20) < 0.6 && std::fabs(ty - 100) < 0.8 && far == 0 && port500 == 0);
+    // import dans la base d'imagerie
+    const std::string folder = Tmp("pd_test_sss");
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder);
+    BathyDb img;
+    CHECK(img.open(folder, err, 0, DbKind::Imagery));
+    DbSource ms;
+    ms.name = "SSS";
+    ms.date = "2024-08-28";
+    int64_t id = 0;
+    CHECK(ImportSideScan(img, f, SideScanOptions{}, ms, DbPriority::ResolutionDate, err, nullptr, nullptr, &id));
+    const DbSource* d = img.source(id);
+    CHECK(d && d->vunit == pd::tr("niveau") && std::fabs(d->res - 0.1) < 1e-9 && d->vhi > d->vlo &&
+          d->latMax > lat0 + 0.0015 && d->lonMax > lon0 + 0.0003);
+    std::printf("Sonar latéral SL3 (mosaïque, distance au sol, parasites, portée utile) : OK\n");
+  }
+  {  // Sonar latéral : décalage antenne GPS / sonde estimé sur des lignes en sens opposés
+    // Levé en allers-retours (4 lignes nord / sud, 20 m d'écart) ; la sonde est
+    // 3 m en arrière de l'antenne et 1 m sur tribord ; fond texturé
+    const std::string f = Tmp("pd_sidescan_lines.sl3");
+    const double lon0 = -4.5, lat0 = 48.3, R = 6356752.3142, depth = 8, range = 40;
+    const double kx = 111194.92664 * std::cos(lat0 * M_PI / 180), ky = 111194.92664;
+    const double offF = -3, offS = 1;
+    auto hash = [](int a, int b) {
+      uint32_t h = (uint32_t)a * 73856093u ^ (uint32_t)b * 19349663u;
+      h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+      return (h & 0xffff) / 65535.0;
+    };
+    auto field = [&](double x, double y) {  // bruit de valeurs, mailles de 1,5 m
+      const double u = x / 1.5, v = y / 1.5;
+      const int i = (int)std::floor(u), j = (int)std::floor(v);
+      const double a = u - i, b = v - j;
+      const double h = hash(i, j) * (1 - a) * (1 - b) + hash(i + 1, j) * a * (1 - b) +
+                       hash(i, j + 1) * (1 - a) * b + hash(i + 1, j + 1) * a * b;
+      return 40 + 80 * h;
+    };
+    const int n = 400;
+    {
+      std::vector<uint8_t> F(8, 0);
+      const uint16_t hdr[4] = {3, 1, 3200, 0};
+      std::memcpy(F.data(), hdr, 8);
+      uint32_t idx = 0;
+      int ms = 0;
+      for (int line = 0; line < 4; ++line) {
+        const bool north = line % 2 == 0;
+        const double lx = line * 20.0;  // abscisse de la ligne (m, est)
+        const double hdg = north ? 0 : M_PI;
+        const double fx = std::sin(hdg), fy = std::cos(hdg), sx = std::cos(hdg), sy = -std::sin(hdg);
+        for (int k = 0; k < 1500; ++k, ms += 100) {
+          // sonde : x = lx, y le long de la ligne ; antenne = sonde − décalage
+          const double ty = north ? k * 0.1 : 150 - k * 0.1;
+          const int kg = (k / 10) * 10;  // dernier point GPS (1 Hz)
+          const double gy = (north ? kg * 0.1 : 150 - kg * 0.1);
+          const double ax = lx - offF * fx - offS * sx, ay = gy - offF * fy - offS * sy;
+          const double lat = lat0 + ay / ky, lon = lon0 + ax / kx;
+          std::vector<uint8_t> h(168 + 2 * n, 0);
+          const uint32_t pos = (uint32_t)F.size();
+          const uint16_t size = (uint16_t)h.size(), ch = 5, pk = (uint16_t)(2 * n);
+          const float up = (float)(-range / 0.3048), lo = (float)(range / 0.3048), ft = (float)(depth / 0.3048);
+          const int32_t e = (int32_t)std::lround(lon * M_PI / 180 * R);
+          const int32_t nn = (int32_t)std::lround(R * std::log(std::tan(M_PI / 4 + lat * M_PI / 360)));
+          const float cog = (float)hdg;
+          std::memcpy(&h[0], &pos, 4); std::memcpy(&h[8], &size, 2); std::memcpy(&h[12], &ch, 2);
+          std::memcpy(&h[16], &idx, 4); std::memcpy(&h[20], &up, 4); std::memcpy(&h[24], &lo, 4);
+          std::memcpy(&h[44], &pk, 2); std::memcpy(&h[48], &ft, 4); std::memcpy(&h[92], &e, 4);
+          std::memcpy(&h[96], &nn, 4); std::memcpy(&h[104], &cog, 4); std::memcpy(&h[124], &ms, 4);
+          ++idx;
+          for (int side = 0; side < 2; ++side)
+            for (int j = 0; j < n; ++j) {
+              const double r = (j + 0.5) * range / n;
+              int v = 15;
+              if (r > depth) {
+                const double g = std::sqrt(r * r - depth * depth), sg = side == 0 ? -1 : 1;
+                v = g < 30 ? (int)field(lx + sg * g * sx, ty + sg * g * sy) : 4;
+              }
+              h[168 + (side == 0 ? n - 1 - j : n + j)] = (uint8_t)v;
+            }
+          F.insert(F.end(), h.begin(), h.end());
+        }
+        ms += 20000;  // demi-tour
+      }
+      FILE* o = std::fopen(f.c_str(), "wb");
+      std::fwrite(F.data(), 1, F.size(), o);
+      std::fclose(o);
+    }
+    SideScanMosaic m;
+    SideScanInfo si;
+    std::string err;
+    SideScanOptions so;
+    so.pixel = 0.25;
+    CHECK(BuildSideScanMosaic(f, so, m, si, err));
+    std::printf("décalage estimé : avant %.2f m, tribord %.2f m (corrélation %.2f, %s)\n", si.offsetFwd, si.offsetStbd,
+                si.offsetScore, si.offsetAuto ? "estimé" : "non estimé");
+    CHECK(si.offsetAuto && std::fabs(si.offsetFwd - offF) < 0.35 && std::fabs(si.offsetStbd - offS) < 0.35);
+    // mosaïque recalée : écart au fond vrai plus faible qu'avec un décalage nul
+    auto err2 = [&](const SideScanMosaic& mm) {
+      double e = 0, c = 0, mean = 0;
+      mm.forEach([&](double lon, double lat, float v) { mean += v; ++c; });
+      mean /= std::max(1.0, c);
+      double fm = 0;
+      long long fc = 0;
+      mm.forEach([&](double lon, double lat, float) {
+        fm += field((lon - lon0) * kx, (lat - lat0) * ky); ++fc; });
+      fm /= std::max<long long>(1, fc);
+      mm.forEach([&](double lon, double lat, float v) {
+        const double x = (lon - lon0) * kx, y = (lat - lat0) * ky;
+        if (y < 10 || y > 140) return;
+        e += std::fabs((v - mean) - (field(x, y) - fm));
+      });
+      return e / std::max(1.0, c);
+    };
+    SideScanMosaic m0;
+    SideScanInfo s0;
+    so.autoOffset = false;
+    CHECK(BuildSideScanMosaic(f, so, m0, s0, err) && s0.offsetFwd == 0 && !s0.offsetAuto);
+    const double e1 = err2(m), e0 = err2(m0);
+    std::printf("écart moyen au fond : %.1f recalé, %.1f sans décalage\n", e1, e0);
+    CHECK(e1 < 0.7 * e0);
+    std::printf("Sonar latéral : décalage antenne / sonde estimé sur les allers-retours : OK\n");
+  }
+  {  // Traces de sondeur : décalage sonde / antenne (patch test sur les profondeurs, valeurs saisies)
+    // Allers-retours nord / sud tous les 15 m au-dessus d'une cuvette (pente
+    // qui change de sens le long des lignes : sur une pente uniforme, le
+    // décalage se confond avec un écart de niveau) ; sonde 3 m en arrière
+    std::vector<double> x, y, h;
+    std::vector<float> z;
+    const double F = -3;
+    auto Z = [](double xx, double yy) { return 3 + 10 * std::sin(M_PI * yy / 300) + 0.6 * std::sin(xx / 25); };
+    for (int line = 0; line < 8; ++line) {
+      const bool north = line % 2 == 0;
+      for (int k = 0; k <= 300; ++k) {
+        const double yt = north ? k : 300 - k, xt = line * 15.0;
+        const double fy = north ? 1 : -1;
+        x.push_back(xt);
+        y.push_back(yt - F * fy);  // antenne = sonde − décalage
+        z.push_back((float)Z(xt, yt));
+        h.push_back(north ? 0 : M_PI);
+      }
+    }
+    double off = 0, q = 0;
+    CHECK(EstimateTrackOffset(x, y, z, h, off, q));
+    std::printf("patch test (profondeurs) : décalage vers l'avant %.2f m (qualité %.1f)\n", off, q);
+    CHECK(std::fabs(off - F) < 0.3);
+    // fond plat : rien à estimer
+    std::vector<float> zf(z.size(), 7.f);
+    CHECK(!EstimateTrackOffset(x, y, zf, h, off, q));
+    // valeurs saisies : trace GPX vers le nord, sonde 2 m en arrière
+    const std::string gpx = Tmp("pd_trace_off.gpx");
+    {
+      FILE* f = std::fopen(gpx.c_str(), "wb");
+      std::fputs("<?xml version=\"1.0\"?><gpx xmlns:gpxx=\"x\"><trk><trkseg>", f);
+      for (int k = 0; k < 40; ++k)
+        std::fprintf(f, "<trkpt lat=\"%.8f\" lon=\"-4.5\"><extensions><gpxx:Depth>5</gpxx:Depth></extensions></trkpt>",
+                     48.3 + k / 111194.92664);
+      std::fputs("</trkseg></trk></gpx>", f);
+      std::fclose(f);
+    }
+    LoadOptions lo;
+    lo.antFwd = -2;
+    PointCloud pc;
+    std::string err;
+    CHECK(LoadTrack(gpx, lo, pc, err) && pc.size() == 40);
+    double lat0 = 1e9;
+    for (size_t k = 0; k < pc.size(); ++k) lat0 = std::min(lat0, pc.lat(k));
+    CHECK(std::fabs((lat0 - 48.3) * 111194.92664 + 2) < 0.05 && pc.posInfo.find("-2.0") != std::string::npos);
+    CHECK(!pc.antEstOk);  // saisi : pas d'estimation affichée
+    std::printf("Traces : décalage sonde / antenne (patch test, valeurs saisies) : OK\n");
+  }
+  {  // grille en degrés à 51,6° N : maille 4,0 × 6,4 m, pixels de 2,96 m -> aucun trou entre les nœuds
+    const std::string folder = Tmp("pd_test_gridstep");
+    std::filesystem::remove_all(folder);
+    std::string err;
+    BathyDb db;
+    CHECK(db.open(folder, err));
+    PointCloud g;
+    const double lat0 = 51.65, dla = 5.8e-5, dlo = 5.8e-5;  // grille « 5 m » Infomar
+    for (int j = 0; j < 150; ++j)
+      for (int i = 0; i < 150; ++i) g.add(-9.70 + i * dlo, lat0 + j * dla, 10.f + 0.01f * (i + j));
+    g.computeBounds();
+    SurveyShape sh = AnalyzeSurvey(g);
+    CHECK(sh.isGrid() && sh.storeRes < 4.2);
+    DbSource m;
+    m.name = "G"; m.date = "2020-01-01"; m.res = sh.storeRes;
+    m.gridStepX = sh.dx; m.gridStepY = sh.dy;
+    int64_t id = 0;
+    CHECK(db.importCloud(g, m, true, DbPriority::ResolutionDate, err, nullptr, nullptr, &id));
+    const int lev = db.source(id)->level;
+    PointCloud v;
+    double dl, dt;
+    int used;
+    // intérieur de la grille (marge d'un nœud) : toutes les cellules remplies
+    const double w = -9.70 + 2 * dlo, e = -9.70 + 147 * dlo, so = lat0 + 2 * dla, n = lat0 + 147 * dla;
+    std::vector<uint8_t> vi;
+    CHECK(db.buildView(w, e, so, n, lev, 20000000, v, dl, dt, used, err, nullptr, nullptr, &vi));
+    const double cells = std::floor((e - w) / dl) * std::floor((n - so) / dt);
+    // comblement linéaire : valeur = plan 10 + 0,01 (i + j) des nœuds, sans paliers
+    double emax = 0;
+    size_t nFill = 0, nInterp = 0;
+    for (size_t k = 0; k < v.size(); ++k) {
+      const double zi = 10.0 + 0.01 * ((v.lon(k) + 9.70) / dlo + (v.lat(k) - lat0) / dla);
+      emax = std::max(emax, std::fabs(v.z[k] - zi));
+      nFill += vi[k] == 2;
+      nInterp += vi[k] == 1;
+    }
+    std::printf("grille 4,0 × 6,4 m au niveau %d : %zu cellules remplies sur ~%.0f, %zu comblées, écart au plan %.4f m\n",
+                used, v.size(), cells, nFill, emax);
+    CHECK(used == 15 && v.size() >= cells * 0.995 && nFill > v.size() / 4 && nInterp == 0);
+    CHECK(emax < 0.0075);  // plus proche voisin (paliers) : ~0,01 ; pixel décalé du nœud : 0,006
+    {  // tuile : drapeau « comblé » conservé à l'encodage
+      DepthTile t;
+      t.reset();
+      t.v[5] = 1000; t.v[6] = 1100; t.setFill(6, true); t.v[7] = 1200; t.setInterp(7, true);
+      std::vector<uint8_t> buf;
+      CHECK(EncodeTile(t, buf));
+      DepthTile r;
+      CHECK(DecodeTile(buf.data(), buf.size(), r, err));
+      CHECK(!r.isFill(5) && r.isFill(6) && !r.isInterp(6) && r.isInterp(7) && !r.isFill(7) && r.v[6] == 1100);
+    }
+    {  // grille d'affichage : cellules comblées jamais prises comme sondes
+      BathyGrid gg;
+      GridParams gp;
+      gp.forceDLon = dl; gp.forceDLat = dt;
+      CHECK(gg.build(v, gp, nullptr, err, &vi));
+      size_t nf = 0;
+      const GridLevel& g0 = gg.levels[0];
+      for (size_t c = 0; c < g0.z.size(); ++c) nf += g0.isFill(c);
+      CHECK(nf > 0 && !g0.isInterp(0));
+    }
+  }
+  {  // lecteur GeoTIFF intégré : tuiles, bandes, LZW, Deflate, prédicteurs, systèmes
+    std::string err;
+    // 1. réels 32 bits en tuiles, géographique, NoData ; profondeurs en altitudes (signe auto)
+    tiffw::Img a;
+    a.w = 37; a.h = 21; a.tiled = true; a.bw = 16; a.bh = 16;
+    a.sx = 0.001; a.sy = 0.001; a.x0 = -4.6; a.y0 = 48.4;
+    a.keys = {1024, 0, 1, 2, 2048, 0, 1, 4326};
+    a.nodata = "-9999";
+    for (int y = 0; y < a.h; ++y)
+      for (int x = 0; x < a.w; ++x) a.v.push_back((x + y) % 7 == 0 ? -9999 : -(1.0 + x * 0.25 + y));
+    for (int variant = 0; variant < 4; ++variant) {  // sans compression, LZW, Deflate, gros-boutien + prédicteur 3
+      tiffw::Img b = a;
+      b.comp = variant == 1 ? 5 : variant == 2 ? 8 : variant == 3 ? 5 : 1;
+      if (variant == 3) { b.be = true; b.pred = 3; }
+      const std::string f = Tmp("pd_test_a.tif");
+      CHECK(tiffw::write(f, b));
+      PointCloud pc;
+      double cl, ca;
+      std::string used;
+      CHECK(LoadGeoTiff(f, LoadOptions{}, pc, cl, ca, used, err));
+      size_t expect = 0;
+      for (double v : a.v) expect += v != -9999;
+      CHECK(pc.size() == expect);
+      CHECK(std::fabs(cl - 0.001) < 1e-12 && std::fabs(ca - 0.001) < 1e-12);
+      // pixel (x=5, y=3) : centre -4.6 + 5.5e-3, 48.4 - 3.5e-3 ; valeur 1 + 1.25 + 3 (profondeur)
+      bool found = false;
+      for (size_t k = 0; k < pc.size(); ++k)
+        if (std::fabs(pc.lon(k) - (-4.6 + 0.0055)) < 1e-7 && std::fabs(pc.lat(k) - (48.4 - 0.0035)) < 1e-7)
+          found = std::fabs(pc.z[k] - 5.25f) < 1e-5;
+      CHECK(found);
+    }
+    // 2. entiers 16 bits signés en bandes, LZW + prédicteur 2, UTM 30N (EPSG:32630)
+    tiffw::Img u;
+    u.w = 300; u.h = 40; u.bits = 16; u.fmt = 2; u.bh = 7; u.comp = 5; u.pred = 2;
+    u.sx = 5; u.sy = 5; u.x0 = 400000; u.y0 = 5360000;
+    u.keys = {1024, 0, 1, 1, 3072, 0, 1, 32630};
+    for (int y = 0; y < u.h; ++y)
+      for (int x = 0; x < u.w; ++x) u.v.push_back(100 + (x * 37 + y * 11) % 900);
+    {
+      const std::string f = Tmp("pd_test_u.tif");
+      CHECK(tiffw::write(f, u));
+      PointCloud pc;
+      double cl, ca;
+      std::string used;
+      LoadOptions lo;
+      lo.zsign = LoadOptions::ZSign::DepthPositive;
+      CHECK(LoadGeoTiff(f, lo, pc, cl, ca, used, err));
+      CHECK(pc.size() == (size_t)u.w * u.h && used == "EPSG:32630");
+      CHECK(std::fabs(pc.srcStepX - 5) < 1e-9);
+      Crs c;
+      CHECK(Crs::Parse("EPSG:32630", c, err));
+      double lon, lat;
+      CHECK(c.toWGS84(400000 + 2.5 + 5 * 123, 5360000 - 2.5 - 5 * 17, lon, lat));
+      size_t k = (size_t)17 * u.w + 123;  // ordre des points : lignes puis colonnes
+      CHECK(std::fabs(pc.lon(k) - lon) < 2e-7 && std::fabs(pc.lat(k) - lat) < 2e-7);
+      CHECK(pc.z[k] == (float)(100 + (123 * 37 + 17 * 11) % 900));
+    }
+    // 3. Mercator défini par l'utilisateur (parallèle standard 46°, comme l'Ifremer), 8 bits Deflate
+    tiffw::Img mc;
+    mc.w = 50; mc.h = 20; mc.bits = 8; mc.fmt = 1; mc.bh = 20; mc.comp = 8;
+    mc.sx = 2.333; mc.sy = 2.333; mc.x0 = -366762.39; mc.y0 = 4253893.16;
+    mc.keys = {1024, 0, 1, 1, 3072, 0, 1, 32767, 3075, 0, 1, 7, 3076, 0, 1, 9001,
+               3080, 34736, 1, 1, 3081, 34736, 1, 0, 3082, 34736, 1, 3, 3083, 34736, 1, 4,
+               3092, 34736, 1, 2, 2057, 34736, 1, 5, 2059, 34736, 1, 6};
+    mc.dbl = {46.0, 0.0, 1.0, 0.0, 0.0, 6378137.0, 298.257223563};
+    for (int k = 0; k < mc.w * mc.h; ++k) mc.v.push_back(1 + k % 200);
+    {
+      const std::string f = Tmp("pd_test_m.tif");
+      CHECK(tiffw::write(f, mc));
+      GeoTiff t;
+      CHECK(t.open(f, err));
+      CHECK(t.info().crsLabel == "Mercator 46°" && !t.info().geographic);
+      PointCloud pc;
+      double cl, ca;
+      std::string used;
+      LoadOptions lo;
+      lo.zsign = LoadOptions::ZSign::DepthPositive;
+      CHECK(LoadGeoTiff(f, lo, pc, cl, ca, used, err));
+      // coin nord-ouest des métadonnées de l'Ifremer : -4.73466°, 48.228707°
+      CHECK(std::fabs(pc.lon(0) - -4.73466) < 1e-4 && std::fabs(pc.lat(0) - 48.228707) < 1e-4);
+    }
+    std::printf("GeoTIFF intégré (tuiles, bandes, LZW, Deflate, prédicteurs 2 et 3, gros-boutien, UTM, Mercator) : OK\n");
+  }
   {  // cellules interpolées près d'une cellule mesurée : pas éclaircies
     GridLevel g;
     g.nx = 10; g.ny = 3;

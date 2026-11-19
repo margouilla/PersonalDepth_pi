@@ -26,7 +26,13 @@
 
 #include "FileUtil.h"
 #include "Lang.h"
+#include "SideScan.h"
+#include "Triangulate.h"
 #include "WaterLevel.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace pd {
 
@@ -291,6 +297,229 @@ bool ReadSonarLogSamples(const std::string& path, std::vector<TrackSample>& out,
 
 // ------------------------------------------------------------------ nuage
 
+namespace {
+constexpr double kDegM = 111194.92664;
+}
+
+bool EstimateTrackOffset(const std::vector<double>& x, const std::vector<double>& y, const std::vector<float>& z,
+                         const std::vector<double>& hdg, double& offFwd, double& quality,
+                         std::vector<double>* costOut) {
+  quality = 0;
+  const size_t n = x.size();
+  // axe du levé (moyenne axiale des caps) et classes de sens
+  double C = 0, S = 0;
+  for (size_t i = 0; i < n; ++i)
+    if (std::isfinite(hdg[i])) { C += std::cos(2 * hdg[i]); S += std::sin(2 * hdg[i]); }
+  const double axis = 0.5 * std::atan2(S, C);
+  const double fx = std::sin(axis), fy = std::cos(axis);
+  std::vector<size_t> A, B;
+  for (size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(hdg[i])) continue;
+    const double c = std::cos(hdg[i] - axis);
+    if (c > 0.8) A.push_back(i);
+    else if (c < -0.8) B.push_back(i);
+  }
+  if (A.size() < 100 || B.size() < 100) return false;
+  // surface des lignes B : grille (pas 1 m, élargi), comblée entre les
+  // lignes par triangulation (triangles de moins de 60 m de côté)
+  double x0 = 1e18, x1 = -1e18, y0 = 1e18, y1 = -1e18;
+  for (size_t i : B) { x0 = std::min(x0, x[i]); x1 = std::max(x1, x[i]); y0 = std::min(y0, y[i]); y1 = std::max(y1, y[i]); }
+  const double fillR = 60.0;  // lignes B : une sur deux, soit deux écarts entre lignes
+  x0 -= fillR; y0 -= fillR; x1 += fillR; y1 += fillR;
+  const double c = std::max(1.0, std::sqrt((x1 - x0) * (y1 - y0) / 4e6));
+  const int W = (int)std::ceil((x1 - x0) / c) + 1, H = (int)std::ceil((y1 - y0) / c) + 1;
+  std::vector<double> sz((size_t)W * H, 0), sn((size_t)W * H, 0);
+  for (size_t i : B) {
+    const int gx = (int)((x[i] - x0) / c), gy = (int)((y[i] - y0) / c);
+    sz[(size_t)gy * W + gx] += z[i];
+    sn[(size_t)gy * W + gx] += 1;
+  }
+  std::vector<float> G((size_t)W * H, NAN);
+  std::vector<size_t> filled;
+  for (size_t k = 0; k < G.size(); ++k)
+    if (sn[k] > 0) { G[k] = (float)(sz[k] / sn[k]); filled.push_back(k); }
+  {  // comblement entre les lignes : triangulation (TIN) des cellules
+    // renseignées, interpolation linéaire dans les triangles de côté < fillR
+    std::vector<double> xy;
+    xy.reserve(filled.size() * 2);
+    for (size_t k : filled) { xy.push_back((double)(k % W) + 0.5); xy.push_back((double)(k / W) + 0.5); }
+    const std::vector<size_t> tri = filled.size() >= 3 ? Triangulate(xy) : std::vector<size_t>();
+    const double maxE = fillR / c;
+    std::vector<float> G2 = G;
+    for (size_t t = 0; t + 2 < tri.size(); t += 3) {
+      const size_t a0 = tri[t], a1 = tri[t + 1], a2 = tri[t + 2];
+      const double ax = xy[2 * a0], ay = xy[2 * a0 + 1], bx = xy[2 * a1], by = xy[2 * a1 + 1], cx = xy[2 * a2],
+                   cy = xy[2 * a2 + 1];
+      if (std::hypot(ax - bx, ay - by) > maxE || std::hypot(bx - cx, by - cy) > maxE ||
+          std::hypot(cx - ax, cy - ay) > maxE)
+        continue;
+      const double den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (std::fabs(den) < 1e-12) continue;
+      const float za = G[filled[a0]], zb = G[filled[a1]], zc = G[filled[a2]];
+      const int gx0 = std::max(0, (int)std::floor(std::min({ax, bx, cx}))), gx1 = std::min(W - 1, (int)std::ceil(std::max({ax, bx, cx})));
+      const int gy0 = std::max(0, (int)std::floor(std::min({ay, by, cy}))), gy1 = std::min(H - 1, (int)std::ceil(std::max({ay, by, cy})));
+      for (int gy = gy0; gy <= gy1; ++gy)
+        for (int gx = gx0; gx <= gx1; ++gx) {
+          const double px = gx + 0.5, py = gy + 0.5;
+          const double l1 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / den;
+          const double l2 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / den;
+          const double l3 = 1 - l1 - l2;
+          if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+          float& g = G2[(size_t)gy * W + gx];
+          if (std::isnan(g)) g = (float)(l1 * za + l2 * zb + l3 * zc);
+        }
+    }
+    G.swap(G2);
+  }
+  auto at = [&](double px, double py) -> double {  // bilinéaire
+    const double u = (px - x0) / c - 0.5, v = (py - y0) / c - 0.5;
+    const int i = (int)std::floor(u), j = (int)std::floor(v);
+    if (i < 0 || j < 0 || i + 1 >= W || j + 1 >= H) return NAN;
+    const double a = u - i, b = v - j;
+    const float g00 = G[(size_t)j * W + i], g10 = G[(size_t)j * W + i + 1], g01 = G[(size_t)(j + 1) * W + i],
+                g11 = G[(size_t)(j + 1) * W + i + 1];
+    if (std::isnan(g00) || std::isnan(g10) || std::isnan(g01) || std::isnan(g11)) return NAN;
+    return (1 - a) * (1 - b) * g00 + a * (1 - b) * g10 + (1 - a) * b * g01 + a * b * g11;
+  };
+  // coût : dispersion des écarts A − B (écart moyen retiré : marée, niveau)
+  // pour un recalage d le long de l'axe ; seules les sondes A couvertes
+  // pour tous les recalages comptent (même échantillon partout)
+  const double Dmax = 20, st = 0.5;
+  const int nd = (int)(2 * Dmax / st) + 1;
+  std::vector<size_t> use;
+  for (size_t i : A) {
+    if (std::isnan(at(x[i] - Dmax * fx, y[i] - Dmax * fy)) || std::isnan(at(x[i] + Dmax * fx, y[i] + Dmax * fy)) ||
+        std::isnan(at(x[i], y[i])))
+      continue;
+    use.push_back(i);
+  }
+  if (use.size() < 200) return false;
+  std::vector<double> cost(nd, NAN);
+  std::vector<double> r;
+  for (int k = 0; k < nd; ++k) {
+    const double d = -Dmax + k * st;
+    r.clear();
+    for (size_t i : use) {
+      const double b = at(x[i] + d * fx, y[i] + d * fy);
+      if (!std::isnan(b)) r.push_back(z[i] - b);
+    }
+    if (r.size() < use.size() / 2) continue;
+    std::vector<double> t = r;
+    std::nth_element(t.begin(), t.begin() + t.size() / 2, t.end());
+    const double med = t[t.size() / 2];
+    double s2 = 0, m = 0;
+    for (double e : r) {  // écarts bornés à ±2 m autour de la médiane (sondes aberrantes)
+      const double q = std::max(-2.0, std::min(2.0, e - med));
+      m += q; s2 += q * q;
+    }
+    m /= r.size();
+    cost[k] = s2 / r.size() - m * m;
+  }
+  if (costOut) *costOut = cost;
+  int kb = -1;
+  for (int k = 0; k < nd; ++k)
+    if (!std::isnan(cost[k]) && (kb < 0 || cost[k] < cost[kb])) kb = k;
+  if (kb <= 0 || kb >= nd - 1) return false;  // pas de minimum à l'intérieur
+  // décision : le coût remonte nettement à ±6 m du minimum (relief
+  // suffisant), et le minimum est franc devant l'absence de décalage
+  const int k6 = (int)std::lround(6 / st), k0 = (int)std::lround(Dmax / st);
+  const double cm = kb - k6 >= 0 && !std::isnan(cost[kb - k6]) ? cost[kb - k6] : NAN;
+  const double cp = kb + k6 < nd && !std::isnan(cost[kb + k6]) ? cost[kb + k6] : NAN;
+  const double rise = std::min(std::isnan(cm) ? 1e9 : cm, std::isnan(cp) ? 1e9 : cp);
+  quality = cost[kb] > 0 ? rise / cost[kb] : 0;
+  if (!(rise >= 1.2 * cost[kb] && rise - cost[kb] > 0.0025)) return false;  // relief insuffisant
+  if (std::abs(kb - k0) > 2 && !(cost[kb] <= 0.8 * cost[k0])) return false;  // minimum peu marqué
+  double d = -Dmax + kb * st;
+  {
+    const double a = cost[kb - 1], b0 = cost[kb], b = cost[kb + 1];
+    const double den = a - 2 * b0 + b;
+    if (!std::isnan(a) && !std::isnan(b) && den > 0) d += st * std::max(-0.5, std::min(0.5, 0.5 * (a - b) / den));
+  }
+  offFwd = 0.5 * d;  // le recalage vaut deux fois le décalage
+  return std::fabs(offFwd) <= 10;
+}
+
+struct AntennaEstimate {
+  bool ok = false;
+  double fwd = 0, stbd = 0;
+};
+
+// Position de la sonde : antenne GPS + décalage (avant, tribord) selon le cap
+// de la route ; décalage donné, ou estimé (profondeurs des allers-retours sur
+// les pentes, sinon sonar latéral du journal)
+static void ApplyAntennaOffset(const std::string& path, std::vector<TrackSample>& s, const LoadOptions& opt,
+                               std::string& desc, AntennaEstimate& pc_est, const std::atomic<bool>* cancel) {
+  const size_t n = s.size();
+  if (n < 2) return;
+  double lat0 = 0, lon0 = 0;
+  for (const auto& t : s) { lat0 += t.lat; lon0 += t.lon; }
+  lat0 /= n;
+  lon0 /= n;
+  const double kx = kDegM * std::cos(lat0 * M_PI / 180.0);
+  std::vector<double> x(n), y(n), hdg(n, NAN), dist(n, 0);
+  std::vector<float> z(n);
+  for (size_t i = 0; i < n; ++i) {
+    x[i] = (s[i].lon - lon0) * kx;
+    y[i] = (s[i].lat - lat0) * kDegM;
+    z[i] = s[i].depth;
+    if (i) dist[i] = dist[i - 1] + std::min(20.0, std::hypot(x[i] - x[i - 1], y[i] - y[i - 1]));
+  }
+  // cap : corde de la route sur ±5 m ; à l'arrêt, dernier cap connu
+  {
+    size_t lo = 0, hi = 0;
+    double last = NAN;
+    for (size_t i = 0; i < n; ++i) {
+      while (lo < i && dist[lo] < dist[i] - 5) ++lo;
+      if (hi < i) hi = i;
+      while (hi + 1 < n && dist[hi + 1] <= dist[i] + 5) ++hi;
+      if (std::hypot(x[hi] - x[lo], y[hi] - y[lo]) > 2) last = std::atan2(x[hi] - x[lo], y[hi] - y[lo]);
+      hdg[i] = last;
+    }
+  }
+  double F = opt.antFwd, S = opt.antStbd;
+  const char* how = pd::tr("saisi");
+  bool estimated = false;
+  if (opt.antAuto) {
+    double f = 0, st = 0, q = 0;
+    // d'abord les profondeurs elles-mêmes : l'écart mesuré comprend aussi le
+    // retard de la profondeur du sondeur (lissage), qui décale les sondes le
+    // long de la route comme une sonde placée en arrière ; à défaut (pas de
+    // relief), le sonar latéral du journal (même sonde, image sans retard)
+    if (EstimateTrackOffset(x, y, z, hdg, f, q)) {
+      F = f;
+      how = pd::tr("estimé sur les profondeurs, vers l'avant seulement");
+      estimated = true;
+    } else if (IsSonarLogFile(path) && EstimateSideScanOffset(path, f, st, q, cancel)) {
+      F = f;
+      S = st;
+      how = pd::tr("estimé sur le sonar latéral");
+      estimated = true;
+    }
+  }
+  if (estimated) {
+    pc_est.ok = true;
+    pc_est.fwd = F;
+    pc_est.stbd = S;
+  }
+  char b[300];
+  if (F == 0 && S == 0) {
+    if (opt.antAuto)
+      desc = pd::tr(" ; décalage sonde / antenne non estimé (pas d'allers-retours sur une pente ni de sonar latéral recalable)");
+    return;
+  }
+  std::snprintf(b, sizeof b, pd::tr(" ; sonde à %+.1f m vers l'avant, %+.1f m vers tribord de l'antenne (%s)"), F, S, how);
+  desc = b;
+  if (opt.antAuto && !estimated)
+    desc += pd::tr(" — estimation impossible, valeurs saisies");
+  for (size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(hdg[i])) continue;
+    const double fx = std::sin(hdg[i]), fy = std::cos(hdg[i]), sx = std::cos(hdg[i]), sy = -std::sin(hdg[i]);
+    const double dx = F * fx + S * sx, dy = F * fy + S * sy;
+    s[i].lon += dx / kx;
+    s[i].lat += dy / kDegM;
+  }
+}
+
 bool LoadTrack(const std::string& path, const LoadOptions& opt, PointCloud& pc, std::string& err,
                const ProgressFn& progress, const std::atomic<bool>* cancel, TrackInfo* infoOut) {
   std::vector<TrackSample> s;
@@ -300,6 +529,12 @@ bool LoadTrack(const std::string& path, const LoadOptions& opt, PointCloud& pc, 
                       : ReadSonarLogSamples(path, s, info, err, progress, cancel);
   if (infoOut) *infoOut = info;
   if (!ok) return false;
+  pc.posInfo.clear();
+  AntennaEstimate est;
+  if (opt.antAuto || opt.antFwd != 0 || opt.antStbd != 0) ApplyAntennaOffset(path, s, opt, pc.posInfo, est, cancel);
+  pc.antEstOk = est.ok;
+  pc.antEstFwd = est.fwd;
+  pc.antEstStbd = est.stbd;
   pc.clear();
   pc.reserve(s.size());
   long long tMin = 0, tMax = 0, noTime = 0, miss = 0;

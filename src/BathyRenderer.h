@@ -35,19 +35,35 @@ struct DisplaySettings;
 // Bandeau de palette posé sur la carte : zones cliquables (pixels du canevas,
 // tels que les donne le point de vue d'OpenCPN)
 struct BannerHit {
-  enum Part { NoPart = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body };
+  // parties : bathymétrie (Min… Bar), imagerie (ImgMin… ImgBar), communes
+  enum Part { NoPart = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body,
+              ImgMin, ImgMode, ImgSource, ImgMax, ImgBar,
+              // ligne isobathes / sondes
+              CtOn, CtStep, CtMajor, SdOn, SdDec, SdSize };
+  struct Zones {
+    bool on = false;
+    wxRect minR, modeR, srcR, maxR, barR;
+  };
   bool valid = false;
-  wxRect box, minR, modeR, srcR, maxR, barR, gearR, orientR;
+  wxRect box, gearR, orientR;
+  Zones bathy, img;
+  std::vector<std::pair<wxRect, Part>> items;  // ligne isobathes / sondes
   int pixW = 0, pixH = 0;  // taille du point de vue (rapport avec les coordonnées souris)
   Part PartAt(const wxPoint& p) const {
     if (!valid || !box.Contains(p)) return NoPart;
-    if (minR.Contains(p)) return Min;
-    if (modeR.Contains(p)) return Mode;
-    if (!srcR.IsEmpty() && srcR.Contains(p)) return Source;
-    if (maxR.Contains(p)) return Max;
     if (gearR.Contains(p)) return Gear;
     if (orientR.Contains(p)) return Orient;
-    if (barR.Contains(p)) return Bar;
+    for (int k = 0; k < 2; ++k) {
+      const Zones& z = k ? img : bathy;
+      if (!z.on) continue;
+      if (z.minR.Contains(p)) return k ? ImgMin : Min;
+      if (z.modeR.Contains(p)) return k ? ImgMode : Mode;
+      if (!z.srcR.IsEmpty() && z.srcR.Contains(p)) return k ? ImgSource : Source;
+      if (z.maxR.Contains(p)) return k ? ImgMax : Max;
+      if (z.barR.Contains(p)) return k ? ImgBar : Bar;
+    }
+    for (const auto& it : items)
+      if (it.first.Contains(p)) return it.second;
     return Body;
   }
 };
@@ -57,12 +73,18 @@ class BathyRenderer {
   BathyRenderer();
   ~BathyRenderer();
 
+  // parts : tuiles colorées (kTiles), isobathes, sondes, bandeau et curseur
+  // (kOverlays) ; deux passes quand une autre couche (imagerie) s'intercale
+  enum Parts { kTiles = 1, kOverlays = 2, kAll = 3 };
   void RenderGL(PlugIn_ViewPort* vp, const std::vector<pd::LayerPtr>& layers,
-                const DisplaySettings& s, const wxString& cursorText);
+                const DisplaySettings& s, const wxString& cursorText, int parts = kAll);
   void RenderDC(wxDC& dc, PlugIn_ViewPort* vp, const std::vector<pd::LayerPtr>& layers,
-                const DisplaySettings& s, const wxString& cursorText);
+                const DisplaySettings& s, const wxString& cursorText, int parts = kAll);
   // Étiquette du curseur seule (passe d'interface, jamais mise en cache)
   void RenderCursorGL(PlugIn_ViewPort* vp, const wxString& text, int fontSize);
+  // Bandeau seul (imagerie affichée sans bathymétrie)
+  void RenderBannerGL(PlugIn_ViewPort* vp, const DisplaySettings& s);
+  void RenderBannerDC(wxDC& dc, PlugIn_ViewPort* vp, const DisplaySettings& s);
   void RenderCursorDC(wxDC& dc, PlugIn_ViewPort* vp, const wxString& text, int fontSize);
   // Position du curseur pour l'étiquette de lecture (on=false : masquée)
   void SetCursor(bool on, double lat, double lon) { m_curOn = on; m_curLat = lat; m_curLon = lon; }
@@ -78,6 +100,9 @@ class BathyRenderer {
   bool PendingDone() const { return !m_pending || m_pendingDone; }
   const pd::LayerPtr& Pending() const { return m_pending; }
   void ClearPending() { m_pending.reset(); m_pendingDone = true; }
+  // couleurs de profondeur masquées (isobathes et sondes seules) : la vue en
+  // attente n'a que ses isobathes à préparer
+  void SetTilesHidden(bool h) { m_tilesHidden = h; }
   void AdoptPending() {  // la vue en attente devient la vue affichée
     m_keepLayer = m_pending.get();
     m_pending.reset();
@@ -109,6 +134,7 @@ class BathyRenderer {
   void PrewarmPending(PlugIn_ViewPort* vp, const DisplaySettings& s, bool shader, std::vector<uint32_t>& buf);
   pd::LayerPtr m_pending;
   bool m_pendingDone = true;
+  bool m_tilesHidden = false;
   const void* m_keepLayer = nullptr;
   // sondes : position géographique de chaque étiquette, pour les décaler
   std::vector<double> m_labelLon, m_labelLat;

@@ -329,7 +329,10 @@ SurveyShape AnalyzeSurvey(const PointCloud& pc, Instrument hint, int force) {
   }
   if (force == 2 && r.isGrid()) { r.kind = SurveyShape::Kind::Cloud; r.forced = true; }
   if (r.isGrid()) {
-    r.storeRes = r.interpRes = std::max(r.dx, r.dy);
+    // grille en degrés : maille plus fine d'est en ouest qu'en latitude (×cos φ) ;
+    // stockée au pas le plus fin (sans descendre sous la moitié du plus grand)
+    // pour ne pas perdre de détail d'est en ouest
+    r.storeRes = r.interpRes = std::max(std::min(r.dx, r.dy), 0.5 * std::max(r.dx, r.dy));
     r.maxEdge = 0;
     return r;
   }

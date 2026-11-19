@@ -142,7 +142,7 @@ Another mean sea surface (for example a later CNES_CLS or the Hybrid MSS) can
 be converted the same way; a grid above the TOPEX/Poseidon ellipsoid is
 converted with `--tp2wgs84`.
 
-**In PersonalDepth**: *Database* tab, *Vertical datum* box, **MSS**: choose
+**In PersonalDepth**: *Data* tab, *Vertical reference surfaces* box, **MSS**: choose
 `MSS_CNES_CLS_2025.pdgrid`. After changing it, **Update surfaces** corrects
 the sources concerned. Cite: *CNES_CLS 2025 Mean Sea Surface (Version 2025),
 CNES, DOI 10.24400/527896/a01-2024.011*.
@@ -160,7 +160,7 @@ Chart Downloader*, catalogues **OSMSHP** (OpenStreetMap land polygons,
 - GSHHG: LGPL; last version 2017; even `f` can be offset by about a hundred
   metres, and small islands are missing.
 
-**In PersonalDepth**: *Database* tab, *Coastline* box, **Folder**: choose that
+**In PersonalDepth**: *Data* tab, *Coastline* box, **Folder**: choose that
 folder (or its `OSMSHP` / `GSHHG` subfolder). OSMSHP is preferred, in the
 best quality present.
 
@@ -209,7 +209,7 @@ depths below MLLW (mean lower low water), **Canada** below LLWLT (lower low
 water, large tide). There, LAT FES can differ from the charts by several
 decimetres.
 
-**In PersonalDepth**: *Database* tab, *Vertical datum* box, **Countries**:
+**In PersonalDepth**: *Data* tab, *Vertical reference surfaces* box, **Countries**:
 choose one folder and put the official files in it (sub-folders allowed).
 The plugin recognises them and uses them where they exist; elsewhere it
 keeps LAT FES. The box says in plain words which one applies to the chart on
@@ -365,7 +365,7 @@ Une autre surface moyenne (une version CNES_CLS ultérieure, la Hybrid MSS…)
 se convertit de la même façon ; une grille au-dessus de l'ellipsoïde
 TOPEX/Poseidon se convertit avec `--tp2wgs84`.
 
-**Dans PersonalDepth** : onglet *Base*, cadre *Référence verticale*, **MSS** :
+**Dans PersonalDepth** : onglet *Données*, cadre *Surfaces de référence verticale*, **MSS** :
 choisir `MSS_CNES_CLS_2025.pdgrid`. Après un changement, **Mettre à jour les
 surfaces** corrige les sources concernées. Citer : *CNES_CLS 2025 Mean Sea
 Surface (Version 2025), CNES, DOI 10.24400/527896/a01-2024.011*.
@@ -384,7 +384,7 @@ d'enregistrement.
 - GSHHG : LGPL ; dernière version de 2017 ; même en `f`, le trait peut être
   décalé d'une centaine de mètres, et les petites îles manquent.
 
-**Dans PersonalDepth** : onglet *Base*, cadre *Trait de côte*, **Dossier** :
+**Dans PersonalDepth** : onglet *Données*, cadre *Trait de côte*, **Dossier** :
 choisir ce dossier (ou son sous-dossier `OSMSHP` / `GSHHG`). OSMSHP est
 préféré, dans la meilleure qualité présente.
 
@@ -434,7 +434,7 @@ sous le MLLW (moyenne des plus basses mers quotidiennes), le **Canada** sous
 le LLWLT (plus basse mer, grande marée). Là, le LAT FES peut s'écarter des
 cartes de plusieurs décimètres.
 
-**Dans PersonalDepth** : onglet *Base*, cadre *Référence verticale*, **Pays** :
+**Dans PersonalDepth** : onglet *Données*, cadre *Surfaces de référence verticale*, **Pays** :
 choisir un dossier et y déposer les fichiers officiels (sous-dossiers
 acceptés). Le plugin les reconnaît et les utilise là où ils existent ;
 ailleurs il garde le LAT FES. Le cadre dit en clair lequel s'applique à la

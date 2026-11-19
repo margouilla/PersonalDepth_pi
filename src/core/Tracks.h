@@ -59,6 +59,15 @@ bool ReadSonarLogSamples(const std::string& path, std::vector<TrackSample>& out,
                          std::string& err, const ProgressFn& progress = nullptr,
                          const std::atomic<bool>* cancel = nullptr);
 
+// Décalage sonde / antenne le long de la route estimé sur les profondeurs
+// (« patch test » : sur une pente, les lignes de sens opposés ne donnent la
+// même profondeur qu'une fois le décalage appliqué). x, y en mètres (repère
+// local), z profondeurs, hdg cap (rad) ou NaN. false si pas assez de lignes
+// en sens opposés ou de relief pour décider.
+bool EstimateTrackOffset(const std::vector<double>& x, const std::vector<double>& y, const std::vector<float>& z,
+                         const std::vector<double>& hdg, double& offFwd, double& quality,
+                         std::vector<double>* costOut = nullptr);  // coût pour d = −20…20 m par 0,5 m
+
 // Nuage de sondes d'une trace (hauteurs d'eau et décalage vertical de `opt`)
 bool LoadTrack(const std::string& path, const LoadOptions& opt, PointCloud& pc, std::string& err,
                const ProgressFn& progress = nullptr, const std::atomic<bool>* cancel = nullptr,

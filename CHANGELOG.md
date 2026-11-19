@@ -4,6 +4,95 @@
 
 ## English
 
+### 0.1.0-beta.13 (2026-11-19)
+
+- **Seabed imagery** (reflectivity, backscatter, side-scan sonar mosaics):
+  *Imagery* box of the *Data* tab. GeoTIFF images (dB, 8/16-bit greyscale, palette) are
+  imported into an imagery database (`PD_*.pdi` files, in the same folder as
+  the bathymetry). This includes the mosaics distributed free of charge by
+  Ifremer, Infomar or EMODnet. The original values are kept and read at the
+  cursor (e.g. `Imagery -18.4 dB`). Each image is stretched for display
+  between its 2 % and 98 % values, measured at import. The uniform
+  background around a survey (white 255 or black 0) is detected and
+  discarded automatically. Rendering in greyscale, copper or sepia, with
+  black and white points, gamma and inversion, changed instantly without
+  re-reading the files. *Bathymetry* and *Imagery* switches are separate.
+  The two layers overlay, the user chooses which one is on top, and each
+  has its own opacity. Contours and soundings always stay above. A 50
+  million pixel mosaic imports in about 20 s. The display settings of both
+  layers are together in the *Display* tab. The palette banner gets a grey
+  imagery bar (black / white bounds in % of the stretch, **A** / **M**
+  automatic contrast over the **View** or **All** images, palette and
+  inversion on click).
+- **Side-scan sonar of recreational sounders** (Lowrance / Simrad / B&G
+  `.sl2` / `.sl3` logs, StructureScan / SideImaging channel) imported from the
+  *Data* tab (*Imagery* box) as a georeferenced mosaic. Slant range corrected to ground
+  range with the depth of each ping. Positions interpolated between GPS fixes,
+  heading taken from the smoothed track. Interference from other sounders
+  (short streaks on a single ping) removed. Optional sliding equalisation:
+  same mean brightness from the centre to the edge of the swath, despite gain
+  or range changes, and noise beyond the acoustic range cut. Overlapping lines
+  are averaged and weighted by signal strength. Height above the bottom read
+  on the image itself (first bottom echo), track smoothed, ping-to-ping
+  gain stripes corrected, and each ping resampled on the ground (sharper
+  image near the boat: sand ripples become visible). Transducer position
+  relative to the GPS antenna: estimated on lines run in opposite directions
+  (patch test: the same seabed patch seen both ways is shifted by twice the
+  offset), or entered by hand. Mosaic pixel: range / 400,
+  between 0.1 and 1 m, widened for very large surveys. An 8 km, 1.1 GB log
+  imports in about 40 s.
+- **Echo sounder tracks: transducer / GPS antenna offset** (import window,
+  *Advanced* section). The logs and GPX files never say whether positions are
+  corrected; the offset is estimated on lines run in opposite directions,
+  first on the depths (patch test: over a slope that varies along the lines,
+  both directions only give the same depth once the offset is applied; the
+  value found also includes the lag of the sounder's depth), otherwise on the
+  side-scan of the log; or entered by hand. On Baikal's lake survey: about
+  6.5 m, found the same on both halves of the survey. Shown in the source
+  analysis. When estimated, the *forward* / *starboard* fields are greyed out
+  and show the offset obtained (same for the side-scan in the *Imagery* box);
+  unticked, they hold the measured values, also used when the estimate fails.
+- **Panel reorganised**: the *Palette* and *Contours and soundings* tabs are
+  merged into *Display*, which now holds everything about how the data look,
+  without scrolling: layers and vertical reference of the depths shown (chart
+  datum, LAT, mean sea level, ellipsoid) at the top; palette and thresholds,
+  contours and soundings on the left; relief and smoothing, imagery, banner
+  and cursor on the right. Short labels, full text in tooltips.
+- **Data tab**: the *Database* and *Imagery* tabs are merged (three tabs
+  left: Data, Tide, Display). At the top, the database folder (`.pdb` and
+  `.pdi`) with a single *Stop* button and status line; on the left, the
+  bathymetry files and the coastline; on the right, the imagery and the
+  vertical reference surfaces. The panel opens at the size that fits every
+  tab without scrolling.
+- **Contours and soundings in the palette banner**: a bottom line shows or
+  hides the contours and the soundings with a click, and changes the contour
+  interval (round values, palette thresholds or a typed value), the major
+  contour, the decimals and the text size of the soundings. With the depth
+  colours hidden, the line stays alone.
+- Depth contours and soundings, when ticked, always stay on top of the
+  depth colours and of the imagery, and remain shown when the *Bathymetry*
+  colours are switched off (e.g. contours over a reflectivity mosaic).
+  The *Database* tab keeps the reference surfaces (MSS, other countries'
+  files, update, migration); the datum of the original data is still set at
+  import.
+- **GeoTIFF grids without GDAL**: built-in reader, so GeoTIFF bathymetry
+  (`.tif .tiff`) now imports on every platform, including the Windows
+  package. Stripped or tiled files, uncompressed, LZW, Deflate or PackBits,
+  integer or floating-point values, BigTIFF (over 4 GB), read block by block
+  without loading the whole file. The coordinate system is read from the
+  file: geographic, EPSG projected systems, or user-defined Mercator,
+  transverse Mercator and Lambert projections; otherwise from a `.tfw` file.
+  NoData from the file. Builds with GDAL fall back to it for other variants.
+- Grids in degrees (GeoTIFF, ASC, text) are stored at their finer step: the
+  east–west step at mid and high latitudes (e.g. 4.0 m instead of 6.4 m at
+  51° N for a "5 m" grid). Before, the coarser north–south step was used and
+  east–west detail was lost. The database pixels between two grid nodes are
+  filled by linear interpolation between the nodes (along rows, then
+  columns): no empty rows or columns, and contours without steps. These
+  filled pixels are shown like the grid but never taken as soundings.
+  Re-import such grids to benefit. Databases holding such grids can no longer
+  be fully read by earlier versions.
+
 ### 0.1.0-beta.12 (2026-11-17)
 
 - **Echo sounder tracks**: import of GPX files (Garmin and others: track,
@@ -329,6 +418,103 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.13 (2026-11-19)
+
+- **Imagerie du fond** (réflectivité, rétrodiffusion, mosaïques de sonar
+  latéral) : cadre *Imagerie* de l'onglet *Données*. Les images GeoTIFF (dB, niveaux de
+  gris 8/16 bits, palette) s'importent dans une base d'imagerie (fichiers
+  `PD_*.pdi`, dans le même dossier que la bathymétrie). C'est le cas des
+  mosaïques diffusées gratuitement par l'Ifremer, Infomar ou EMODnet. Les
+  valeurs d'origine sont conservées et lues au curseur (ex. `Imagerie
+  -18.4 dB`). Chaque image est étirée pour l'affichage entre ses valeurs à
+  2 % et 98 %, mesurées à l'import. Le fond uniforme autour d'un levé (blanc
+  255 ou noir 0) est détecté et écarté automatiquement. Rendu en niveaux de
+  gris, cuivre ou sépia, avec points noir et blanc, gamma et inversion,
+  modifié instantanément sans relire les fichiers. Les interrupteurs
+  *Bathymétrie* et *Imagerie* sont séparés. Les deux couches se
+  superposent, l'utilisateur choisit celle du dessus et chacune a sa propre
+  opacité. Isobathes et sondes restent toujours au-dessus. Une mosaïque de
+  50 millions de pixels s'importe en 20 s environ. Les réglages d'affichage
+  des deux couches sont réunis dans l'onglet *Affichage*. Le bandeau de
+  palette reçoit une rampe grise pour l'imagerie (bornes noir / blanc en %
+  de l'étirement, **A** / **M** contraste automatique sur la **Vue** ou
+  **Tout**, palette et inversion au clic).
+- **Sonar latéral des sondeurs de plaisance** (journaux Lowrance / Simrad /
+  B&G `.sl2` / `.sl3`, canal StructureScan / SideImaging) importé depuis
+  l'onglet *Données* (cadre *Imagerie*) en mosaïque géoréférencée. Distance oblique ramenée à
+  la distance au sol avec la profondeur de chaque ping. Positions interpolées
+  entre les points GPS, cap tiré de la route lissée. Parasites des autres
+  sondeurs (traits brefs sur un seul ping) retirés. Égalisation glissante
+  facultative : même luminosité moyenne du centre au bord de la fauchée,
+  malgré les changements de gain ou de portée, et bruit coupé au-delà de la
+  portée acoustique. Les lignes qui se recouvrent sont moyennées, pondérées
+  par la force du signal. Hauteur au-dessus du fond lue sur l'image même
+  (premier écho du fond), route lissée, rayures de gain d'un ping à l'autre
+  corrigées, et chaque ping rééchantillonné au sol (image plus nette près du
+  bateau : les rides de sable apparaissent). Position de la sonde par rapport
+  à l'antenne GPS : estimée sur les lignes parcourues en sens opposés
+  (principe du « patch test » : une même tache du fond vue des deux sens est
+  décalée de deux fois l'écart), ou saisie. Pixel de la mosaïque : portée / 400, entre 0,1 et
+  1 m, élargi pour les levés très étendus. Un journal de 1,1 Go (8 km de
+  route) s'importe en 40 s environ.
+- **Traces de sondeur : décalage sonde / antenne GPS** (fenêtre d'import,
+  section *Avancé*). Journaux et GPX n'indiquent jamais si les positions sont
+  corrigées ; le décalage est estimé sur les lignes parcourues en sens
+  opposés, d'abord sur les profondeurs (patch test : sur une pente qui varie
+  le long des lignes, les deux sens ne donnent la même profondeur qu'une fois
+  le décalage appliqué ; la valeur trouvée comprend aussi le retard de la
+  profondeur du sondeur), sinon sur le sonar latéral du journal ; ou saisi.
+  Levé du lac de Baikal : environ 6,5 m, retrouvé à l'identique sur les deux
+  moitiés du levé. Indiqué dans l'analyse de la source. Estimé, les champs
+  *avant* / *tribord* sont grisés et montrent le décalage obtenu (de même pour
+  le sonar latéral dans le cadre *Imagerie*) ; case décochée, ils portent les
+  valeurs mesurées, appliquées aussi quand l'estimation échoue.
+- **Panneau réorganisé** : les onglets *Palette* et *Isobathes et sondes*
+  rejoignent *Affichage*, qui réunit tout ce qui règle l'aspect des données,
+  sans défilement : en haut, couches et référence verticale des profondeurs
+  affichées (zéro des cartes, LAT, niveau moyen, ellipsoïde) ; à gauche,
+  palette et seuils, isobathes et sondes ; à droite, relief et lissage,
+  imagerie, bandeau et curseur. Libellés courts, texte complet en bulle
+  d'aide.
+- **Onglet Données** : les onglets *Base* et *Imagerie* sont réunis (trois
+  onglets : Données, Marée, Affichage). En haut, le dossier de la base
+  (`.pdb` et `.pdi`) avec un seul bouton *Arrêter* et une seule ligne d'état ;
+  à gauche, les fichiers de bathymétrie et le trait de côte ; à droite,
+  l'imagerie et les surfaces de référence verticale. Le panneau s'ouvre à la
+  taille qui fait tenir chaque onglet sans défilement.
+- **Isobathes et sondes dans le bandeau de palette** : une ligne en bas
+  affiche ou masque d'un clic les isobathes et les sondes, et change
+  l'intervalle des isobathes (valeurs rondes, seuils de la palette ou valeur
+  saisie), l'isobathe maîtresse, les décimales et la taille du texte des
+  sondes. Couleurs de profondeur masquées, la ligne reste seule.
+- Isobathes et sondes, si elles sont cochées, restent toujours au-dessus des
+  couleurs de profondeur et de l'imagerie, et restent affichées quand les
+  couleurs *Bathymétrie* sont masquées (ex. isobathes sur une mosaïque de
+  réflectivité).
+  L'onglet *Base* garde les surfaces de référence (MSS, fichiers des autres
+  pays, mise à jour, migration) ; la référence des données d'origine reste
+  définie à l'import.
+- **Grilles GeoTIFF sans GDAL** : lecteur intégré ; la bathymétrie en
+  GeoTIFF (`.tif .tiff`) s'importe maintenant sur toutes les plateformes, y
+  compris le paquet Windows. Fichiers en bandes ou en tuiles, sans
+  compression, LZW, Deflate ou PackBits, valeurs entières ou réelles, BigTIFF
+  (plus de 4 Go), lus bloc par bloc sans charger tout le fichier. Le système
+  de coordonnées est lu dans le fichier : géographique, systèmes projetés
+  EPSG, ou projections Mercator, Mercator transverse et Lambert définies par
+  l'utilisateur ; à défaut, dans un fichier `.tfw`. NoData du fichier. Les
+  versions compilées avec GDAL s'en servent pour les autres variantes.
+- Grilles en degrés (GeoTIFF, ASC, texte) rangées à leur pas le plus fin :
+  le pas est-ouest aux latitudes moyennes et hautes (ex. 4,0 m au lieu de
+  6,4 m à 51° N pour une grille « 5 m »). Avant, le pas nord-sud, plus
+  grossier, était retenu et le détail est-ouest perdu. Les pixels de la base
+  situés entre deux nœuds de la grille sont comblés par interpolation
+  linéaire entre les nœuds (le long des lignes, puis des colonnes) : ni ligne
+  ni colonne vide, et des isobathes sans marches. Ces pixels comblés
+  s'affichent comme la grille mais ne sont jamais pris comme sondes
+  chiffrées. Réimporter ces grilles pour en profiter. Une base qui contient
+  de telles grilles n'est plus entièrement lisible par les versions
+  antérieures.
 
 ### 0.1.0-beta.12 (2026-11-17)
 

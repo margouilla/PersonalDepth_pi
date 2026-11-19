@@ -33,7 +33,7 @@ grids are never recomputed.
 
 | | |
 |---|---|
-| **Formats** | XYZ text (any separator, headers skipped), ESRI ASCII `.asc`, LandXML TIN, echo sounder tracks GPX (Garmin depth) and Lowrance / Simrad / B&G sonar logs `.sl2` / `.sl3`; GeoTIFF/BAG/NetCDF when built with GDAL. User NODATA values and Z bounds at import |
+| **Formats** | XYZ text (any separator, headers skipped), ESRI ASCII `.asc`, LandXML TIN, echo sounder tracks GPX (Garmin depth) and Lowrance / Simrad / B&G sonar logs `.sl2` / `.sl3`, GeoTIFF (built-in reader: uncompressed, LZW, Deflate; geographic, EPSG, Mercator, transverse Mercator or Lambert); BAG/NetCDF when built with GDAL. User NODATA values and Z bounds at import |
 | **Survey database** | SQLite files split into geographic cells (0.25° by default, re-splittable); per-pixel shoalest sounding kept to the millimetre; overlapping surveys merged pixel by pixel by priority (best resolution then newest, shoalest, newest, or manual rank — no averaging); classes, multi-selection, clean-up by depth range; import can be stopped safely (SQLite transaction rolled back); already-imported files detected (import only new ones or replace) |
 | **Compression** | JPEG-LS (MED) predictor + zig-zag + deflate, unit detection; ~0.9 byte per sounding at 50 cm resolution; tile encoding spread over all CPU cores |
 | **Coordinates** | 300 built-in systems (WGS84, all UTM zones, Lambert-93, CC42–CC50, NTF Lambert, French overseas, many European/American/Oceanian systems, all NAD83 State Plane zones in m / US ft, polar, Web Mercator), EPSG code or PROJ string, `.prj` file; custom text formats (column choice, header, separators, date and time); projections coded in the plugin, checked against proj4js to < 1 cm |
@@ -44,11 +44,12 @@ grids are never recomputed.
 | **Grid or point cloud** | Each survey is analysed at import: regular grids (even projected with rounding noise, or written in degrees) keep their cell; point clouds (sounding lines, scattered or chart soundings, multibeam, lidar) are **interpolated** by triangulation (TIN) up to a maximum distance worked out from the survey. Measured cells always win; interpolated areas can be hidden or lightened. Survey type in simple words (single-beam, multibeam, lidar, chart soundings, lead line) |
 | **Observed water levels** | Time-stamped soundings corrected with a staff gauge or tide gauge series (text files, one file or a folder), with unit, convention, time zone and a curve window |
 | **Large files** | Text files over 200 MB are read and imported in blocks (memory around 300 MB whatever the file size) |
-| **Palette banner** | On-chart banner, draggable (position can be locked), horizontal or vertical: min / max depth (click to set), **A**/**M** automatic or manual, **View**/**All** source, colour bar (click for presets and your own palettes), gear to open the panel, current tide height |
+| **Palette banner** | On-chart banner, draggable (position can be locked), horizontal or vertical: min / max depth (click to set), **A**/**M** automatic or manual, **View**/**All** source, colour bar (click for presets and your own palettes), gear to open the panel, current tide height; bottom line to show or hide the contours and soundings and change their interval, major contour, decimals and text size |
 | **Units** | Survey files can be imported in metres or feet; the database always stores metres. Soundings, isobaths, legend, palette thresholds, safety depth and tide heights follow OpenCPN's units (*Options › Display › Units*: metres or feet — fathoms are shown in feet) |
 | **Survey metadata** | Survey date set at import (or read from the file name) and editable afterwards; vertical reference, coordinate system and Z unit of an imported source can be changed (*Edit…*: the original files are re-read with the new settings, which are stored per source) |
 | **Tide curve** | Separate window plotting height versus time for every tide point used (OpenCPN station, or up to 9 FES2022 points spread over the data), legend with checkboxes, automatic bounds (one tide cycle around the chosen time) or user-defined, marker at the current or chosen time |
 | **Language** | French, English or Russian, following OpenCPN's language (*Options › User › General options › Language*: French → French, Russian → Russian, any other language → English, unless a `PersonalDepth_<code>.po` translation file exists; see the user guide) |
+| **Seabed imagery** | Reflectivity, backscatter and side-scan sonar mosaics in GeoTIFF (dB, 8/16-bit grey levels, palette; Ifremer, Infomar, EMODnet…) and side-scan sonar of Lowrance / Simrad / B&G sounders (`.sl2` / `.sl3`, assembled into a mosaic: ground range, equalisation, interference removed) in an imagery database (`.pdi`) next to the bathymetry; original values read at the cursor; uniform background detected and discarded; greyscale, copper or sepia rendering with contrast, gamma and inversion changed instantly; separate switches, layer order and opacity for overlaying bathymetry and imagery |
 | **Display** | Hillshading (adjustable, vertical exaggeration), GLSL smoothing, isobaths (marching squares, cached per zoom level, labels, safety contour), decluttered exact soundings, cursor read-out with source survey |
 
 ### Installation (testers)
@@ -193,7 +194,7 @@ grilles de profondeur ne sont jamais recalculées.
 
 | Fonction | Détail |
 |---|---|
-| Formats | XYZ texte (espace, tabulation, `,` ou `;`, entêtes ignorés), ESRI ASCII `.asc`, LandXML TIN (`<P>`/`<F>`), traces de sondeur GPX (profondeur Garmin) et journaux sonar Lowrance / Simrad / B&G `.sl2` / `.sl3`, GeoTIFF/BAG/NetCDF si compilé avec GDAL. Valeurs NODATA supplémentaires et bornes Z1 – Z2 à l'import |
+| Formats | XYZ texte (espace, tabulation, `,` ou `;`, entêtes ignorés), ESRI ASCII `.asc`, LandXML TIN (`<P>`/`<F>`), traces de sondeur GPX (profondeur Garmin) et journaux sonar Lowrance / Simrad / B&G `.sl2` / `.sl3`, GeoTIFF (lecteur intégré : sans compression, LZW, Deflate ; géographique, EPSG, Mercator, Mercator transverse ou Lambert), BAG/NetCDF si compilé avec GDAL. Valeurs NODATA supplémentaires et bornes Z1 – Z2 à l'import |
 | Base de bathymétrie | Fichiers SQLite découpés en cellules géographiques (0,25° par défaut : `PD_N4815W00430.pdb` ; 1°, 0,5° ou 0,1° au choix, redécoupage possible ; anciennes bases en 1° lisibles), tuiles Web Mercator 256 × 256 (niveau natif d'après la résolution). Chaque pixel garde la plus faible sonde de la source (au mm) ; la surface fusionnée garde la valeur de la source prioritaire (pas de moyenne) : meilleure résolution puis plus récente (défaut), sonde la plus faible, plus récente, rang manuel. Classes, sélection multiple, nettoyage par bornes de profondeur, seules les tuiles touchées sont refusionnées. Import interruptible (transaction annulée pour le fichier en cours), fichiers déjà importés détectés (seulement les nouveaux, ou remplacement) |
 | Compression | Prédicteur JPEG-LS (MED) + zigzag + deflate, détection de l'unité ; ~0,9 octet par sonde pour un levé à 50 cm ; encodage réparti sur tous les cœurs |
 | Coordonnées | 300 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques dont toutes les zones NAD83 State Plane en m / pieds US, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin ; formats texte personnalisés (choix des colonnes, entête, séparateurs, date et heure). Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
@@ -205,7 +206,7 @@ grilles de profondeur ne sont jamais recalculées.
 | Grille ou nuage de points | Chaque levé est analysé à l'import : les grilles régulières (même projetées avec un bruit d'arrondi, ou écrites en degrés) gardent leur maille ; les nuages (lignes de sonde, sondes éparses ou de carte, multifaisceaux, lidar) sont **interpolés** par triangulation (TIN) jusqu'à une distance maximale déduite du levé. Les cases mesurées l'emportent toujours ; les zones interpolées peuvent être masquées ou éclaircies. Type de levé en termes simples (monofaisceau, multifaisceaux, lidar, sondes de carte, plomb) |
 | Hauteurs d'eau observées | Sondes horodatées corrigées par une série d'échelle ou de marégraphe (fichiers texte, un fichier ou un dossier), avec unité, convention, fuseau horaire et fenêtre de courbe |
 | Gros fichiers | Fichiers texte de plus de 200 Mo lus et importés par blocs (mémoire vers 300 Mo quelle que soit la taille) |
-| Bandeau de palette | Bandeau sur la carte, déplaçable (position verrouillable), horizontal ou vertical : profondeurs min / max (clic pour les saisir), **A**/**M** automatique ou manuel, **Vue**/**Tout**, rampe de couleurs (clic : préréglages et vos palettes), roue pour ouvrir le panneau, hauteur de marée du moment |
+| Bandeau de palette | Bandeau sur la carte, déplaçable (position verrouillable), horizontal ou vertical : profondeurs min / max (clic pour les saisir), **A**/**M** automatique ou manuel, **Vue**/**Tout**, rampe de couleurs (clic : préréglages et vos palettes), roue pour ouvrir le panneau, hauteur de marée du moment ; ligne du bas pour afficher ou masquer isobathes et sondes et changer leur intervalle, l'isobathe maîtresse, les décimales et la taille du texte |
 | Sécurité | Zone « prof. < X m » en surcouche (tirant d'eau + pied de pilote), isobathe de sécurité rouge |
 | Relief | Ombrage (Horn) réglable en direct, exagération verticale, adoucissement de la seule surface d'ombrage |
 | Isobathes | Marching squares sur la grille, en cache par niveau de zoom : intervalle régulier ou seuils de la palette, isobathe maîtresse, valeurs sur les lignes, lissage. Aucune ligne inventée dans les trous du levé |
@@ -213,6 +214,7 @@ grilles de profondeur ne sont jamais recalculées.
 | Métadonnées des levés | Date du levé imposée à l'import (sinon lue dans le nom du fichier) et modifiable ensuite ; référence verticale, système de coordonnées et unité de Z d'une source importée modifiables (*Modifier…* : les fichiers d'origine sont relus avec les nouveaux réglages, enregistrés par source) |
 | Courbe de marée | Fenêtre indépendante : hauteur d'eau en fonction du temps pour chaque point de marée utilisé (station OpenCPN, ou jusqu'à 9 points FES2022 répartis sur les données), légende à cocher, bornes automatiques (un cycle de marée autour de l'instant choisi) ou saisies, marqueur de l'instant (direct ou date choisie) |
 | Langue | Français, anglais ou russe, selon la langue d'OpenCPN (*Options › Utilisateur › Options générales › Langue* : français → français, russe → russe, toute autre langue → anglais, sauf fichier de traduction `PersonalDepth_<code>.po` ; voir le guide) |
+| Imagerie du fond | Réflectivité, rétrodiffusion et mosaïques de sonar latéral en GeoTIFF (dB, niveaux de gris 8/16 bits, palette ; Ifremer, Infomar, EMODnet…) et sonar latéral des sondeurs Lowrance / Simrad / B&G (`.sl2` / `.sl3`, assemblé en mosaïque : distance au sol, égalisation, parasites retirés) dans une base d'imagerie (`.pdi`) à côté de la bathymétrie ; valeurs d'origine lues au curseur ; fond uniforme détecté et écarté ; rendu en niveaux de gris, cuivre ou sépia avec contraste, gamma et inversion modifiés instantanément ; interrupteurs séparés, ordre des couches et opacité pour superposer bathymétrie et imagerie |
 | Rendu | OpenGL (tuiles texturées, shader GLSL) et mode non-GL (wxDC) |
 
 ### Installation (testeurs)
@@ -255,7 +257,7 @@ essayer le rendu sans rien importer :
 
 ### Utilisation
 
-1. Panneau PersonalDepth, cadre *Base de bathymétrie* : choisir le dossier de
+1. Panneau PersonalDepth, onglet *Données* : choisir le dossier de
    la base. La liste montre les fichiers `.pdb` avec leur taille et leur nombre
    de sources ; la case de chaque fichier affiche ou masque sa zone (*Tout* /
    *Aucun*, *Centrer*). *Arrêter* interrompt l'opération en cours.
@@ -348,6 +350,9 @@ une ligne absente laisse simplement le texte français.
 ```
 src/core/          cœur C++17 sans wxWidgets (testable seul)
   PointCloud       lecteurs XYZ/ASC/LandXML/GDAL, nuage quantifié, cache .pdpc
+  GeoTiff          lecteur GeoTIFF intégré (bandes, tuiles, LZW, Deflate, GeoKeys)
+  Imagery          base d'imagerie .pdi : import GeoTIFF, fond, étirement
+  SideScan         sonar latéral .sl2 / .sl3 : mosaïque géoréférencée
   BathyGrid        maillage, TIN, pyramide, ombrage
   BathyDb          base SQLite : import, fusion, priorités, vue, redécoupage
   TileCodec        compression des tuiles de profondeur

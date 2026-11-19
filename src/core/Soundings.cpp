@@ -180,7 +180,8 @@ std::vector<Label> SelectSoundings(const PointCloud& pc, const SoundingIndex& id
     for (int j = j0; j <= j1; ++j)
       for (int i = i0; i <= i1; ++i) {
         float z = g.at(i, j);
-        if (!std::isnan(z) && !g.isInterp((size_t)j * g.nx + i))  // pas de sonde interpolée
+        if (!std::isnan(z) && !g.isInterp((size_t)j * g.nx + i) &&
+            !g.isFill((size_t)j * g.nx + i))  // pas de sonde interpolée ni comblée
           offer(g.cellLon(i), g.cellLat(j), z, true);
       }
   }
