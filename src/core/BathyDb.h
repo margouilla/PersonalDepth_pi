@@ -164,6 +164,8 @@ class BathyDb {
   // Opérations groupées : une seule refusion des tuiles concernées
   bool removeSources(const std::vector<int64_t>& ids, DbPriority prio, std::string& err,
                      const DbProgress& progress = nullptr);
+  // supprime les fichiers de cellule sans source (après un retrait) ; nombre supprimé
+  int pruneEmptyCells();
   bool setVisible(const std::vector<int64_t>& ids, bool visible, DbPriority prio,
                   std::string& err, const DbProgress& progress = nullptr);
   bool setGroup(const std::vector<int64_t>& ids, const std::string& group, std::string& err);

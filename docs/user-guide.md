@@ -53,7 +53,10 @@ Advanced › Use accelerated graphics (OpenGL)*).
    Do not download the *Source code* archives: they are not the plugin.
 2. In OpenCPN: *Options › Plugins › Import plugin…*, select the file.
 3. Tick **Enable** next to PersonalDepth, then *OK*.
-4. Click the PersonalDepth icon in the toolbar: the main panel opens.
+4. Click the PersonalDepth icon in the toolbar: the main panel opens. The
+   panel also opens from the chart's right-click menu (*PersonalDepth…*); the
+   icon can instead show / hide the whole plugin (*Display* tab, *Banner and
+   cursor* box, *Icon*).
 
 ![Plugin enabled in OpenCPN's plugin manager](images/en/01-plugin-manager.png)
 
@@ -102,15 +105,12 @@ At the bottom of the chart, a banner shows the colour palette:
 | Colour bar | Choose a colour preset |
 | Small colour bar (next to ⚙) | Switch the banner between **horizontal** and **vertical**; the vertical banner also shows the intermediate thresholds |
 | ⚙ | Open the main panel |
-| *Contours* / *Soundings* box (bottom line) | Show or hide the depth contours / the soundings |
-| Contour interval (e.g. *5 m*) | Menu: *Palette thresholds*, round values, *Other value…* (typed) |
-| *major* and its value | Major contour: *none*, round values, *Other value…* |
-| *1 dec.* | Decimals of the soundings: 0, 1, 2 at each click |
-| *9 pt* | Text size of the soundings and contour values |
+| Rings (next to the small colour bar) | Contours and soundings menu: *Depth contours* (show), *Palette thresholds* or *Interval* (round values, *Other interval…*), *Soundings* (show), *Contour and sounding settings…* (*Display* tab) |
 
-The bottom line (contours and soundings) appears as soon as depths are
-shown; the underlined values change with a click. With the depth colours
-hidden, it stays alone (with the imagery, if any). The mark on the colour
+The rings appear as soon as depths are loaded (bright when contours or
+soundings are shown). With the depth colours hidden, they stay alone with
+the orientation and gear icons (below the imagery, if any). The major
+contour, decimals and text size are set in the *Display* tab. The mark on the colour
 bar is the safety depth. **Drag the banner** with the
 mouse to put it anywhere on the chart (the position is kept). In *Display*
 you can hide it, choose a fixed position (bottom centre, top centre, bottom
@@ -121,7 +121,7 @@ left, free) and **lock its position**.
 ![Banner: drag, A/M, preset, orientation](images/gif/g1-banner.gif)
 
 > 🧪 **Testers — check:** every click on the banner works (including the
-> contours / soundings line), the chart does not move when clicking on or
+> contours / soundings rings menu), the chart does not move when clicking on or
 > dragging the banner, and the locked banner cannot be dragged.
 
 ## 3. The main panel
@@ -359,7 +359,9 @@ Lambert-93, CC42–CC50, many national systems, **NAD83 State Plane** (all US
 zones, in metres, US survey feet or feet — e.g. for USACE surveys), or
 *Other* with an EPSG code / PROJ string. *Use the neighbouring .prj file*
 takes priority when the file has one (ESRI State Plane `.prj` files are
-recognised). Projected coordinates (UTM, Mercator…) cannot be identified
+recognised; without a known EPSG code, the projection is read from the
+`.prj` itself: Mercator, transverse Mercator — including Gauss-Krüger —,
+Lambert conformal conic, stereographic, with their ellipsoid). Projected coordinates (UTM, Mercator…) cannot be identified
 from the numbers alone: without a `.prj` file, choose the system.
 
 **Vertical reference of Z** — state which datum the depths of the file refer
@@ -491,7 +493,9 @@ a headland. The *Coastline* box of the **Data** tab prevents it:
   Litto3D).
 - **Own**: the user's shorelines, in addition to the basemap (or alone):
   KML / KMZ drawn in Google Earth, shapefiles (polygons or polylines, system
-  read from the `.prj`) and GeoPackage (`.gpkg`). Several files: separate
+  read from the `.prj`, including a custom Mercator or Lambert exported by
+  QGIS; a closed polyline — first point = last point — counts as a polygon)
+  and GeoPackage (`.gpkg`). Several files: separate
   them with `;` or add them with *…*. The **water side** of the polygons is
   that of the soundings: a polygon around the soundings outlines water (a
   lake outline, its islands drawn inside), a polygon without soundings
@@ -596,6 +600,7 @@ the screenshot in § 6)
 | Interpolated areas of the database | Show the surface interpolated at import between soundings; *lighter* lightens its colours |
 | Banner | Palette banner on the chart and where it sits; *Lock* its position |
 | Cursor readout | Depth and source next to the cursor |
+| Icon | Toolbar icon: *opens this panel* (default) or *shows / hides PersonalDepth* (bathymetry, imagery and banner with one click; the panel then opens from the chart's right-click menu, *PersonalDepth…*, the banner's gear or *Options › Plugins › Preferences*) |
 
 > 🧪 **Testers — check:** contours and soundings are readable and do not
 > overlap too much; the cursor readout gives the same value as the sounding
@@ -688,7 +693,14 @@ imported log. With the box unticked, enter the measured offset: transducer
 half-metre, measured on the boat, is enough. The offset used is shown in the
 image information.
 
-*Side-scan: pixel (m)* sets the mosaic step; 0 = automatic (range / 400,
+**Import settings.** The background outside the survey, the pixel, the
+equalisation and the transducer / GPS offset are only applied at import. To
+apply them to an image already in the database, select it and click
+**Re-import selection**: the original file is read again and the new image
+replaces the old one (same date, same class). Palette, contrast and gamma
+are set in the *Display* tab and apply at once.
+
+*Sonar: pixel (m)* sets the mosaic step; 0 = automatic (range / 400,
 between 0.1 and 1 m). For a very large survey the step is widened to keep
 memory use reasonable (noted in the image information). Logs without a
 side-scan channel (2D sonar and DownScan only) are refused with a message.

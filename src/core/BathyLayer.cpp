@@ -64,8 +64,11 @@ void BathyLayer::setupCrs(LoadOptions& lo) {
       if (!fs::exists(prj, ec)) continue;
       std::ifstream f(prj);
       std::stringstream ss; ss << f.rdbuf();
-      int code = EpsgFromWkt(ss.str());
-      if (code) { def = "EPSG:" + std::to_string(code); label = def + " (.prj)"; }
+      // code EPSG reconnu, sinon projection et paramètres lus dans le WKT
+      std::string lab;
+      const std::string d = CrsDefFromPrj(ss.str(), &lab);
+      if (!d.empty()) { def = d; label = lab; }
+      else if (!WktIsProjected(ss.str())) { def.clear(); label.clear(); }  // WGS84 géographique
       break;
     }
   }

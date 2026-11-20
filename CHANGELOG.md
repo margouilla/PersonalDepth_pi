@@ -4,6 +4,35 @@
 
 ## English
 
+### 0.1.0-beta.14 (2026-11-20)
+
+- `.prj` files without a known EPSG code (ESRI WKT exported by QGIS, WKT2)
+  are now read parameter by parameter: Mercator (1SP, 2SP, ESRI, Web
+  Mercator), transverse Mercator (Gauss-Krüger), Lambert conformal conic and
+  stereographic projections, ellipsoid, TOWGS84 (common datums such as
+  Pulkovo 1942, ED50, OSGB36, NAD27, NTF when absent). Applies to own
+  shorelines (shapefile) and to survey files with a `.prj`. Before, a
+  "World Mercator" shoreline was not recognised. Reported by Baikal.
+- Own shorelines drawn as **closed polylines** (first point = last point:
+  lake and island outlines exported as lines by QGIS) are now taken as
+  polygons, so they mask the land like polygons do. Before, only polygon
+  shapefiles masked the land.
+- A database cell file (`.pdb`, `.pdi`) whose last source is removed is now
+  deleted, instead of staying in the list with 0 sources. Empty files left
+  by earlier versions are deleted when the database is opened.
+- Fixed: the summary of the automatic palette (*Display* tab) stayed in the
+  previous language or unit after changing them in OpenCPN.
+- **Palette banner**: the contours / soundings line is replaced by a single
+  rings icon opening a menu: show contours, palette thresholds or interval
+  (round values or typed), show soundings, settings. Major contour, decimals
+  and text size stay in the *Display* tab. Suggested by Baikal.
+- **Toolbar icon**: new *Icon* setting (*Display* tab): it opens the panel
+  (as before) or shows / hides the whole plugin. The panel also opens from
+  the chart's right-click menu (*PersonalDepth…*). Suggested by Baikal.
+- **Imagery import settings**: background, pixel, equalisation and sonar
+  offset are grouped under *Import settings*, with **Re-import selection**
+  to apply them to images already in the database (same date and class).
+
 ### 0.1.0-beta.13 (2026-11-19)
 
 - **Seabed imagery** (reflectivity, backscatter, side-scan sonar mosaics):
@@ -418,6 +447,38 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.14 (2026-11-20)
+
+- Fichiers `.prj` sans code EPSG connu (WKT ESRI exportés par QGIS, WKT2)
+  lus paramètre par paramètre : projections Mercator (1SP, 2SP, ESRI, Web
+  Mercator), Mercator transverse (Gauss-Krüger), Lambert conique conforme et
+  stéréographiques, ellipsoïde, TOWGS84 (datums courants comme Pulkovo 1942,
+  ED50, OSGB36, NAD27, NTF s'il manque). S'applique aux traits de côte
+  personnels (shapefile) et aux levés accompagnés d'un `.prj`. Avant, un
+  trait de côte en « World Mercator » n'était pas reconnu. Signalé par Baikal.
+- Traits de côte personnels tracés en **polylignes refermées** (premier point
+  = dernier : contours de lac et d'îles exportés en lignes par QGIS)
+  désormais pris comme polygones : ils masquent la terre comme des polygones.
+  Avant, seuls les shapefiles de polygones masquaient la terre.
+- Un fichier de cellule (`.pdb`, `.pdi`) dont la dernière source est retirée
+  est maintenant supprimé, au lieu de rester dans la liste avec 0 source. Les
+  fichiers vides laissés par les versions précédentes sont supprimés à
+  l'ouverture de la base.
+- Corrigé : le résumé de la palette automatique (onglet *Affichage*) restait
+  dans la langue ou l'unité précédente après leur changement dans OpenCPN.
+- **Bandeau de palette** : la ligne isobathes / sondes est remplacée par une
+  icône (anneaux) qui ouvre un menu : isobathes, seuils de la palette ou
+  intervalle (valeurs rondes ou saisie), sondes, réglages. Isobathe
+  maîtresse, décimales et taille du texte restent dans l'onglet *Affichage*.
+  Suggestion de Baikal.
+- **Icône de la barre d'outils** : nouveau réglage *Icône* (onglet
+  *Affichage*) : elle ouvre le panneau (comme avant) ou affiche / masque tout
+  le plugin. Le panneau s'ouvre aussi par le clic droit sur la carte
+  (*PersonalDepth…*). Suggestion de Baikal.
+- **Réglages d'import de l'imagerie** : fond, pixel, égalisation et décalage
+  du sonar réunis sous *Réglages d'import*, avec **Réimporter la sélection**
+  pour les appliquer aux images déjà dans la base (même date, même classe).
 
 ### 0.1.0-beta.13 (2026-11-19)
 

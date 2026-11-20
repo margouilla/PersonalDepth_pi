@@ -4402,3 +4402,63 @@ msgstr "%d зн."
 msgid "Data"
 msgstr "Данные"
 
+#. fr: ouvre ce panneau
+msgid "opens this panel"
+msgstr "открывает эту панель"
+
+#. fr: affiche / masque PersonalDepth
+msgid "shows / hides PersonalDepth"
+msgstr "показывает / скрывает PersonalDepth"
+
+#. fr: Icône de PersonalDepth dans la barre d'outils d'OpenCPN. « Affiche / masque » : un clic montre ou cache la bathymétrie, l'imagerie et le bandeau ; ce panneau s'ouvre alors par le clic droit sur la carte (PersonalDepth…), la roue du bandeau ou Options › Plugins › Préférences.
+msgid "PersonalDepth icon in OpenCPN's toolbar. \"Shows / hides\": a click shows or hides the bathymetry, the imagery and the banner; this panel then opens from the chart's right-click menu (PersonalDepth…), the banner's gear or Options › Plugins › Preferences."
+msgstr "Значок PersonalDepth на панели инструментов OpenCPN. «Показывает / скрывает»: щелчок показывает или скрывает батиметрию, изображения и полосу; эта панель тогда открывается из контекстного меню карты (PersonalDepth…), шестерёнкой полосы или через Параметры › Плагины › Настройки."
+
+#. fr: Icône
+msgid "Icon"
+msgstr "Значок"
+
+#. fr: Réglages d'import
+msgid "Import settings"
+msgstr "Параметры импорта"
+
+#. fr: Fond, pixel, égalisation et décalage du sonar : appliqués à l'import. Pour une image déjà importée, la sélectionner et cliquer sur Réimporter. Palette, contraste et gamma se règlent dans l'onglet Affichage et s'appliquent tout de suite.
+msgid "Background, pixel, equalisation and sonar offset: applied at import. For an image already imported, select it and click Re-import. Palette, contrast and gamma are set in the Display tab and apply at once."
+msgstr "Фон, пиксель, выравнивание и смещение сонара применяются при импорте. Для уже импортированного изображения выберите его и нажмите «Повторный импорт». Палитра, контраст и гамма задаются на вкладке «Отображение» и применяются сразу."
+
+#. fr: Réimporter la sélection
+msgid "Re-import selection"
+msgstr "Повторно импортировать выбранное"
+
+#. fr: Relit les fichiers d'origine des images sélectionnées avec les réglages d'import ci-dessous ; la nouvelle image remplace l'ancienne (même date, même classe).
+msgid "Re-reads the original files of the selected images with the import settings below; the new image replaces the old one (same date, same class)."
+msgstr "Заново читает исходные файлы выбранных изображений с параметрами импорта ниже; новое изображение заменяет старое (та же дата, тот же класс)."
+
+#. fr: Fichier d'origine introuvable, image gardée telle quelle :\n
+msgid "Original file not found, image kept as it is:\n"
+msgstr "Исходный файл не найден, изображение оставлено без изменений:\n"
+
+#. fr: PersonalDepth…
+msgid "PersonalDepth…"
+msgstr "PersonalDepth…"
+
+#. fr: Intervalle %g %s
+msgid "Interval %g %s"
+msgstr "Интервал %g %s"
+
+#. fr: Autre intervalle…
+msgid "Other interval…"
+msgstr "Другой интервал…"
+
+#. fr: Autre intervalle (%g %s)…
+msgid "Other interval (%g %s)…"
+msgstr "Другой интервал (%g %s)…"
+
+#. fr: Réglages des isobathes et des sondes…
+msgid "Contour and sounding settings…"
+msgstr "Настройки изобат и отметок глубин…"
+
+#. fr: Réimport d'imagerie (%d fichier(s))
+msgid "Imagery re-import (%d file(s))"
+msgstr "Повторный импорт изображений (%d файл(ов))"
+

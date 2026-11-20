@@ -38,8 +38,7 @@ struct BannerHit {
   // parties : bathymétrie (Min… Bar), imagerie (ImgMin… ImgBar), communes
   enum Part { NoPart = 0, Min, Mode, Source, Max, Bar, Gear, Orient, Body,
               ImgMin, ImgMode, ImgSource, ImgMax, ImgBar,
-              // ligne isobathes / sondes
-              CtOn, CtStep, CtMajor, SdOn, SdDec, SdSize };
+              ChartMenu };  // icône isobathes / sondes
   struct Zones {
     bool on = false;
     wxRect minR, modeR, srcR, maxR, barR;
@@ -47,7 +46,7 @@ struct BannerHit {
   bool valid = false;
   wxRect box, gearR, orientR;
   Zones bathy, img;
-  std::vector<std::pair<wxRect, Part>> items;  // ligne isobathes / sondes
+  wxRect chartR;  // icône isobathes / sondes
   int pixW = 0, pixH = 0;  // taille du point de vue (rapport avec les coordonnées souris)
   Part PartAt(const wxPoint& p) const {
     if (!valid || !box.Contains(p)) return NoPart;
@@ -62,8 +61,7 @@ struct BannerHit {
       if (z.maxR.Contains(p)) return k ? ImgMax : Max;
       if (z.barR.Contains(p)) return k ? ImgBar : Bar;
     }
-    for (const auto& it : items)
-      if (it.first.Contains(p)) return it.second;
+    if (chartR.Contains(p)) return ChartMenu;
     return Body;
   }
 };

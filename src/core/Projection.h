@@ -78,6 +78,14 @@ std::string CrsDefinition(const CrsEntry& e, int zone, bool south);
 std::string EpsgToProj(int code);
 // Lit un .prj (WKT) : code EPSG reconnu (0 si inconnu)
 int EpsgFromWkt(const std::string& wkt);
+// Lit un WKT (WKT1 ESRI/OGC ou WKT2) en chaîne PROJ : Mercator (1SP, 2SP,
+// ESRI), Mercator transverse, Lambert conique conforme, stéréographiques ;
+// "" si WGS84 géographique ou méthode non prise en charge
+std::string CrsDefFromWkt(const std::string& wkt);
+// .prj : "EPSG:n" si reconnu, sinon chaîne PROJ lue dans le WKT ; "" = WGS84
+// (ou non reconnu : voir WktIsProjected) ; label : nom affiché
+std::string CrsDefFromPrj(const std::string& wkt, std::string* label = nullptr);
+bool WktIsProjected(const std::string& wkt);
 // Indice sur des coordonnées hors plage lon/lat (message d'aide), "" sinon
 std::string GuessCrsHint(double x, double y);
 

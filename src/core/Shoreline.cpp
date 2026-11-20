@@ -77,6 +77,14 @@ bool CrsFromEpsg(int code, ToWgs& t, std::string& err) {
 }
 
 void Push(std::vector<ShoreFeature>& out, ShoreFeature&& f) {
+  // ligne refermée sur elle-même (premier point = dernier, à ~1 cm près) :
+  // contour de lac ou d'île tracé en polyligne (export QGIS…), pris comme anneau
+  if (!f.closed && f.x.size() >= 4 && std::fabs(f.x.front() - f.x.back()) < 1e-7 &&
+      std::fabs(f.y.front() - f.y.back()) < 1e-7) {
+    f.closed = true;
+    f.x.back() = f.x.front();
+    f.y.back() = f.y.front();
+  }
   // anneau : point de fermeture répété retiré ; au moins 3 sommets (2 pour une ligne)
   if (f.closed && f.x.size() > 1 && f.x.front() == f.x.back() && f.y.front() == f.y.back()) {
     f.x.pop_back();
@@ -187,12 +195,20 @@ bool ShpCrs(const std::string& path, ToWgs& to, std::string& err) {
   std::error_code ec;
   if (!fs::exists(prj, ec) || !ReadWhole(prj.u8string(), pb, err)) return true;
   const std::string w(pb.begin(), pb.end());
-  const int code = EpsgFromWkt(w);
-  if (!code && w.find("PROJCS") != std::string::npos) {
+  // code EPSG reconnu, sinon projection et paramètres lus dans le WKT
+  const std::string def = CrsDefFromPrj(w);
+  if (def.empty()) {
+    if (!WktIsProjected(w)) return true;  // WGS84 géographique
     err = pd::tr("Système du .prj non reconnu (convertir le fichier en WGS84, EPSG:4326) : ") + prj.u8string();
     return false;
   }
-  return CrsFromEpsg(code, to, err);
+  auto c = std::make_shared<Crs>();
+  if (!Crs::Parse(def, *c, err)) {
+    err = pd::tr("Système du .prj non reconnu (convertir le fichier en WGS84, EPSG:4326) : ") + prj.u8string();
+    return false;
+  }
+  if (!c->isWGS84LonLat()) to.crs = c;
+  return true;
 }
 
 // Parties d'un enregistrement (contenu après l'entête de 8 octets)
@@ -272,7 +288,8 @@ bool ShpSource::open(const std::string& path, std::string& err) {
   auto be32 = [&](size_t o) { return (uint32_t)x[o] << 24 | (uint32_t)x[o + 1] << 16 | (uint32_t)x[o + 2] << 8 | x[o + 3]; };
   int32_t type;
   std::memcpy(&type, &x[32], 4);
-  polygons_ = type % 10 == 5;
+  // polylignes : peuvent contenir des contours refermés (anneaux), lus à la demande
+  polygons_ = type % 10 == 5 || type % 10 == 3;
   if (type % 10 != 3 && type % 10 != 5) { err = pd::tr("Shapefile sans polygone ni polyligne : ") + path; return false; }
   for (size_t o = 100; o + 8 <= x.size(); o += 8) {
     I.off.push_back(2ull * be32(o));

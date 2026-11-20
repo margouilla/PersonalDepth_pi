@@ -955,6 +955,36 @@ int main(int argc, char** argv) {
     CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_Massachusetts_Mainland_FIPS_2001_Feet\",GEOGCS[\"GCS_North_American_1983\"]]") == 2249);
     CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_Louisiana_North_FIPS_1701\",GEOGCS[\"GCS_North_American_1983\"]]") == 26981);
     CHECK(EpsgFromWkt("PROJCS[\"NAD_1983_StatePlane_California_VI_FIPS_0406_Feet\",GEOGCS[\"GCS_North_American_1983\"]]") == 2230);
+    // .prj sans code EPSG reconnu : projection lue dans le WKT (QGIS, ESRI, WKT2)
+    {
+      auto wgs = [&](const std::string& wkt, double x, double y, double lon, double lat, double tol) {
+        const std::string def = CrsDefFromPrj(wkt);
+        Crs c;
+        if (!Crs::Parse(def, c, err)) { std::printf("  WKT -> %s : %s\n", def.c_str(), err.c_str()); return false; }
+        double lo, la;
+        if (!c.toWGS84(x, y, lo, la)) return false;
+        const double d = std::hypot((lo - lon) * 111320 * std::cos(lat * M_PI / 180), (la - lat) * 110540);
+        if (d > tol) std::printf("  WKT -> %s : écart %.2f m\n", def.c_str(), d);
+        return d <= tol;
+      };
+      // EPSG:3395 exporté par QGIS (ESRI, sans autorité) ; références pyproj
+      CHECK(wgs("PROJCS[\"WGS_1984_World_Mercator\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Mercator\"],PARAMETER[\"False_Easting\",0.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",0.0],PARAMETER[\"Standard_Parallel_1\",0.0],UNIT[\"Meter\",1.0]]",
+                11633044.5, 6800000, 104.501416752, 52.185733397, 0.01));
+      // Mercator personnalisé (parallèle standard 52°, méridien 105°)
+      CHECK(wgs("PROJCS[\"Mercator_Baikal\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Mercator\"],PARAMETER[\"False_Easting\",0.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",105.0],PARAMETER[\"Standard_Parallel_1\",52.0],UNIT[\"Meter\",1.0]]",
+                -30000, 3900000, 104.563178995, 49.463997738, 0.01));
+      // WKT2 sans identifiant (Mercator variante A)
+      CHECK(wgs("PROJCRS[\"WGS 84 / World Mercator\",BASEGEOGCRS[\"WGS 84\",DATUM[\"World Geodetic System 1984\",ELLIPSOID[\"WGS 84\",6378137,298.257223563,LENGTHUNIT[\"metre\",1]]],PRIMEM[\"Greenwich\",0]],CONVERSION[\"World Mercator\",METHOD[\"Mercator (variant A)\"],PARAMETER[\"Latitude of natural origin\",0],PARAMETER[\"Longitude of natural origin\",0],PARAMETER[\"Scale factor at natural origin\",1],PARAMETER[\"False easting\",0],PARAMETER[\"False northing\",0]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"metre\",1]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"metre\",1]]]",
+                11633044.5, 6800000, 104.501416752, 52.185733397, 0.01));
+      // Pulkovo 1942 / Gauss-Krüger zone 18 (datum sans TOWGS84 : paramètres moyens, quelques m)
+      CHECK(wgs("PROJCS[\"Pulkovo 1942 / Gauss-Kruger zone 18\",GEOGCS[\"Pulkovo 1942\",DATUM[\"Pulkovo_1942\",SPHEROID[\"Krassowsky 1940\",6378245,298.3]],PRIMEM[\"Greenwich\",0],UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"],PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",105],PARAMETER[\"scale_factor\",1],PARAMETER[\"false_easting\",18500000],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]",
+                18400000, 5760000, 103.545457586, 51.960667634, 15));
+      // Web Mercator ESRI (sphère auxiliaire)
+      CHECK(wgs("PROJCS[\"WGS_1984_Web_Mercator_Auxiliary_Sphere\",GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],UNIT[\"Degree\",0.0174532925199433]],PROJECTION[\"Mercator_Auxiliary_Sphere\"],PARAMETER[\"False_Easting\",0.0],PARAMETER[\"False_Northing\",0.0],PARAMETER[\"Central_Meridian\",0.0],PARAMETER[\"Standard_Parallel_1\",0.0],PARAMETER[\"Auxiliary_Sphere_Type\",0.0],UNIT[\"Meter\",1.0]]",
+                11633044.5, 6800000, 104.501416752, 51.999306159, 0.01));
+      CHECK(CrsDefFromPrj("GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,298.257223563]]]").empty());
+      CHECK(CrsDefFromWkt("PROJCS[\"x\",PROJECTION[\"Bonne\"]]").empty());
+    }
     for (auto& e : CrsCatalog()) {  // chaque entrée du catalogue est valide
       Crs c; CHECK(Crs::Parse(CrsDefinition(e, e.zoneMin ? e.zoneMin : 1, e.zoneSouthDefault), c, err));
     }
@@ -1307,6 +1337,12 @@ int main(int argc, char** argv) {
     CHECK(db.sourceAt(-4.475, pla, 18) == 0);  // B seul : plus rien
     CHECK(db.removeSources({ida}, DbPriority::ResolutionDate, err) && db.sources().empty() &&
           db.sourceAt(-4.495, pla, 18) == 0);
+    {  // dernière source retirée : plus aucun fichier de cellule
+      int pdb = 0;
+      for (auto& e : std::filesystem::directory_iterator(std::filesystem::u8path(folder)))
+        if (e.path().extension() == ".pdb") ++pdb;
+      CHECK(pdb == 0 && db.cellInfo().empty());
+    }
     std::printf("Base : codec, import, priorités, masquage, retrait, vue : OK\n");
   }
   // 18) Palette automatique
@@ -2558,21 +2594,23 @@ int main(int argc, char** argv) {
       if (pass) CHECK(edge > 3.f && edge < 7.f);
       else CHECK(std::isnan(edge));
     }
-    {  // même lac en shapefile (lu à la demande, .shx)
-      const std::string shp = Tmp("pd_lac.shp"), shx = Tmp("pd_lac.shx");
+    // même lac en shapefile (lu à la demande, .shx) : polygone (5), puis
+    // polyligne refermée (3, contour exporté en ligne par QGIS) prise comme anneau
+    for (int shpType : {5, 3}) {
+      const std::string shp = Tmp((std::string("pd_lac") + std::to_string(shpType) + ".shp").c_str()), shx = Tmp((std::string("pd_lac") + std::to_string(shpType) + ".shx").c_str());
       const double X[5] = {-4.60, -4.60, -4.58, -4.58, -4.60}, Y[5] = {48.40, 48.41, 48.41, 48.40, 48.40};
       std::vector<uint8_t> rec;
       auto le32 = [&](std::vector<uint8_t>& v, int32_t x) { for (int k = 0; k < 4; ++k) v.push_back((uint8_t)(x >> (8 * k))); };
       auto le64 = [&](std::vector<uint8_t>& v, double d) { uint64_t u; std::memcpy(&u, &d, 8); for (int k = 0; k < 8; ++k) v.push_back((uint8_t)(u >> (8 * k))); };
       auto be32 = [&](std::vector<uint8_t>& v, int32_t x) { for (int k = 3; k >= 0; --k) v.push_back((uint8_t)(x >> (8 * k))); };
-      le32(rec, 5); le64(rec, -4.60); le64(rec, 48.40); le64(rec, -4.58); le64(rec, 48.41);
+      le32(rec, shpType); le64(rec, -4.60); le64(rec, 48.40); le64(rec, -4.58); le64(rec, 48.41);
       le32(rec, 1); le32(rec, 5); le32(rec, 0);
       for (int k = 0; k < 5; ++k) { le64(rec, X[k]); le64(rec, Y[k]); }
       auto header = [&](int32_t lenWords) {
         std::vector<uint8_t> h;
         be32(h, 9994);
         for (int k = 0; k < 5; ++k) be32(h, 0);
-        be32(h, lenWords); le32(h, 1000); le32(h, 5);
+        be32(h, lenWords); le32(h, 1000); le32(h, shpType);
         le64(h, -4.60); le64(h, 48.40); le64(h, -4.58); le64(h, 48.41);
         for (int k = 0; k < 4; ++k) le64(h, 0);
         return h;
@@ -2586,7 +2624,7 @@ int main(int argc, char** argv) {
       f = std::fopen(shx.c_str(), "wb"); std::fwrite(fshx.data(), 1, fshx.size(), f); std::fclose(f);
       LandMask ls;
       CHECK(ls.addCustom(shp, err) && ls.isOpen() && ls.hasCustomPolygons());
-      const std::string fw = Tmp("pd_testshore_shp");
+      const std::string fw = Tmp((std::string("pd_testshore_shp") + std::to_string(shpType)).c_str());
       std::filesystem::remove_all(fw);
       BathyDb dw;
       CHECK(dw.open(fw, err));
@@ -2594,7 +2632,7 @@ int main(int argc, char** argv) {
       dw.setShoreConstraint(true);
       CHECK(dw.importCloud(W, mw, false, DbPriority::ResolutionDate, err));
       const float edge = depthAt(dw, -4.599, 48.4051), out = depthAt(dw, -4.6015, 48.4051);
-      std::printf("Trait de côte shapefile (à la demande) : bord %.2f m, hors du lac %.2f\n", edge, out);
+      std::printf("Trait de côte shapefile type %d (à la demande) : bord %.2f m, hors du lac %.2f\n", shpType, edge, out);
       CHECK(std::isnan(out) && edge > 3.f && edge < 7.f);
     }
     std::printf("Trait de côte personnel (KML, lac) : OK\n");

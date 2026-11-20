@@ -124,17 +124,23 @@ int PersonalDepth_pi::Init() {
     m_toolId = InsertPlugInTool("PersonalDepth", &m_icon, &m_icon, wxITEM_CHECK,
                                 U8("Bathymétrie personnelle"), "", nullptr, -1, 0, this);
 
+  SetToolbarItemState(m_toolId, m_set.toolbarMode == 1 && m_set.shown);
+  // menu contextuel de la carte : accès au panneau, utile quand l'icône
+  // bascule l'affichage
+  m_ctxMenuId = AddCanvasContextMenuItem(new wxMenuItem(nullptr, wxID_ANY, U8("PersonalDepth…")), this);
+
   m_timer = std::make_unique<Ticker>(this);
   m_timer->Start(250);
   m_cursorRefresh = std::make_unique<CursorRefresh>();
 
   return WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK | WANTS_CURSOR_LATLON |
          WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL | WANTS_CONFIG | WANTS_PREFERENCES |
-         WANTS_MOUSE_EVENTS;
+         WANTS_MOUSE_EVENTS | INSTALLS_CONTEXTMENU_ITEMS;
 }
 
 bool PersonalDepth_pi::DeInit() {
   SaveConfig();
+  if (m_ctxMenuId >= 0) RemoveCanvasContextMenuItem(m_ctxMenuId);
   if (m_timer) m_timer->Stop();
   m_timer.reset();
   if (m_cursorRefresh) m_cursorRefresh->Stop();
@@ -158,7 +164,14 @@ bool PersonalDepth_pi::DeInit() {
 }
 
 // ------------------------------------------------------------- interface
+// Icône de la barre d'outils : ouvre / ferme le panneau, ou (réglage) affiche
+// / masque tout le plugin ; le panneau reste accessible par le menu du clic
+// droit sur la carte, la roue du bandeau et Options › Plugins › Préférences
 void PersonalDepth_pi::OnToolbarToolCallback(int) {
+  if (m_set.toolbarMode == 1) {
+    SetShown(!m_set.shown);
+    return;
+  }
   if (!m_dlg) m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
   bool show = !m_dlg->IsShown();
   m_dlg->Show(show);
@@ -166,15 +179,44 @@ void PersonalDepth_pi::OnToolbarToolCallback(int) {
   SetToolbarItemState(m_toolId, show);
 }
 
-void PersonalDepth_pi::ShowPreferencesDialog(wxWindow*) {
+void PersonalDepth_pi::ShowPanel(int tab) {
   if (!m_dlg) m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
+  if (tab >= 0) m_dlg->SelectTab(tab);
   m_dlg->Show();
   m_dlg->Raise();
-  SetToolbarItemState(m_toolId, true);
+  if (m_set.toolbarMode == 0) SetToolbarItemState(m_toolId, true);
+}
+
+void PersonalDepth_pi::ShowPreferencesDialog(wxWindow*) { ShowPanel(); }
+
+void PersonalDepth_pi::OnContextMenuItemCallback(int id) {
+  if (id == m_ctxMenuId) ShowPanel();
+}
+
+void PersonalDepth_pi::SetShown(bool on) {
+  m_set.shown = on;
+  if (m_set.toolbarMode == 1) SetToolbarItemState(m_toolId, on);
+  if (!on) {
+    m_renderer->HideBanner();
+    m_imgRenderer->HideBanner();
+  }
+  UpdateDbView();
+  SaveConfig();
+  RequestRefresh(GetOCPNCanvasWindow());
+}
+
+void PersonalDepth_pi::ToolbarModeChanged() {
+  // icône enfoncée : panneau ouvert (mode 0) ou plugin affiché (mode 1)
+  if (m_set.toolbarMode == 1) SetToolbarItemState(m_toolId, m_set.shown);
+  else {
+    if (!m_set.shown) SetShown(true);  // plus de bascule : ne pas laisser le plugin masqué
+    SetToolbarItemState(m_toolId, m_dlg && m_dlg->IsShown());
+  }
+  SaveConfig();
 }
 
 void PersonalDepth_pi::OnDialogClose() {
-  SetToolbarItemState(m_toolId, false);
+  if (m_set.toolbarMode == 0) SetToolbarItemState(m_toolId, false);
   SaveConfig();
 }
 
@@ -344,6 +386,7 @@ void PersonalDepth_pi::OnTick() {
     if (m_dlg) { m_dlg->Destroy(); m_dlg = nullptr; }
     ++m_set.version;
     m_renderer->Invalidate();
+    m_autoKey.clear();  // palette automatique recalculée dès que les données sont prêtes
     UpdateAutoPalette(true);
     UpdateTide(false);
     UpdateCursorText();
@@ -358,6 +401,7 @@ void PersonalDepth_pi::OnTick() {
   if (UpdateUnits()) {  // unités changées dans les options d'OpenCPN
     ++m_set.version;
     m_renderer->Invalidate();
+    m_autoKey.clear();  // palette automatique recalculée dès que les données sont prêtes
     UpdateAutoPalette(true);
     UpdateTide(false);
     UpdateCursorText();
@@ -983,6 +1027,8 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("BannerFx", (double)m_set.bannerFx);
   c->Write("BannerFy", (double)m_set.bannerFy);
   c->Write("BannerLock", m_set.bannerLock);
+  c->Write("Shown", m_set.shown);
+  c->Write("ToolbarMode", m_set.toolbarMode);
   c->Write("PanelTab", m_set.panelTab);
   c->Write("BannerVertical", m_set.bannerVertical);
   c->Write("BathyShow", m_set.bathyShow);
@@ -1119,6 +1165,9 @@ void PersonalDepth_pi::LoadConfig() {
     m_set.bannerFy = (float)std::min(1.0, std::max(0.0, fy));
   }
   c->Read("BannerLock", &m_set.bannerLock, m_set.bannerLock);
+  c->Read("Shown", &m_set.shown, m_set.shown);
+  c->Read("ToolbarMode", &m_set.toolbarMode, m_set.toolbarMode);
+  if (m_set.toolbarMode != 1) { m_set.toolbarMode = 0; m_set.shown = true; }
   c->Read("PanelTab", &m_set.panelTab, m_set.panelTab);
   c->Read("BannerVertical", &m_set.bannerVertical, m_set.bannerVertical);
   c->Read("BathyShow", &m_set.bathyShow, m_set.bathyShow);
@@ -1280,7 +1329,10 @@ void PersonalDepth_pi::DbOpen() {
   {  // base d'imagerie (.pdi) du même dossier
     BathyDb idb;
     std::string ie;
-    if (idb.open(m_set.dbFolder, ie, 0, DbKind::Imagery)) m_imgSources = idb.sources();
+    if (idb.open(m_set.dbFolder, ie, 0, DbKind::Imagery)) {
+      idb.pruneEmptyCells();  // fichiers vides restés d'un retrait (fichier alors ouvert ailleurs)
+      m_imgSources = idb.sources();
+    }
   }
   BathyDb db;
   std::string err;
@@ -1291,6 +1343,7 @@ void PersonalDepth_pi::DbOpen() {
     // .pdb copié d'un autre dossier) ; rapide quand rien n'a changé
     std::string se;
     db.syncDatum(se);
+    db.pruneEmptyCells();  // fichiers vides restés d'un retrait (fichier alors ouvert ailleurs)
   }
   if (opened) {
     m_dbSources = db.sources();
@@ -1896,7 +1949,7 @@ void PersonalDepth_pi::DbUpdateDatum() {
 void PersonalDepth_pi::UpdateView(DbViewSlot& V, DbKind kind, BathyRenderer& R) {
   const bool depth = kind == DbKind::Depth;
   const auto& sources = depth ? m_dbSources : m_imgSources;
-  if (m_set.dbFolder.empty() || sources.empty() || (depth ? !BathyNeeded() : !m_set.imgShow)) {
+  if (m_set.dbFolder.empty() || sources.empty() || (depth ? !BathyNeeded() : !(m_set.shown && m_set.imgShow))) {
     if (V.view || V.next) {
       if (V.next) V.next->cancel();
       R.ClearPending();
@@ -2297,40 +2350,11 @@ void PersonalDepth_pi::BannerClick(int part, wxWindow* win, wxPoint pos) {
       ImageryChanged();
       break;
     }
-    // ---- isobathes et sondes
-    case BannerHit::CtOn:
-      m_set.contours = !m_set.contours;
-      ChartTextChanged(true);
+    case BannerHit::ChartMenu:  // isobathes et sondes
+      BannerChartMenu(win, pos);
       break;
-    case BannerHit::SdOn:
-      m_set.soundings = !m_set.soundings;
-      ChartTextChanged(false);
-      break;
-    case BannerHit::SdDec:  // 0 -> 1 -> 2 -> 0 décimales
-      m_set.decimals = (std::max(0, m_set.decimals) + 1) % 3;
-      ChartTextChanged(false);
-      break;
-    case BannerHit::CtStep:
-    case BannerHit::CtMajor:
-      BannerContourValue(part == BannerHit::CtMajor, win, pos);
-      break;
-    case BannerHit::SdSize: {
-      wxMenu menu;
-      const int sizes[] = {7, 8, 9, 10, 11, 12, 14, 16, 18, 20};
-      for (int k = 0; k < 10; ++k)
-        menu.AppendRadioItem(10000 + k, wxString::Format("%d pt", sizes[k]))->Check(m_set.fontSize == sizes[k]);
-      menu.SetTitle(U8("Taille du texte (sondes, valeurs des isobathes)"));
-      const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
-      if (id < 10000 || id >= 10010) break;
-      m_set.fontSize = sizes[id - 10000];
-      ChartTextChanged(true);
-      break;
-    }
     case BannerHit::Gear:
-      if (!m_dlg) m_dlg = new BathyDialog(GetOCPNCanvasWindow(), this);
-      m_dlg->Show();
-      m_dlg->Raise();
-      SetToolbarItemState(m_toolId, true);
+      ShowPanel();
       break;
     default:
       break;
@@ -2344,56 +2368,64 @@ void PersonalDepth_pi::ChartTextChanged(bool contours) {
   if (m_dlg) m_dlg->RefreshPalette();
 }
 
-// Intervalle (ou maîtresse) des isobathes depuis le bandeau : menu de valeurs
-// rondes dans l'unité affichée, seuils de la palette (intervalle), ou saisie
-void PersonalDepth_pi::BannerContourValue(bool major, wxWindow* win, wxPoint pos) {
+// Menu de l'icône isobathes du bandeau : affichage des isobathes, seuils de
+// la palette ou intervalle régulier (valeurs rondes dans l'unité affichée, ou
+// saisie), affichage des sondes ; les autres réglages restent dans le panneau
+void PersonalDepth_pi::BannerChartMenu(wxWindow* win, wxPoint pos) {
   DisplaySettings& s = m_set;
   const float k = s.depthK > 0 ? s.depthK : 1.f;
-  const bool feet = k > 1.5f;
-  const std::vector<double> vals = major ? (feet ? std::vector<double>{5, 10, 20, 50, 100, 200}
-                                                 : std::vector<double>{2, 5, 10, 20, 50, 100})
-                                         : (feet ? std::vector<double>{1, 2, 5, 10, 20, 50, 100}
-                                                 : std::vector<double>{0.5, 1, 2, 5, 10, 20, 50});
-  const double cur = (major ? s.contourMajor : s.contourStep) * k;
+  const std::vector<double> vals = k > 1.5f ? std::vector<double>{1, 2, 5, 10, 20, 50, 100}
+                                            : std::vector<double>{0.5, 1, 2, 5, 10, 20, 50};
+  const double cur = s.contourStep * k;
+  enum { kOn = 9980, kPal, kOther, kSound, kPanel, kVal = 10000 };
   wxMenu menu;
-  if (major) menu.AppendRadioItem(9990, U8("Aucune isobathe maîtresse"))->Check(!(s.contourMajor > 0));
-  else menu.AppendRadioItem(9990, U8("Seuils de la palette"))->Check(s.contourMode == 1);
+  menu.AppendCheckItem(kOn, U8("Isobathes"))->Check(s.contours);
   menu.AppendSeparator();
+  menu.AppendRadioItem(kPal, U8("Seuils de la palette"))->Check(s.contourMode == 1);
   bool found = false;
   for (size_t i = 0; i < vals.size(); ++i) {
-    const bool on = (major ? s.contourMajor > 0 : s.contourMode == 0) && std::fabs(cur - vals[i]) < 1e-3;
+    const bool on = s.contourMode == 0 && std::fabs(cur - vals[i]) < 1e-3;
     found = found || on;
-    menu.AppendRadioItem(10000 + (int)i, wxString::Format("%g %s", vals[i], s.depthUnit))->Check(on);
+    menu.AppendRadioItem(kVal + (int)i, wxString::Format(U8("Intervalle %g %s"), vals[i], s.depthUnit))->Check(on);
   }
+  wxString other = U8("Autre intervalle…");
+  if (s.contourMode == 0 && !found) other = wxString::Format(U8("Autre intervalle (%g %s)…"),
+                                                             std::round(cur * 100.0) / 100.0, s.depthUnit);
+  menu.AppendRadioItem(kOther, other)->Check(s.contourMode == 0 && !found);
   menu.AppendSeparator();
-  menu.Append(9991, U8("Autre valeur…"));
-  menu.SetTitle(major ? U8("Isobathe maîtresse tous les") : U8("Intervalle des isobathes"));
+  menu.AppendCheckItem(kSound, U8("Sondes"))->Check(s.soundings);
+  menu.AppendSeparator();
+  menu.Append(kPanel, U8("Réglages des isobathes et des sondes…"));
   const int id = win->GetPopupMenuSelectionFromUser(menu, pos);
-  double v = -1;
-  if (id == 9990) {
-    if (major) s.contourMajor = 0;
-    else s.contourMode = 1;
+  if (id == kOn) {
+    s.contours = !s.contours;
     ChartTextChanged(true);
-    return;
-  } else if (id >= 10000 && id < 10000 + (int)vals.size()) {
-    v = vals[id - 10000];
-  } else if (id == 9991) {
+  } else if (id == kSound) {
+    s.soundings = !s.soundings;
+    ChartTextChanged(false);
+  } else if (id == kPal) {
+    s.contourMode = 1;
+    s.contours = true;
+    ChartTextChanged(true);
+  } else if (id >= kVal && id < kVal + (int)vals.size()) {
+    s.contourStep = (float)(vals[id - kVal] / k);
+    s.contourMode = 0;
+    s.contours = true;
+    ChartTextChanged(true);
+  } else if (id == kOther) {
     const wxString def = wxString::Format("%g", std::round(cur * 100.0) / 100.0);
-    wxString txt = wxGetTextFromUser(
-        (major ? U8("Isobathe maîtresse tous les") : U8("Intervalle des isobathes")) + " (" + s.depthUnit + ")",
-        U8("Isobathes"), def, win);
+    wxString txt = wxGetTextFromUser(U8("Intervalle des isobathes") + " (" + s.depthUnit + ")", U8("Isobathes"), def, win);
     txt.Trim(true).Trim(false);
     txt.Replace(",", ".");
+    double v = 0;
     if (txt.empty() || !txt.ToCDouble(&v) || !(v > 0)) return;
-  } else {
-    return;
-  }
-  if (major) s.contourMajor = (float)(v / k);
-  else {
     s.contourStep = (float)std::max(0.01, v / k);
     s.contourMode = 0;
+    s.contours = true;
+    ChartTextChanged(true);
+  } else if (id == kPanel) {
+    ShowPanel(2);  // onglet Affichage
   }
-  ChartTextChanged(true);
 }
 
 // Saisie d'une borne de la palette. Automatique : borne imposée (vide = calculée) ;
@@ -2449,9 +2481,19 @@ void PersonalDepth_pi::BannerRange(bool isMin, wxWindow* win) {
 
 // Seuils recalculés d'après les profondeurs du moment (sonde ZH + marée) :
 // toutes les données (base + couches) ou la seule zone affichée
+wxString PersonalDepth_pi::AutoPaletteInfo() const {
+  const DisplaySettings& s = m_set;
+  if (!s.autoPalette || !m_autoSum.ok) return wxString();
+  const float k = s.depthK > 0 ? s.depthK : 1.f;
+  return wxString::Format(U8("Automatique : %d seuils de %.1f à %.1f %s (%s%s)"), m_autoSum.n, m_autoSum.lo * k,
+                          m_autoSum.hi * k, s.depthUnit,
+                          s.autoSource == 1 ? U8("zone affichée") : U8("toutes les données"),
+                          s.autoMinOn || s.autoMaxOn ? U8(", bornes imposées") : wxString());
+}
+
 void PersonalDepth_pi::UpdateAutoPalette(bool force) {
   DisplaySettings& s = m_set;
-  if (!s.autoPalette) { m_autoInfo.clear(); m_autoKey.clear(); return; }
+  if (!s.autoPalette) { m_autoSum = AutoSummary(); m_autoKey.clear(); return; }
   float lo = 1e30f, hi = -1e30f;
   const auto layers = DrawLayers();
   if (s.autoSource == 1) {
@@ -2521,10 +2563,10 @@ void PersonalDepth_pi::UpdateAutoPalette(bool force) {
       dataLo < r.stops.front().depth) {
     r.stops.insert(r.stops.begin(), ColorStop{r.stops.front().depth - 0.01f, land->rgba});
   }
-  m_autoInfo = wxString::Format(U8("Automatique : %d seuils de %.1f à %.1f %s (%s%s)"),
-                                (int)r.stops.size(), lo * k, hi * k, s.depthUnit,
-                                s.autoSource == 1 ? U8("zone affichée") : U8("toutes les données"),
-                                s.autoMinOn || s.autoMaxOn ? U8(", bornes imposées") : wxString());
+  m_autoSum.ok = true;
+  m_autoSum.n = (int)r.stops.size();
+  m_autoSum.lo = lo;
+  m_autoSum.hi = hi;
   if (r.stops.size() >= 2 && !(r == s.ramp)) {
     s.ramp = r;
     ++s.version;
@@ -2552,7 +2594,7 @@ void PersonalDepth_pi::DbZoomTo(const std::vector<int64_t>& ids) {
 // ================================================================ imagerie
 std::vector<LayerPtr> PersonalDepth_pi::ImgLayers() const {
   std::vector<LayerPtr> v;
-  if (m_set.imgShow && m_vi.view && m_vi.view->state() == BathyLayer::Ready) v.push_back(m_vi.view);
+  if (m_set.shown && m_set.imgShow && m_vi.view && m_vi.view->state() == BathyLayer::Ready) v.push_back(m_vi.view);
   return v;
 }
 
@@ -2693,7 +2735,29 @@ void PersonalDepth_pi::LayersShownChanged() {
   RequestRefresh(GetOCPNCanvasWindow());
 }
 
-void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const std::string& group) {
+// Réimport des images sélectionnées avec les réglages d'import actuels
+// (pixel, égalisation, décalage du sonar, fond) : la nouvelle image remplace
+// l'ancienne, qui garde sa date et sa classe ; l'ancienne reste si l'import échoue
+bool PersonalDepth_pi::ImgReimport(const std::vector<int64_t>& ids, std::string& missing) {
+  std::vector<std::string> files;
+  std::vector<ImgReplace> rep;
+  for (const auto& d : m_imgSources) {
+    if (std::find(ids.begin(), ids.end(), d.id) == ids.end()) continue;
+    std::error_code ec;
+    if (d.path.empty() || !std::filesystem::exists(std::filesystem::u8path(d.path), ec)) {
+      missing += (missing.empty() ? "" : "\n") + (d.path.empty() ? d.name : d.path);
+      continue;
+    }
+    files.push_back(d.path);
+    rep.push_back({d.id, d.date, d.group});
+  }
+  if (files.empty()) return false;
+  ImgImport(files, std::string(), rep);
+  return true;
+}
+
+void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const std::string& group,
+                                 const std::vector<ImgReplace>& replace) {
   if (files.empty()) return;
   ImageryOptions o;
   if (m_set.imgBgMode == 1) o.noBackground = true;
@@ -2711,8 +2775,10 @@ void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const st
   }
   LeverEstimate* est = &m_estSonar;
   std::mutex* estMx = &m_dbMx;
-  StartDbJob(JobLabel("Import d'imagerie (%d fichier(s))", files.size()),
-             [files, o, so, group, cancel, est, estMx](BathyDb& db, std::string& err, const DbProgress& prog) {
+  StartDbJob(JobLabel(replace.empty() ? "Import d'imagerie (%d fichier(s))" : "Réimport d'imagerie (%d fichier(s))",
+                      files.size()),
+             [files, o, so, group, replace, cancel, est, estMx](BathyDb& db, std::string& err,
+                                                                const DbProgress& prog) {
                std::string errors;
                size_t done = 0;
                for (size_t i = 0; i < files.size(); ++i) {
@@ -2725,6 +2791,11 @@ void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const st
                  m.path = files[i];
                  m.date = GuessSurveyDate(files[i]);
                  m.group = !group.empty() ? group : GuessSourceGroup(files[i]);
+                 const bool re = i < replace.size() && replace[i].id > 0;
+                 if (re) {  // réimport : date et classe de l'image remplacée
+                   if (!replace[i].date.empty()) m.date = replace[i].date;
+                   if (!replace[i].group.empty()) m.group = replace[i].group;
+                 }
                  std::string e;
                  auto sub = [&](float f, const std::string& step) { prog(f0 + (f1 - f0) * f, tag + name + " : " + step); };
                  // journal de sondeur (sonar latéral) ou image GeoTIFF
@@ -2744,6 +2815,11 @@ void PersonalDepth_pi::ImgImport(const std::vector<std::string>& files, const st
                    if (*cancel || e == "Annulé") { err = pd::tr("arrêté"); return false; }
                    errors += name + " : " + e + "\n";
                    continue;
+                 }
+                 if (re) {  // nouvelle image en place : l'ancienne est retirée
+                   std::string e2;
+                   if (!db.removeSources({replace[i].id}, DbPriority::ResolutionDate, e2, nullptr))
+                     errors += name + " : " + e2 + "\n";
                  }
                  ++done;
                }

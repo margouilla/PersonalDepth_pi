@@ -2269,7 +2269,34 @@ bool BathyDb::removeSources(const std::vector<int64_t>& ids, DbPriority prio, st
   if (!commitAll(err)) return false;
   // journal vidé (les pages libérées sont réutilisées par les imports suivants)
   for (DbCell* c : allCells(err)) c->exec("PRAGMA wal_checkpoint(TRUNCATE);", err);
+  pruneEmptyCells();
   return true;
+}
+
+// Fichiers de cellule sans aucune source (dernière source retirée) : fermés
+// et supprimés. Un fichier encore ouvert ailleurs (Windows) reste ; il sera
+// supprimé au prochain retrait. Appelé seulement par l'opération en cours
+// sur la base (jamais pendant un import, où une cellule neuve est vide un temps).
+int BathyDb::pruneEmptyCells() {
+  std::string err;
+  allCells(err);
+  int n = 0;
+  for (auto it = cells_.begin(); it != cells_.end();) {
+    DbCell* c = it->second.get();
+    int count = -1;
+    sqlite3_stmt* q = nullptr;
+    sqlite3_prepare_v2(c->db, "SELECT COUNT(*) FROM sources", -1, &q, nullptr);
+    if (q && sqlite3_step(q) == SQLITE_ROW) count = sqlite3_column_int(q, 0);
+    sqlite3_finalize(q);
+    if (count != 0 || c->inTx) { ++it; continue; }
+    const std::string path = c->path;
+    it = cells_.erase(it);  // fermeture du fichier
+    std::error_code ec;
+    fs::remove(fs::u8path(path + "-wal"), ec);
+    fs::remove(fs::u8path(path + "-shm"), ec);
+    if (fs::remove(fs::u8path(path), ec)) ++n;
+  }
+  return n;
 }
 
 bool BathyDb::setVisible(const std::vector<int64_t>& ids, bool visible, DbPriority prio,

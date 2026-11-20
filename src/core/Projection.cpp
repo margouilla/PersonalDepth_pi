@@ -22,6 +22,8 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <initializer_list>
 #include <map>
 #include <regex>
 #include <sstream>
@@ -839,6 +841,239 @@ std::string GuessCrsHint(double x, double y) {
   if (x > 160000 && x < 840000 && y > 0 && y < 10000000)
     return pd::tr("les coordonnées ressemblent à de l'UTM (choisir le fuseau : 30, 31 ou 32 N en France métropolitaine)");
   return pd::tr("coordonnées projetées : choisir le système de coordonnées du fichier");
+}
+
+// ------------------------------------------------------------------ WKT
+// Lecture générale d'un WKT (.prj ESRI / OGC WKT1, WKT2) : projection et
+// paramètres, ellipsoïde, TOWGS84, unité. Sert quand le système n'a pas de
+// code EPSG reconnu (ex. « WGS_1984_World_Mercator » exporté par QGIS, ou un
+// Mercator / Lambert / Mercator transverse personnalisé).
+namespace {
+struct WktNode {
+  std::string key;
+  std::vector<std::string> vals;   // valeurs simples (texte ou nombre), dans l'ordre
+  std::vector<WktNode> kids;
+  const WktNode* find(std::initializer_list<const char*> keys) const {
+    for (const auto& k : kids)
+      for (const char* want : keys)
+        if (k.key == want) return &k;
+    return nullptr;
+  }
+  const WktNode* findDeep(std::initializer_list<const char*> keys) const {
+    if (const WktNode* n = find(keys)) return n;
+    for (const auto& k : kids)
+      if (const WktNode* n = k.findDeep(keys)) return n;
+    return nullptr;
+  }
+  double num(size_t i, double d = 0) const {
+    return i < vals.size() && !vals[i].empty() ? std::atof(vals[i].c_str()) : d;
+  }
+  std::string str(size_t i) const { return i < vals.size() ? vals[i] : std::string(); }
+};
+
+bool WktParse(const std::string& s, size_t& i, WktNode& n, int depth = 0) {
+  if (depth > 40) return false;
+  auto skip = [&]() { while (i < s.size() && std::isspace((unsigned char)s[i])) ++i; };
+  skip();
+  size_t b = i;
+  while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '_')) ++i;
+  n.key = s.substr(b, i - b);
+  for (char& c : n.key) c = (char)std::toupper((unsigned char)c);
+  skip();
+  if (i >= s.size() || (s[i] != '[' && s[i] != '(')) return !n.key.empty();
+  const char close = s[i] == '[' ? ']' : ')';
+  ++i;
+  while (true) {
+    skip();
+    if (i >= s.size()) return false;
+    if (s[i] == close) { ++i; return true; }
+    if (s[i] == ',') { ++i; continue; }
+    if (s[i] == '"') {
+      std::string t;
+      ++i;
+      while (i < s.size()) {
+        if (s[i] == '"') {
+          if (i + 1 < s.size() && s[i + 1] == '"') { t += '"'; i += 2; continue; }
+          ++i;
+          break;
+        }
+        t += s[i++];
+      }
+      n.vals.push_back(t);
+    } else if (std::isdigit((unsigned char)s[i]) || s[i] == '-' || s[i] == '+' || s[i] == '.') {
+      size_t e = i;
+      while (e < s.size() && (std::isdigit((unsigned char)s[e]) || std::strchr("+-.eE", s[e]))) ++e;
+      n.vals.push_back(s.substr(i, e - i));
+      i = e;
+    } else {
+      WktNode k;
+      if (!WktParse(s, i, k, depth + 1)) return false;
+      if (k.kids.empty() && k.vals.empty()) n.vals.push_back(k.key);  // mot-clé nu (ex. EAST)
+      else n.kids.push_back(std::move(k));
+    }
+  }
+}
+
+std::string WktNorm(const std::string& t) {
+  std::string o;
+  for (char c : t)
+    if (std::isalnum((unsigned char)c)) o += (char)std::tolower((unsigned char)c);
+  return o;
+}
+
+std::string Num(double v) {
+  char b[40];
+  std::snprintf(b, sizeof b, "%.12g", v);
+  return b;
+}
+}  // namespace
+
+std::string CrsDefFromWkt(const std::string& wkt) {
+  WktNode root;
+  size_t i = 0;
+  if (!WktParse(wkt, i, root)) return "";
+  const bool wkt2 = root.key == "PROJCRS" || root.key == "GEOGCRS" || root.key == "GEODCRS" ||
+                    root.key == "BOUNDCRS" || root.key == "COMPOUNDCRS";
+  const WktNode* proj = root.key == "PROJCS" || root.key == "PROJCRS" ? &root
+                                                                     : root.findDeep({"PROJCS", "PROJCRS"});
+  // ellipsoïde et datum
+  const WktNode* sph = root.findDeep({"SPHEROID", "ELLIPSOID"});
+  const WktNode* datum = root.findDeep({"DATUM"});
+  const std::string dn = datum ? WktNorm(datum->str(0)) : std::string();
+  std::string ell;
+  if (sph) {
+    const double a = sph->num(1), rf = sph->num(2);
+    if (a > 6e6 && a < 7e6) ell = " +a=" + Num(a) + (rf > 0 ? " +rf=" + Num(rf) : " +b=" + Num(a));
+  }
+  std::string tw;
+  if (const WktNode* t = root.findDeep({"TOWGS84"})) {
+    std::string v;
+    for (size_t k = 0; k < t->vals.size() && k < 7; ++k) v += (k ? "," : "") + t->vals[k];
+    if (t->vals.size() == 3 || t->vals.size() == 7) tw = " +towgs84=" + v;
+  } else if (const WktNode* m = root.findDeep({"ABRIDGEDTRANSFORMATION"})) {  // WKT2 BOUNDCRS
+    static const char* names[] = {"xaxistranslation", "yaxistranslation", "zaxistranslation",
+                                  "xaxisrotation", "yaxisrotation", "zaxisrotation", "scaledifference"};
+    double v[7] = {0};
+    for (const auto& p : m->kids)
+      if (p.key == "PARAMETER")
+        for (int k = 0; k < 7; ++k)
+          if (WktNorm(p.str(0)) == names[k]) v[k] = p.num(1);
+    tw = " +towgs84=";
+    for (int k = 0; k < 7; ++k) tw += (k ? "," : "") + Num(v[k]);
+  } else if (dn.find("pulkovo1942") != std::string::npos) {
+    tw = " +towgs84=23.92,-141.27,-80.9,0,0.35,0.82,-0.12";  // Russie (EPSG:15865, ~ 4 m)
+  } else if (dn.find("european1950") != std::string::npos || dn == "ed50") {
+    tw = " +towgs84=-87,-98,-121,0,0,0,0";
+  } else if (dn.find("osgb1936") != std::string::npos) {
+    tw = " +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489";
+  } else if (dn.find("northamerican1927") != std::string::npos) {
+    tw = " +towgs84=-8,160,176,0,0,0,0";
+  } else if (dn.find("nouvelletriangulationfrancaise") != std::string::npos || dn == "ntf" || dn == "dntf") {
+    tw = " +towgs84=-168,-60,320,0,0,0,0";
+  }
+  double pm = 0;
+  if (const WktNode* p = root.findDeep({"PRIMEM"})) pm = p->num(1);
+  const std::string pmS = std::fabs(pm) > 1e-9 ? " +pm=" + Num(pm) : "";
+
+  if (!proj) {  // géographique
+    if (tw.empty() && pmS.empty() && (ell.empty() || ell.find("6378137 +rf=298.25722") != std::string::npos))
+      return "";  // WGS84 ou équivalent (ETRS89, RGF93, GDA… à mieux que 1 m)
+    return "+proj=longlat" + (ell.empty() ? std::string(" +datum=WGS84") : ell) + tw + pmS;
+  }
+  // méthode et paramètres
+  std::string method;
+  if (const WktNode* m = proj->find({"PROJECTION", "METHOD"})) method = WktNorm(m->str(0));
+  else if (const WktNode* c = proj->find({"CONVERSION"}))
+    if (const WktNode* m2 = c->find({"METHOD"})) method = WktNorm(m2->str(0));
+  std::map<std::string, double> par;
+  auto collect = [&](const WktNode& n) {
+    for (const auto& p : n.kids)
+      if (p.key == "PARAMETER") par[WktNorm(p.str(0))] = p.num(1);
+  };
+  collect(*proj);
+  if (const WktNode* c = proj->find({"CONVERSION"})) collect(*c);
+  auto P = [&](std::initializer_list<const char*> names, double d) {
+    for (const char* n : names) {
+      auto it = par.find(n);
+      if (it != par.end()) return it->second;
+    }
+    return d;
+  };
+  const double lon0 = P({"centralmeridian", "longitudeofnaturalorigin", "longitudeoforigin",
+                         "longitudeoffalseorigin", "longitudeofcenter", "longitudeofprojectioncentre"}, 0);
+  const double lat0 = P({"latitudeoforigin", "latitudeofnaturalorigin", "latitudeoffalseorigin",
+                         "latitudeofcenter", "latitudeofprojectioncentre"}, 0);
+  const double sp1 = P({"standardparallel1", "latitudeof1ststandardparallel", "latitudeofstandardparallel"}, lat0);
+  const double sp2 = P({"standardparallel2", "latitudeof2ndstandardparallel"}, sp1);
+  const double k0 = P({"scalefactor", "scalefactoratnaturalorigin", "scalefactoronprojectioncentre"}, 1);
+  const double fe = P({"falseeasting", "eastingatfalseorigin", "eastingoffalseorigin"}, 0);
+  const double fn = P({"falsenorthing", "northingatfalseorigin", "northingoffalseorigin"}, 0);
+  // unité linéaire du système projeté (dernière UNIT / LENGTHUNIT directe)
+  double unit = 1;
+  for (const auto& k : proj->kids)
+    if (k.key == "UNIT" || k.key == "LENGTHUNIT") unit = k.num(1, 1);
+  if (wkt2)  // WKT2 : unité des axes du système projeté
+    for (const auto& k : proj->kids)
+      if (k.key == "AXIS")
+        if (const WktNode* u = k.find({"LENGTHUNIT"})) unit = u->num(1, unit);
+  std::string base = (ell.empty() ? std::string(" +datum=WGS84") : ell) + tw + pmS;
+  const std::string tail = " +x_0=" + Num(fe * unit) + " +y_0=" + Num(fn * unit) + base +
+                           (std::fabs(unit - 1) > 1e-12 ? " +to_meter=" + Num(unit) : " +units=m");
+  if (method.find("auxiliarysphere") != std::string::npos || method.find("popularvisualisation") != std::string::npos)
+    return EpsgToProj(3857);
+  if (method.find("mercator") != std::string::npos && method.find("transverse") == std::string::npos &&
+      method.find("oblique") == std::string::npos) {
+    // Mercator 1SP (k0) ou 2SP / ESRI « Mercator » (parallèle standard)
+    const bool ts = par.count("standardparallel1") || par.count("latitudeof1ststandardparallel") ||
+                    method.find("2sp") != std::string::npos || method.find("variantb") != std::string::npos;
+    return "+proj=merc +lon_0=" + Num(lon0) + (ts ? " +lat_ts=" + Num(sp1) : " +k=" + Num(k0)) + tail;
+  }
+  if (method.find("transversemercator") != std::string::npos || method.find("gausskruger") != std::string::npos ||
+      method.find("gaussboaga") != std::string::npos)
+    return "+proj=tmerc +lat_0=" + Num(lat0) + " +lon_0=" + Num(lon0) + " +k=" + Num(k0) + tail;
+  if (method.find("lambertconformalconic") != std::string::npos) {
+    const bool one = method.find("1sp") != std::string::npos ||
+                     (!par.count("standardparallel2") && !par.count("latitudeof2ndstandardparallel"));
+    if (one)
+      return "+proj=lcc +lat_1=" + Num(par.count("standardparallel1") ? sp1 : lat0) + " +lat_0=" +
+             Num(par.count("standardparallel1") ? sp1 : lat0) + " +lon_0=" + Num(lon0) + " +k_0=" + Num(k0) + tail;
+    return "+proj=lcc +lat_1=" + Num(sp1) + " +lat_2=" + Num(sp2) + " +lat_0=" + Num(lat0) + " +lon_0=" + Num(lon0) +
+           tail;
+  }
+  if (method.find("polarstereographic") != std::string::npos ||
+      method.find("stereographicnorthpole") != std::string::npos ||
+      method.find("stereographicsouthpole") != std::string::npos) {
+    const bool south = method.find("south") != std::string::npos || sp1 < 0 || lat0 < 0;
+    const double ts = par.count("standardparallel1") || par.count("latitudeofstandardparallel") ? sp1
+                                                                                                  : (south ? -90 : 90);
+    return std::string("+proj=stere +lat_0=") + (south ? "-90" : "90") + " +lat_ts=" + Num(ts) + " +lon_0=" +
+           Num(lon0) + " +k=" + Num(k0) + tail;
+  }
+  if (method.find("obliquestereographic") != std::string::npos || method.find("doublestereographic") != std::string::npos)
+    return "+proj=sterea +lat_0=" + Num(lat0) + " +lon_0=" + Num(lon0) + " +k=" + Num(k0) + tail;
+  return "";
+}
+
+// Définition à partir d'un .prj : code EPSG reconnu, sinon lecture du WKT
+std::string CrsDefFromPrj(const std::string& wkt, std::string* label) {
+  const int code = EpsgFromWkt(wkt);
+  if (code) {
+    if (label) *label = "EPSG:" + std::to_string(code) + " (.prj)";
+    return code == 4326 ? std::string() : "EPSG:" + std::to_string(code);
+  }
+  std::string def = CrsDefFromWkt(wkt);
+  if (label) {
+    WktNode root;
+    size_t i = 0;
+    *label = WktParse(wkt, i, root) && !root.vals.empty() ? root.vals[0] + " (.prj)" : std::string(".prj");
+  }
+  return def;
+}
+
+bool WktIsProjected(const std::string& wkt) {
+  std::string u;
+  for (char ch : wkt) u += (char)std::toupper((unsigned char)ch);
+  return u.find("PROJCS") != std::string::npos || u.find("PROJCRS") != std::string::npos;
 }
 
 }  // namespace pd

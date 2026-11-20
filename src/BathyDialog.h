@@ -42,6 +42,7 @@ class BathyDialog : public wxDialog {
  public:
   BathyDialog(wxWindow* parent, PersonalDepth_pi* pi);
   void RefreshLayers() {}  // (couches fichiers supprimées : tout passe par la base)
+  void SelectTab(int tab);  // 0 Données, 1 Marée, 2 Affichage
   void RefreshPalette();  // recharge la grille des seuils depuis les réglages
   void RefreshUnits();    // unités d'affichage d'OpenCPN changées (m / ft)
   void SelectPreset(const std::string& name);  // préréglage choisi ailleurs (bandeau)
@@ -88,7 +89,7 @@ class BathyDialog : public wxDialog {
   void UpdateSonarOffsetFields();
   wxListCtrl* m_imgList = nullptr;
   wxButton *m_imgAdd = nullptr, *m_imgDel = nullptr, *m_imgVis = nullptr, *m_imgZoom = nullptr,
-           *m_imgStop = nullptr;
+           *m_imgStop = nullptr, *m_imgReimp = nullptr;
   wxStaticText* m_imgStatus = nullptr;
   wxString m_imgRaw;
   void RefreshLand();
@@ -181,6 +182,7 @@ class BathyDialog : public wxDialog {
   wxSpinCtrl *m_decimals, *m_font, *m_shadeSmooth;
   wxNotebook* m_tabs = nullptr;
   void FitPages();  // panneau assez grand pour chaque onglet, sans défilement
+  wxChoice* m_toolbarMode = nullptr;  // icône de la barre d'outils : panneau / affiche-masque
   wxStaticText* m_cursor;
   // Isobathes
   wxCheckBox *m_ctOn, *m_ctLabels, *m_ctSmooth;

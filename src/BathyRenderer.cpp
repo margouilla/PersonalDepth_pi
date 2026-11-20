@@ -1293,8 +1293,8 @@ static std::vector<wxPoint2DDouble> GearShape(double cx, double cy, double r) {
 // Bandeau : une ou deux sections. La première (bathymétrie, ou imagerie seule)
 // porte la marée, l'orientation et la roue ; l'imagerie, quand les deux
 // couches sont affichées, s'ajoute en dessous avec sa rampe de gris.
-// En bas, ligne des isobathes et des sondes (cases à cocher, valeurs à
-// cliquer) ; seule, quand les couleurs de profondeur sont masquées.
+// Icône isobathes / sondes (menu) près de l'orientation et de la roue ;
+// seule avec elles quand les couleurs de profondeur sont masquées.
 void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const DisplaySettings& s) {
   m_banner = BannerHit();
   struct Sec {
@@ -1342,36 +1342,12 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     g.color = [&gray, lo, hi](float t) { return gray.colorAt(lo + (hi - lo) * t); };
     secs.push_back(g);
   }
-  // ligne isobathes / sondes : éléments (case + libellé, valeur, libellé)
-  struct Item { BannerHit::Part part; wxString t; int kind; bool on; int row; wxRect r; };
-  std::vector<Item> items;
-  if (s.bannerChart) {
-    auto T = [](const char* t) { return wxString::FromUTF8(pd::tr(t)); };
-    const wxString u = " " + s.depthUnit;
-    items.push_back({BannerHit::CtOn, T("Isobathes"), 0, s.contours, 0, {}});
-    items.push_back({BannerHit::CtStep, s.contourMode == 1 ? T("seuils") : DepthText(s, s.contourStep) + u, 1, false, 0, {}});
-    items.push_back({BannerHit::CtMajor, T("maîtr."), 2, false, 1, {}});
-    items.push_back({BannerHit::CtMajor, s.contourMajor > 0 ? DepthText(s, s.contourMajor) + u : T("aucune"), 1, false, 1, {}});
-    items.push_back({BannerHit::SdOn, T("Sondes"), 0, s.soundings, 2, {}});
-    items.push_back({BannerHit::SdDec, wxString::Format(T("%d déc."), std::max(0, std::min(2, s.decimals))), 1, false, 2, {}});
-    items.push_back({BannerHit::SdSize, wxString::Format("%d pt", s.fontSize), 1, false, 2, {}});
-  }
-  if (secs.empty() && items.empty()) return;
+  // icône isobathes / sondes (menu) : dès que des profondeurs sont chargées ;
+  // seule (avec l'orientation et la roue) quand les couleurs sont masquées
+  const bool chart = s.bannerChart;
+  if (secs.empty() && !chart) return;
 
   const int lineH = P.lineH();
-  const int cb = std::max(8, lineH - 5);  // case à cocher
-  auto itemW = [&](const Item& it) { return P.textW(it.t) + (it.kind == 0 ? cb + 5 : it.kind == 1 ? 6 : 0); };
-  // horizontal : une seule ligne (petits écarts dans un groupe, grands entre
-  // isobathes et sondes) ; vertical : une ligne par rangée (row)
-  auto rowWidth = [&](int row) {  // row < 0 : tout sur une ligne (horizontal)
-    int w = 0, n = 0;
-    for (const auto& it : items) {
-      if (row >= 0 && it.row != row) continue;
-      if (n++) w += row >= 0 ? 6 : it.part == BannerHit::SdOn ? 18 : 8;
-      w += itemW(it);
-    }
-    return w;
-  };
   // marée : hauteur et date courte (horizontal : une ligne ; vertical : deux)
   const bool tideOn = s.bannerBathy && !s.tideLegend.empty();
   const wxString tide = tideOn ? s.tideLegend + "  " + s.tideWhen : wxString();
@@ -1385,7 +1361,7 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
   const int W = vp->pix_width, H = vp->pix_height;
 
   // ---- mise en page relative (origine 0,0 du bandeau)
-  wxRect gearR, orientR;
+  wxRect gearR, orientR, chartR;
   int boxW = 0, boxH = 0, tideH = 0;
   struct Tick { int pos; wxString t; size_t sec; };
   std::vector<Tick> ticks;
@@ -1394,13 +1370,13 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     int leftNeed = 0, rightNeed = 0, mid = 0;
     for (const auto& c : secs) {
       leftNeed = std::max(leftNeed, pad + std::max(P.textW(c.minT), P.textW("-000.0")) + gap);
-      rightNeed = std::max(rightNeed, gap + std::max(P.textW(c.maxT), P.textW("000.0 ft")) + gap + icon + 8 + icon + pad);
+      rightNeed = std::max(rightNeed, gap + std::max(P.textW(c.maxT), P.textW("000.0 ft")) + gap +
+                                          (chart ? icon + 8 : 0) + icon + 8 + icon + pad);
       mid = std::max(mid, midW(c));
     }
     boxW = secs.empty() ? 0 : std::max(380, mid + 2 * std::max(leftNeed, rightNeed));
     if (!tide.empty()) boxW = std::max(boxW, P.textW(tide) + 2 * pad);
-    if (!items.empty())  // ligne seule : orientation et roue au bout de la ligne
-      boxW = std::max(boxW, rowWidth(-1) + 2 * pad + (secs.empty() ? 12 + icon + 8 + icon : 0));
+    if (secs.empty()) boxW = pad + 3 * icon + 16 + pad;  // icônes seules
     tideH = tide.empty() ? 0 : lineH + 2;
     int y = pad + tideH;
     for (size_t k = 0; k < secs.size(); ++k) {
@@ -1412,27 +1388,18 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
       if (k == 0) {
         gearR = wxRect(boxW - pad - icon, y + (rowH - icon) / 2, icon, icon);
         orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
+        if (chart) chartR = wxRect(orientR.x - 8 - icon, gearR.y, icon, icon);
       }
-      const int rightEdge = k == 0 ? orientR.x - 6 : boxW - pad;
+      const int rightEdge = k == 0 ? (chart ? chartR.x : orientR.x) - 6 : boxW - pad;
       c.minR = wxRect(2, y - 2, bx - 6, rowH + 4);
       c.maxR = wxRect(bx + midW(c) + 4, y - 2, rightEdge - (bx + midW(c) + 4), rowH + 4);
       c.barR = wxRect(pad, y + rowH + 6, boxW - 2 * pad, barT);
       y += rowH + 6 + barT;
     }
-    if (!items.empty()) {
-      if (!secs.empty()) { seps.push_back(y + 4); y += 10; }
-      const int total = rowWidth(-1);
-      int xx = secs.empty() ? pad : (boxW - total) / 2;
-      for (size_t k = 0; k < items.size(); ++k) {
-        Item& it = items[k];
-        if (k) xx += it.part == BannerHit::SdOn ? 18 : 8;
-        it.r = wxRect(xx, y, itemW(it), rowH);
-        xx += it.r.width;
-      }
-      if (secs.empty()) {
-        gearR = wxRect(boxW - pad - icon, y + (rowH - icon) / 2, icon, icon);
-        orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
-      }
+    if (secs.empty()) {  // icônes seules : isobathes, orientation, roue
+      gearR = wxRect(boxW - pad - icon, y + (rowH - icon) / 2, icon, icon);
+      orientR = wxRect(gearR.x - 8 - icon, gearR.y, icon, icon);
+      chartR = wxRect(orientR.x - 8 - icon, gearR.y, icon, icon);
       y += rowH;
     }
     boxH = y + pad;
@@ -1443,9 +1410,8 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
       for (const auto& t : c.ticks) labW = std::max(labW, P.textW(t.second));
       boxW = std::max({boxW, pad + midW(c) + pad, P.textW(c.minT) + 2 * pad, P.textW(c.maxT) + 2 * pad});
     }
-    boxW = std::max({boxW, pad + icon + 12 + icon + pad, pad + barT + 8 + labW + pad, 96,
+    boxW = std::max({boxW, pad + icon + 12 + icon + (chart ? 12 + icon : 0) + pad, pad + barT + 8 + labW + pad, 96,
                      tide1.empty() ? 0 : P.textW(tide1) + 2 * pad, tide2.empty() ? 0 : P.textW(tide2) + 2 * pad});
-    for (int row = 0; row < 3 && !items.empty(); ++row) boxW = std::max(boxW, rowWidth(row) + 2 * pad);
     int y = pad;
     if (!tide1.empty()) {  // marée en tête du bandeau, sur deux lignes
       tideH = 2 * (lineH + 2) + 4;
@@ -1453,6 +1419,7 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     }
     orientR = wxRect(pad, y, icon, icon);
     gearR = wxRect(boxW - pad - icon, y, icon, icon);
+    if (chart) chartR = wxRect((orientR.GetRight() + gearR.x - icon) / 2, y, icon, icon);
     y += icon + 6;
     for (size_t k = 0; k < secs.size(); ++k) {
       Sec& c = secs[k];
@@ -1477,20 +1444,6 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
       c.maxR = wxRect(2, y, boxW - 4, lineH + 4);
       y += lineH + 4;
     }
-    if (!items.empty()) {
-      if (!secs.empty()) { seps.push_back(y + 2); y += 8; }
-      for (int row = 0; row < 3; ++row) {
-        int xx = pad, n = 0;
-        for (auto& it : items) {
-          if (it.row != row) continue;
-          if (n++) xx += 6;
-          it.r = wxRect(xx, y, itemW(it), rowH);
-          xx += it.r.width;
-        }
-        y += rowH + 2;
-      }
-      y += 4;
-    }
     boxH = y + pad - 4;
   }
   // ---- position sur la carte : hors de la marge où OpenCPN fait défiler la
@@ -1510,7 +1463,7 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
   y = std::max(0, std::min(y, H - boxH));
   auto mv = [&](wxRect& r) { if (!r.IsEmpty()) r.Offset(x, y); };
   for (auto& c : secs) { mv(c.minR); mv(c.maxR); mv(c.modeR); mv(c.srcR); mv(c.barR); }
-  for (auto& it : items) mv(it.r);
+  mv(chartR);
   mv(gearR);
   mv(orientR);
   for (auto& t : ticks) t.pos += y;
@@ -1574,26 +1527,26 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     if (!c.srcR.IsEmpty()) P.text(c.srcR.x + c.srcR.width / 2, cy, c.srcT, 1);
     if (!vert) {
       P.text(x + pad, cy, c.minT, 0);
-      P.text(k == 0 ? orientR.x - 10 : x + boxW - pad, cy, c.maxT, 2);
+      P.text(k == 0 ? (chartR.IsEmpty() ? orientR.x : chartR.x) - 10 : x + boxW - pad, cy, c.maxT, 2);
     } else {
       P.text(x + pad, c.minR.y + c.minR.height / 2.f, c.minT, 0);
       P.text(x + pad, c.maxR.y + c.maxR.height / 2.f, c.maxT, 0);
     }
   }
   for (const auto& t : ticks) P.text(secs[t.sec].barR.GetRight() + 8, (float)t.pos, t.t, 0);
-  for (const auto& it : items) {  // ligne isobathes / sondes
-    const float cy = it.r.y + it.r.height / 2.f;
-    if (it.kind == 0) {
-      const wxRect c(it.r.x, it.r.y + (it.r.height - cb) / 2, cb, cb);
-      P.fill(c, RGBA(220, 225, 232), 1.f, 2);
-      P.fill(wxRect(c.x + 1, c.y + 1, c.width - 2, c.height - 2), it.on ? kBadgeAuto : kBannerBg, 1.f, 1);
-      if (it.on) P.fill(wxRect(c.x + 3, c.y + 3, c.width - 6, c.height - 6), RGBA(255, 255, 255), 1.f, 1);
-      P.text(c.GetRight() + 5, cy, it.t, 0);
-    } else {
-      P.text(it.r.x + (it.kind == 1 ? 3 : 0), cy, it.t, 0);
-      if (it.kind == 1)  // valeur modifiable : soulignée
-        P.fill(wxRect(it.r.x + 3, (int)(cy + lineH / 2.f), it.r.width - 6, 1), RGBA(150, 162, 178), 1.f, 0);
+  if (!chartR.IsEmpty()) {  // icône isobathes : anneaux concentriques (clairs si affichées)
+    const uint32_t on = s.contours || s.soundings ? RGBA(220, 225, 232) : RGBA(120, 130, 146);
+    const wxRect& c = chartR;
+    const int r0 = std::min(c.width, c.height);
+    for (int k = 0; k < 3; ++k) {
+      const int inset = k * r0 / 5;
+      const wxRect ring(c.x + inset, c.y + inset, r0 - 2 * inset, r0 - 2 * inset);
+      if (ring.width < 3) break;
+      P.fill(ring, on, 1.f, ring.width / 2);
+      if (ring.width > 4)
+        P.fill(wxRect(ring.x + 1, ring.y + 1, ring.width - 2, ring.height - 2), kBannerBg, 1.f, ring.width / 2 - 1);
     }
+    P.fill(wxRect(c.x + r0 / 2 - 1, c.y + r0 / 2 - 1, 2, 2), on, 1.f, 0);
   }
 
   // ---- zones cliquables
@@ -1609,10 +1562,7 @@ void BathyRenderer::DrawBanner(BannerPainter& P, PlugIn_ViewPort* vp, const Disp
     z.barR = vert ? wxRect(c.barR.x - 3, c.barR.y, boxW - 2 * pad + 3, c.barR.height)  // rampe et étiquettes
                   : wxRect(c.barR.x, c.barR.y - 3, c.barR.width, c.barR.height + 6);
   }
-  for (const auto& it : items) {  // case et libellé, ou valeur : zone un peu agrandie
-    const BannerHit::Part part = it.kind == 2 ? BannerHit::CtMajor : it.part;
-    m_banner.items.push_back({wxRect(it.r.x - 2, it.r.y - 2, it.r.width + 4, it.r.height + 4), part});
-  }
+  m_banner.chartR = chartR.IsEmpty() ? wxRect() : wxRect(chartR.x - 3, chartR.y - 3, chartR.width + 6, chartR.height + 6);
   m_banner.gearR = wxRect(gearR.x - 4, gearR.y - 4, gearR.width + 8, gearR.height + 8);
   m_banner.orientR = wxRect(orientR.x - 3, orientR.y - 3, orientR.width + 6, orientR.height + 6);
   m_banner.pixW = W;

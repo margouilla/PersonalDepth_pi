@@ -91,6 +91,8 @@ struct DisplaySettings {
   int bannerPos = 0;          // 0 bas centré, 1 haut centré, 2 bas gauche, 3 libre
   float bannerFx = 0.5f, bannerFy = 0.85f;  // position libre : centre (fraction du canevas)
   bool bannerLock = false;    // bandeau non déplaçable à la souris
+  bool shown = true;          // affichage du plugin (bascule par l'icône de la barre d'outils)
+  int toolbarMode = 0;        // icône de la barre d'outils : 0 ouvre le panneau, 1 affiche / masque
   int panelTab = 0;           // onglet ouvert du panneau principal
   bool bannerVertical = false;  // rampe verticale (sinon horizontale)
   unsigned version = 1;       // incrémenté à chaque changement de couleurs
@@ -275,7 +277,10 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   float DbProgressValue() const { return m_dbBusy ? m_dbProgress.load() : -1.f; }
   // Base d'imagerie (fichiers PD_*.pdi du même dossier)
   const std::vector<pd::DbSource>& ImgSources() const { return m_imgSources; }
-  void ImgImport(const std::vector<std::string>& files, const std::string& group);
+  struct ImgReplace { int64_t id = 0; std::string date, group; };  // réimport : image remplacée
+  void ImgImport(const std::vector<std::string>& files, const std::string& group,
+                 const std::vector<ImgReplace>& replace = {});
+  bool ImgReimport(const std::vector<int64_t>& ids, std::string& missing);  // réglages d'import actuels
   void ImgRemove(const std::vector<int64_t>& ids);
   void ImgSetVisible(const std::vector<int64_t>& ids, bool visible);
   void ImgZoomTo(const std::vector<int64_t>& ids);
@@ -344,7 +349,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   static wxString DefaultPaletteDir();
   // Bandeau de palette : clics sur la carte
   bool MouseEventHook(wxMouseEvent& event) override;
-  wxString AutoPaletteInfo() const { return m_autoInfo; }
+  wxString AutoPaletteInfo() const;  // résumé, dans la langue et l'unité du moment
   DisplaySettings& Settings() { return m_set; }
   void AddLayer(const pd::LayerParams& p);
   void RemoveLayer(size_t i);
@@ -362,13 +367,17 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   std::string m_tideZoneSig;
   static wxString DefaultReferenceDir();
 
+  void ShowPanel(int tab = -1);                            // ouvre le panneau (onglet facultatif)
+  void SetShown(bool on);                                  // affiche / masque tout le plugin
+  void ToolbarModeChanged();
+  void OnContextMenuItemCallback(int id) override;
  private:
   void LoadConfig();
   bool ShouldDraw(int priority);
   wxString CursorTextFor(int priority) const;
   std::vector<pd::LayerPtr> DrawLayers() const;          // vue de la base + couches fichiers
   // profondeurs nécessaires : couleurs, ou isobathes / sondes (toujours au-dessus)
-  bool BathyNeeded() const { return m_set.bathyShow || m_set.contours || m_set.soundings; }
+  bool BathyNeeded() const { return m_set.shown && (m_set.bathyShow || m_set.contours || m_set.soundings); }
   void StartDbJob(const std::string& title,
                   std::function<bool(pd::BathyDb&, std::string&, const pd::DbProgress&)> job,
                   pd::DbKind kind = pd::DbKind::Depth);
@@ -388,7 +397,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   bool m_bannerDrag = false;  // bandeau en cours de déplacement
   wxPoint m_bannerDownPt, m_bannerGrab;  // appui ; prise dans le bandeau
   void ChartTextChanged(bool contours);                    // isobathes / sondes (bandeau)
-  void BannerContourValue(bool major, wxWindow* win, wxPoint pos);
+  void BannerChartMenu(wxWindow* win, wxPoint pos);        // icône isobathes / sondes du bandeau
   void BannerRange(bool isMin, wxWindow* win);
   void UpdateCursorText();
   bool UpdateUnits();  // unités d'affichage d'OpenCPN ; true si elles ont changé
@@ -398,6 +407,7 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
 
   wxBitmap m_icon;
   int m_toolId = -1;
+  int m_ctxMenuId = -1;  // menu contextuel de la carte : « PersonalDepth… »
   BathyDialog* m_dlg = nullptr;
   TideChartDialog* m_chart = nullptr;
   double m_tideBox[4] = {0, 0, 0, 0};  // emprise des données (lon0 lon1 lat0 lat1)
@@ -497,6 +507,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   bool m_lastRenderGL = false;  // dernier rendu en OpenGL (préparation des vues possible)
   void StoreViewport(PlugIn_ViewPort* vp);
   std::string m_autoKey;
-  wxString m_autoInfo;
+  // dernier calcul de la palette automatique (profondeurs en mètres) ; le
+  // texte est formé à l'affichage, dans la langue et l'unité du moment
+  struct AutoSummary { bool ok = false; int n = 0; float lo = 0, hi = 0; } m_autoSum;
   const pd::FesTide* m_fieldFes = nullptr;
 };

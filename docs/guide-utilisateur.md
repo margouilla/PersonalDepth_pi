@@ -56,7 +56,9 @@ Affichage › Avancé › Utiliser l'accélération graphique (OpenGL)*).
 2. Dans OpenCPN : *Options › Plugins › Importer un plugin…*, choisir le fichier.
 3. Cocher **Activer** en face de PersonalDepth, puis *OK*.
 4. Cliquer sur l'icône PersonalDepth de la barre d'outils : le panneau
-   principal s'ouvre.
+   principal s'ouvre. Le panneau s'ouvre aussi par le clic droit sur la
+   carte (*PersonalDepth…*) ; l'icône peut à la place afficher / masquer tout
+   le plugin (onglet *Affichage*, cadre *Bandeau et curseur*, *Icône*).
 
 ![Plugin activé dans le gestionnaire de plugins d'OpenCPN](images/fr/01-plugin-manager.png)
 
@@ -109,16 +111,13 @@ En bas de la carte, un bandeau présente la palette de couleurs :
 | Rampe de couleurs | Choix d'un préréglage de couleurs |
 | Petite rampe (à côté de ⚙) | Bascule le bandeau entre **horizontal** et **vertical** ; le bandeau vertical montre aussi les seuils intermédiaires |
 | ⚙ | Ouvre le panneau principal |
-| Case *Isobathes* / *Sondes* (ligne du bas) | Affiche ou masque les isobathes / les sondes chiffrées |
-| Intervalle des isobathes (ex. *5 m*) | Menu : *Seuils de la palette*, valeurs rondes, *Autre valeur…* (saisie) |
-| *maîtr.* et sa valeur | Isobathe maîtresse : *aucune*, valeurs rondes, *Autre valeur…* |
-| *1 déc.* | Décimales des sondes : 0, 1, 2 à chaque clic |
-| *9 pt* | Taille du texte des sondes et des valeurs des isobathes |
+| Anneaux (à côté de la petite rampe) | Menu des isobathes et des sondes : *Isobathes* (afficher), *Seuils de la palette* ou *Intervalle* (valeurs rondes, *Autre intervalle…*), *Sondes* (afficher), *Réglages des isobathes et des sondes…* (onglet *Affichage*) |
 
-La ligne du bas (isobathes et sondes) apparaît dès que des profondeurs sont
-affichées ; les valeurs soulignées se modifient d'un clic. Couleurs de
-profondeur masquées, elle reste seule (avec l'imagerie s'il y en a). Le
-trait sur la rampe marque la profondeur de sécurité. **Faites glisser le
+Les anneaux apparaissent dès que des profondeurs sont chargées (clairs si
+isobathes ou sondes sont affichées). Couleurs de profondeur masquées, ils
+restent seuls avec l'orientation et la roue (sous l'imagerie s'il y en a).
+L'isobathe maîtresse, les décimales et la taille du texte se règlent dans
+l'onglet *Affichage*. Le trait sur la rampe marque la profondeur de sécurité. **Faites glisser le
 bandeau** à la souris pour le placer n'importe où sur la carte (la position
 est gardée). Dans *Affichage*, on peut le masquer, choisir une position fixe
 (en bas au centre, en haut au centre, en bas à gauche, libre) et **verrouiller
@@ -129,7 +128,7 @@ sa position**.
 ![Bandeau : déplacement, A/M, préréglage, orientation](images/gif/g1-banner.gif)
 
 > 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne (y
-> compris la ligne isobathes / sondes), la carte ne se déplace pas quand on
+> compris le menu des anneaux isobathes / sondes), la carte ne se déplace pas quand on
 > clique sur le bandeau ou qu'on le fait glisser, et le bandeau verrouillé ne
 > se déplace pas.
 
@@ -378,7 +377,9 @@ WGS84, UTM, Lambert-93, CC42–CC50, nombreux systèmes nationaux, **NAD83 State
 Plane** (toutes les zones des États-Unis, en mètres, pieds US ou pieds — ex.
 levés de l'USACE), ou *Autre* avec un code EPSG / une chaîne PROJ. *Utiliser
 le fichier .prj voisin* est prioritaire quand le fichier en a un (les `.prj`
-ESRI State Plane sont reconnus). Des coordonnées projetées (UTM, Mercator…)
+ESRI State Plane sont reconnus ; sans code EPSG connu, la projection est lue
+dans le `.prj` lui-même : Mercator, Mercator transverse — dont Gauss-Krüger —,
+Lambert conique conforme, stéréographiques, avec leur ellipsoïde). Des coordonnées projetées (UTM, Mercator…)
 ne se reconnaissent pas à leurs seules valeurs : sans fichier `.prj`, choisir
 le système.
 
@@ -514,7 +515,9 @@ une pointe. Le cadre *Trait de côte* de l'onglet **Données** l'évite :
   toujours gardées (levés d'estran, Litto3D).
 - **Personnels** : traits de côte de l'utilisateur, en plus du fond (ou
   seuls) : KML / KMZ dessinés dans Google Earth, shapefiles (polygones ou
-  polylignes, système lu dans le `.prj`) et GeoPackage (`.gpkg`). Plusieurs
+  polylignes, système lu dans le `.prj`, y compris un Mercator ou un
+  Lambert personnalisé exporté par QGIS ; une polyligne refermée — premier
+  point = dernier — compte comme un polygone) et GeoPackage (`.gpkg`). Plusieurs
   fichiers : les séparer par `;` ou les ajouter avec *…*. Le **côté eau** des
   polygones est celui des sondes : un polygone qui entoure les sondes trace
   l'eau (contour d'un lac, ses îles dessinées à l'intérieur), un polygone
@@ -622,6 +625,7 @@ voir la capture du § 6)
 | Zones interpolées de la base | Affiche la surface interpolée à l'import entre les sondes ; *plus claires* éclaircit ses couleurs |
 | Bandeau | Bandeau de palette sur la carte et sa position ; *Verrouiller* sa position |
 | Lecture au curseur | Profondeur et source à côté du curseur |
+| Icône | Icône de la barre d'outils : *ouvre ce panneau* (défaut) ou *affiche / masque PersonalDepth* (bathymétrie, imagerie et bandeau d'un clic ; le panneau s'ouvre alors par le clic droit sur la carte, *PersonalDepth…*, la roue du bandeau ou *Options › Plugins › Préférences*) |
 
 > 🧪 **Testeurs — à vérifier :** isobathes et sondes lisibles, sans trop de
 > chevauchements ; la lecture au curseur donne la même valeur que la sonde
@@ -718,7 +722,14 @@ arrière) et *vers tribord* (négatif vers bâbord) ; ces valeurs s'appliquent
 aussi quand l'estimation échoue. Une mesure au demi-mètre près sur le bateau suffit.
 Le décalage utilisé est indiqué dans les informations de l'image.
 
-*Sonar latéral : pixel (m)* règle le pas de la mosaïque ; 0 = automatique
+**Réglages d'import.** Le fond hors levé, le pixel, l'égalisation et le
+décalage sonde / GPS ne s'appliquent qu'à l'import. Pour les appliquer à une
+image déjà dans la base, la sélectionner et cliquer sur **Réimporter la
+sélection** : le fichier d'origine est relu et la nouvelle image remplace
+l'ancienne (même date, même classe). Palette, contraste et gamma se règlent
+dans l'onglet *Affichage* et s'appliquent tout de suite.
+
+*Sonar : pixel (m)* règle le pas de la mosaïque ; 0 = automatique
 (portée / 400, entre 0,1 et 1 m). Pour un levé très étendu, le pas est
 élargi pour limiter la mémoire (indiqué dans les informations de l'image).
 Les journaux sans canal de sonar latéral (sonar 2D et DownScan seulement)

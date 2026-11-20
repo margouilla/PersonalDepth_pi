@@ -105,6 +105,10 @@ BathyDialog::BathyDialog(wxWindow* parent, PersonalDepth_pi* pi)
 
 // Taille du panneau : assez grande pour que chaque onglet (Données, Affichage…)
 // tienne sans défilement, dans les limites de l'écran
+void BathyDialog::SelectTab(int tab) {
+  if (tab >= 0 && tab < (int)m_tabs->GetPageCount()) m_tabs->SetSelection(tab);
+}
+
 void BathyDialog::FitPages() {
   wxSize need(0, 0);
   for (size_t k = 0; k < m_tabs->GetPageCount(); ++k) {
@@ -991,6 +995,7 @@ void BathyDialog::RefreshPalette() {
   m_interpDistinct->Enable(s.interpShow);
   m_bannerLock->Enable(s.banner);
   m_ctOn->SetValue(s.contours);
+  if (m_toolbarMode) m_toolbarMode->SetSelection(s.toolbarMode == 1 ? 1 : 0);
   m_ctMode->SetSelection(s.contourMode);
   m_ctStep->SetValue(s.contourStep * K());
   m_ctMajor->SetValue(s.contourMajor * K());
@@ -1410,7 +1415,24 @@ wxSizer* BathyDialog::BuildDisplayBox(wxWindow* p) {
   auto* b2 = new wxBoxSizer(wxHORIZONTAL);
   b2->Add(m_bannerLock, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
   b2->Add(m_legend, 0, wxALIGN_CENTER_VERTICAL);
-  com->Add(b2, 0, wxALL, 4);
+  com->Add(b2, 0, wxLEFT | wxRIGHT | wxTOP, 4);
+  // icône de la barre d'outils d'OpenCPN
+  m_toolbarMode = new wxChoice(cb, wxID_ANY);
+  m_toolbarMode->Append(U8("ouvre ce panneau"));
+  m_toolbarMode->Append(U8("affiche / masque PersonalDepth"));
+  m_toolbarMode->SetToolTip(U8("Icône de PersonalDepth dans la barre d'outils d'OpenCPN. « Affiche / masque » : "
+                               "un clic montre ou cache la bathymétrie, l'imagerie et le bandeau ; ce panneau "
+                               "s'ouvre alors par le clic droit sur la carte (PersonalDepth…), la roue du "
+                               "bandeau ou Options › Plugins › Préférences."));
+  auto* b3 = new wxBoxSizer(wxHORIZONTAL);
+  b3->Add(new wxStaticText(cb, wxID_ANY, U8("Icône")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+  b3->Add(m_toolbarMode, 1, wxALIGN_CENTER_VERTICAL);
+  com->Add(b3, 0, wxEXPAND | wxALL, 4);
+  m_toolbarMode->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+    if (m_updating) return;
+    m_pi->Settings().toolbarMode = m_toolbarMode->GetSelection() == 1 ? 1 : 0;
+    m_pi->ToolbarModeChanged();
+  });
   right->Add(com, 0, wxEXPAND | wxALL, 2);
 
   for (wxSlider* s : {m_opacity, m_shadeStrength})
@@ -1663,6 +1685,21 @@ wxSizer* BathyDialog::BuildImageryBox(wxWindow* p) {
   for (wxButton* b : {m_imgVis, m_imgZoom}) br->Add(b, 0, wxRIGHT, 2);
   br->Add(m_imgDel, 0);
   src->Add(br, 0, wxEXPAND | wxALL, 4);
+  // réglages lus à l'import seulement : réimporter pour les appliquer à une
+  // image déjà dans la base (l'affichage se règle dans l'onglet Affichage)
+  auto* rr = new wxBoxSizer(wxHORIZONTAL);
+  auto* rl = new wxStaticText(ib, wxID_ANY, U8("Réglages d'import"));
+  rl->SetFont(rl->GetFont().Bold());
+  rl->SetToolTip(U8("Fond, pixel, égalisation et décalage du sonar : appliqués à l'import. Pour une image déjà "
+                    "importée, la sélectionner et cliquer sur Réimporter. Palette, contraste et gamma se "
+                    "règlent dans l'onglet Affichage et s'appliquent tout de suite."));
+  m_imgReimp = new wxButton(ib, wxID_ANY, U8("Réimporter la sélection"));
+  m_imgReimp->SetToolTip(U8("Relit les fichiers d'origine des images sélectionnées avec les réglages d'import "
+                            "ci-dessous ; la nouvelle image remplace l'ancienne (même date, même classe)."));
+  rr->Add(rl, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  rr->AddStretchSpacer();
+  rr->Add(m_imgReimp, 0, wxALIGN_CENTER_VERTICAL);
+  src->Add(rr, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
   auto* bg = new wxBoxSizer(wxHORIZONTAL);
   bg->Add(new wxStaticText(ib, wxID_ANY, U8("Fond hors levé")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
   m_imgBg = new wxChoice(ib, wxID_ANY);
@@ -1774,6 +1811,17 @@ wxSizer* BathyDialog::BuildImageryBox(wxWindow* p) {
     m_pi->ImgImport(files, std::string());
     UpdateImgButtons();
   });
+  m_imgReimp->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    const auto ids = SelectedImages();
+    if (ids.empty()) return;
+    std::string missing;
+    const bool started = m_pi->ImgReimport(ids, missing);
+    if (!missing.empty())
+      wxMessageBox(U8("Fichier d'origine introuvable, image gardée telle quelle :\n") + W8(missing.c_str()),
+                   "PersonalDepth", wxOK | wxICON_WARNING, this);
+    (void)started;
+    UpdateImgButtons();
+  });
   m_imgDel->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     const auto ids = SelectedImages();
     if (ids.empty()) return;
@@ -1830,6 +1878,7 @@ void BathyDialog::UpdateImgButtons() {
   const bool busy = m_pi->DbBusy(), sel = !SelectedImages().empty();
   m_imgAdd->Enable(!busy);
   m_imgDel->Enable(!busy && sel);
+  m_imgReimp->Enable(!busy && sel);
   m_imgVis->Enable(!busy && sel);
   m_imgZoom->Enable(sel);
   if (m_imgStop) m_imgStop->Enable(busy);
