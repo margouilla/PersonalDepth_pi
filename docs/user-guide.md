@@ -118,7 +118,7 @@ left, free) and **lock its position**.
 
 <img src="images/en/11-banner_horizontal.png" alt="Horizontal banner" height="50"> <img src="images/en/11-banner_vertical.png" alt="Vertical banner" height="220">
 
-![Banner: drag, A/M, preset, orientation](images/gif/g1-banner.gif)
+![Banner: minimum bound, A / M, View / All, contours and soundings menu, presets](images/gif/g1-banner.gif)
 
 > 🧪 **Testers — check:** every click on the banner works (including the
 > contours / soundings rings menu), the chart does not move when clicking on or
@@ -336,6 +336,17 @@ summary. By default **depth = sounding − level** (level above the datum);
 water level series in UTC (mouse wheel to zoom on time, double-click for the
 whole period).
 
+**Tide gauge…** — the water levels of an online tide gauge are downloaded
+without leaving the import; in France, those of the Shom tide gauges (REFMAR
+network, Open Licence). Choose the
+gauge (sorted by distance from the chart centre, search box) and the period
+of the soundings (dates inclusive, UTC), then **Download**. The files (one per
+month) are saved in `REFMAR` inside the reference folder and the path is set
+automatically: levels in metres above chart datum, *depth = sounding −
+level*, best source of each day (validated 10-min, otherwise raw). REFMAR
+files downloaded by hand from data.shom.fr are also recognised as they are.
+See [external-data.md](external-data.md#6-observed-water-levels-of-online-tide-gauges-refmar-noaa).
+
 The soundings should carry their date and time: use the **custom format**
 with a date column (and time). Soundings and levels are compared in UTC: set
 the **time zone** of each format to the one of its file. **Soundings without
@@ -378,7 +389,8 @@ to. The database then stores them below **mean sea level** (see
 | *Other land datum* or *offset grid* | Your own grids | Your files |
 | *Not tied* | Lake, reservoir, non-tidal water | None: depths kept as they are |
 
-See [external-data.md](external-data.md) to get these files.
+To get these files: *Data* tab, **External data…** (§ 5); details in
+[external-data.md](external-data.md).
 
 **Fixed survey date** — otherwise the date is read from the file name
 (`YYYYMMDD`), failing that the file date. It is used by the "most recent"
@@ -459,6 +471,17 @@ reference surfaces* box.
   BathyElli v2.1*, *MLLW NOAA VDatum*, *LAT FES2022b*, *undefined*), says in
   plain words whether the datum is **official** (✓) or **approximate** (≈ LAT
   FES, may differ by a few decimetres), and lists the reference files found.
+- **External data…**: list of the reference files, with their producer,
+  licence and status (✓ installed). The open files (BathyElli ZH and NM,
+  RAF20, RAC23) are downloaded in one click, or all at once with *Everything
+  missing (France)*: the plugin shows the licence, downloads from the
+  producer's website, checks the SHA-256 fingerprint, unpacks into the
+  reference folder and offers to update the surfaces; *Check the files*
+  checks again the fingerprints of the installed files. For the FES2022 atlas
+  and the MSS (AVISO account), *Open the page* explains how to get them and
+  *Choose the file…* sets them; for NOAA VDatum, *Choose the folder…* sets
+  the *Countries* folder. *Update the list* fetches the up-to-date catalogue
+  from the plugin repository.
 - **Update surfaces**: after adding or changing BathyElli, the FES2022 atlas
   or the MSS, recomputes the surfaces and corrects the sources concerned. The
   chart-datum display of a source imported at chart datum does not change.
@@ -618,17 +641,47 @@ moment above chart datum, pixel by pixel:
 
 - **Source**: *OpenCPN tide stations* (single height from the nearest
   station; OpenCPN tide data must be enabled) or *Gridded FES2022* (height
-  varies over the area; needs the converted atlas, see
-  [external-data.md](external-data.md)).
+  varies over the area; needs the converted atlas, see **External data…**
+  and [external-data.md](external-data.md)), or *Online tide gauge: observed
+  height* (see below).
 - **Moment**: *None — depths at chart datum*, *Current water height
   (computer clock)*, or *Chosen date and time* with the ±12 h slider in
   15-minute steps.
 - The information line gives the height used, the station or the FES2022
   range over the area.
 
+**Online tide gauge** (France: Shom REFMAR network; United States: NOAA
+CO-OPS) — the water height
+**measured** by a tide gauge, surge included, instead of a prediction:
+- *nearest*: the gauge nearest to the centre of the displayed area, all
+  networks together; unticked, the one picked with **Choose…** (network,
+  list sorted by distance, search box);
+- *Current water height*: the latest measurement, fetched again every
+  5 minutes in the background (the information line gives the time of the
+  measurement; it is kept for 30 minutes at most; while downloading, the
+  tide curve shows "Downloading the measurements…");
+- *Chosen date and time*: the measurement at that moment, in the past only
+  (no measurement in the future: use FES2022 or the OpenCPN stations);
+- like a station, one height for the whole area: valid near the gauge
+  (beyond 30 km, the information line says so);
+- recent measurements are raw, not yet validated by the Shom; an Internet
+  connection is needed; the downloaded measurements stay in the reference
+  folder (`REFMAR`) and are also used by the import.
+
 **Tide curve…** opens a separate window: water height against time for each
 tide point used (the OpenCPN station, or up to 9 FES2022 points — NW, N, NE,
-W, Centre, E, SW, S, SE — spread over your data).
+W, Centre, E, SW, S, SE — spread over your data; with a tide gauge, its
+measurements and the prediction of the nearby OpenCPN station, named with
+its tide file, e.g. *OpenCPN prediction (HARMONIC)*, to see the surge).
+
+**Datum of OpenCPN stations** — each station of OpenCPN's tide files
+(`HARMONIC`, `.tcd`, or an added set such as HARMONIC V10) has its own datum
+and mean level, which may differ from chart datum by a few decimetres.
+Example: at Le Conquet, the TICON station shipped with OpenCPN is referred to
+TICON's "LAT", about 0.34 m above the Shom chart datum: its heights are too
+low by that much (depths shown too shallow). In France, prefer *Gridded
+FES2022* (referred to the Shom chart datum through BathyElli) for a
+prediction, and the *online tide gauge* for the actual height.
 
 ![Tide curve window](images/en/09-tide-curve.png)
 

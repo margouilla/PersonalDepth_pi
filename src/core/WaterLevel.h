@@ -6,7 +6,9 @@
 //   2026-11-01,0.35
 // Les lignes illisibles (entête « [TIME],[DEPTH] »…) sont ignorées. Un
 // dossier : tous ses fichiers .txt / .csv / .dat sont fusionnés en une seule
-// série (même station, périodes successives), triée par date.
+// série (même station, périodes successives), triée par date. Les fichiers
+// des marégraphes en ligne (TideGauge.h : REFMAR du Shom…) sont reconnus et
+// lus par leur fournisseur : mètres au zéro des cartes, UTC.
 //
 // Copyright (C) 2026 Marcaurelio Franzetti
 // SPDX-License-Identifier: GPL-2.0-or-later

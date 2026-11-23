@@ -13,6 +13,7 @@
 #include "FileUtil.h"
 #include "Lang.h"
 #include "PointCloud.h"
+#include "TideGauge.h"
 
 namespace fs = std::filesystem;
 
@@ -90,7 +91,6 @@ bool WaterLevelSeries::load(const std::string& path, const TextFormat& fmt, doub
     FILE* in = OpenFile(f, "rb");
     if (!in) { err = pd::tr("Impossible d'ouvrir ") + f; return false; }
     std::string line;
-    int c;
     long long lineNo = 0;
     auto parse = [&](long long& t, double& h) {
       if (!fmt.custom) return ParseLine(line, fmt.dateOrder, t, h);
@@ -113,12 +113,32 @@ bool WaterLevelSeries::load(const std::string& path, const TextFormat& fmt, doub
         ++skipped_;
       line.clear();
     };
-    while ((c = std::fgetc(in)) != EOF) {
-      if (c == '\n') flush();
-      else line += (char)c;
-    }
-    flush();
+    std::string text;
+    char buf[1 << 15];
+    size_t nr;
+    while ((nr = std::fread(buf, 1, sizeof buf, in)) > 0) text.append(buf, nr);
     std::fclose(in);
+    const GaugeProvider* gp = nullptr;
+    if (!fmt.custom)
+      for (const auto* p : GaugeProviders())
+        if (p->recognises(text.substr(0, 4096))) { gp = p; break; }
+    if (gp) {
+      // fichier d'un marégraphe en ligne (REFMAR… téléchargé par le plugin ou
+      // à la main) : lu par son fournisseur, mètres au zéro des cartes, UTC
+      std::vector<long long> T;
+      std::vector<double> H;
+      int sk = 0;
+      std::string e2;
+      gp->parse(text, T, H, sk, e2);
+      skipped_ += sk;
+      for (size_t i = 0; i < T.size(); ++i) { auto& a = acc[T[i]]; a.first += H[i]; ++a.second; }  // toujours en m
+    } else {
+      for (char ch : text) {
+        if (ch == '\n') flush();
+        else line += ch;
+      }
+      flush();
+    }
     key_ += f + "@" + std::to_string((long long)FileMTime(f)) + ";";
   }
   for (const auto& kv : acc) {

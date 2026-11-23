@@ -72,8 +72,14 @@ endif()
 # SQLite (domaine public) et miniz (MIT) : base de bathymétrie, compression
 add_library(pd_thirdparty STATIC
   third_party/sqlite/sqlite3.c
-  third_party/miniz/miniz.c third_party/miniz/miniz_tdef.c third_party/miniz/miniz_tinfl.c)
-target_include_directories(pd_thirdparty PUBLIC third_party/sqlite third_party/miniz)
+  third_party/miniz/miniz.c third_party/miniz/miniz_tdef.c third_party/miniz/miniz_tinfl.c
+  # LZMA SDK (domaine public) : archives .7z des données externes (BathyElli)
+  third_party/lzma/7zAlloc.c third_party/lzma/7zArcIn.c third_party/lzma/7zBuf.c
+  third_party/lzma/7zCrc.c third_party/lzma/7zCrcOpt.c third_party/lzma/7zDec.c
+  third_party/lzma/7zStream.c third_party/lzma/Bcj2.c third_party/lzma/Bra.c
+  third_party/lzma/Bra86.c third_party/lzma/BraIA64.c third_party/lzma/CpuArch.c
+  third_party/lzma/Delta.c third_party/lzma/Lzma2Dec.c third_party/lzma/LzmaDec.c)
+target_include_directories(pd_thirdparty PUBLIC third_party/sqlite third_party/miniz third_party/lzma)
 target_compile_definitions(pd_thirdparty PUBLIC
   SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION SQLITE_OMIT_DEPRECATED
   MINIZ_NO_ARCHIVE_APIS MINIZ_NO_STDIO MINIZ_NO_TIME MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
@@ -92,8 +98,15 @@ add_library(pd_core STATIC
   src/core/Inflate.cpp src/core/TideFES.cpp src/core/GeoGrid.cpp src/core/Datum.cpp src/core/LandMask.cpp
   src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp
   src/core/WaterLevel.cpp src/core/SurveyShape.cpp src/core/Tracks.cpp src/core/Shoreline.cpp
-  src/core/GeoTiff.cpp src/core/Imagery.cpp src/core/SideScan.cpp)
+  src/core/GeoTiff.cpp src/core/Imagery.cpp src/core/SideScan.cpp
+  src/core/Json.cpp src/core/Sha256.cpp src/core/Archive.cpp src/core/Refmar.cpp src/core/TideGauge.cpp src/core/NoaaCoops.cpp src/core/Catalog.cpp)
 target_include_directories(pd_core PUBLIC src third_party)
+# catalogue des données externes intégré (data/catalog.json -> tableau d'octets)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/data/catalog.json PD_CATALOG_HEX HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," PD_CATALOG_HEX "${PD_CATALOG_HEX}")
+file(WRITE ${CMAKE_BINARY_DIR}/generated/CatalogBuiltin.inc "${PD_CATALOG_HEX}\n")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/data/catalog.json)
+target_include_directories(pd_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Triangulation (delaunator) : pas de fusion multiplication-addition (FMA,
 # active par défaut sur ARM) dans les tests géométriques
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -149,7 +162,7 @@ if(PD_BUILD_PLUGIN)
 
     add_library(PersonalDepth_pi SHARED
       src/PersonalDepth_pi.cpp src/BathyRenderer.cpp src/BathyDialog.cpp src/ImportDialog.cpp src/DataDialog.cpp src/TideChart.cpp src/TextFormatDialog.cpp
-      src/WaterLevelDialog.cpp)
+      src/WaterLevelDialog.cpp src/ExternalDataDialog.cpp src/GaugeDialog.cpp src/GaugeManager.cpp)
     target_link_libraries(PersonalDepth_pi PRIVATE pd_core ocpn::api
                           ${wxWidgets_LIBRARIES} OpenGL::GL)
     if(APPLE)

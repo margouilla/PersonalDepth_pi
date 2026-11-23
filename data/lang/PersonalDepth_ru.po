@@ -4462,3 +4462,467 @@ msgstr "Настройки изобат и отметок глубин…"
 msgid "Imagery re-import (%d file(s))"
 msgstr "Повторный импорт изображений (%d файл(ов))"
 
+#. fr: Ko
+msgid "KB"
+msgstr "КБ"
+
+#. fr: Mo
+msgid "MB"
+msgstr "МБ"
+
+#. fr: Données externes
+msgid "External data"
+msgstr "Внешние данные"
+
+#. fr: Données externes…
+msgid "External data…"
+msgstr "Внешние данные…"
+
+#. fr: Fichiers de référence utilisés par PersonalDepth (zéro des cartes, niveau moyen, géoïde, marée). Ceux dont la licence le permet se téléchargent ici en un clic ; les autres demandent un compte chez leur producteur : le bouton ouvre la page qui explique comment les obtenir.
+msgid "Reference files used by PersonalDepth (chart datum, mean sea level, geoid, tide). Those whose licence allows it are downloaded here in one click; the others need an account with their producer: the button opens the page explaining how to get them."
+msgstr "Опорные файлы PersonalDepth (нуль глубин, средний уровень, геоид, прилив). Файлы, лицензия которых это позволяет, загружаются здесь одним щелчком; для остальных нужна учётная запись у производителя: кнопка открывает страницу с объяснением, как их получить."
+
+#. fr: Dossier :
+msgid "Folder:"
+msgstr "Папка:"
+
+#. fr: Changer…
+msgid "Change…"
+msgstr "Изменить…"
+
+#. fr: Ouvrir
+msgid "Open"
+msgstr "Открыть"
+
+#. fr: Producteur
+msgid "Producer"
+msgstr "Производитель"
+
+#. fr: État
+msgid "Status"
+msgstr "Состояние"
+
+#. fr: Détails
+msgid "Details"
+msgstr "Подробности"
+
+#. fr: Page de la donnée
+msgid "Data page"
+msgstr "Страница данных"
+
+#. fr: Texte de la licence
+msgid "Licence text"
+msgstr "Текст лицензии"
+
+#. fr: Télécharger
+msgid "Download"
+msgstr "Загрузить"
+
+#. fr: Choisir le fichier…
+msgid "Choose the file…"
+msgstr "Выбрать файл…"
+
+#. fr: Choisir le dossier…
+msgid "Choose the folder…"
+msgstr "Выбрать папку…"
+
+#. fr: Tout ce qui manque (France)
+msgid "Everything missing (France)"
+msgstr "Всё недостающее (Франция)"
+
+#. fr: Télécharge les fichiers libres de France absents du dossier : BathyElli ZH et NM, RAF20, RAC23.
+msgid "Downloads the open French files missing from the folder: BathyElli ZH and NM, RAF20, RAC23."
+msgstr "Загружает отсутствующие в папке открытые французские файлы: BathyElli ZH и NM, RAF20, RAC23."
+
+#. fr: Mettre à jour la liste
+msgid "Update the list"
+msgstr "Обновить список"
+
+#. fr: Récupère la liste à jour des données (adresses, nouvelles données) sur le dépôt du plugin.
+msgid "Fetches the up-to-date data list (addresses, new data) from the plugin repository."
+msgstr "Получает актуальный список данных (адреса, новые данные) из репозитория плагина."
+
+#. fr: Dossier des données externes (références)
+msgid "External data folder (references)"
+msgstr "Папка внешних данных (опорные файлы)"
+
+#. fr: ✓ installé
+msgid "✓ installed"
+msgstr "✓ установлено"
+
+#. fr: à télécharger
+msgid "to download"
+msgstr "нужно загрузить"
+
+#. fr: compte ou site du producteur
+msgid "producer's account or website"
+msgstr "учётная запись или сайт производителя"
+
+#. fr: Fichier : 
+msgid "File: "
+msgstr "Файл: "
+
+#. fr: Licence : 
+msgid "Licence: "
+msgstr "Лицензия: "
+
+#. fr: Citer : 
+msgid "Cite: "
+msgstr "Ссылка: "
+
+#. fr: Taille : 
+msgid "Size: "
+msgstr "Размер: "
+
+#. fr: Télécharger de nouveau
+msgid "Download again"
+msgstr "Загрузить заново"
+
+#. fr: Ouvrir la page
+msgid "Open the page"
+msgstr "Открыть страницу"
+
+#. fr: Le fichier est téléchargé depuis le site du producteur :
+msgid "The file is downloaded from the producer's website:"
+msgstr "Файл загружается с сайта производителя:"
+
+#. fr: Accepter et télécharger
+msgid "Accept and download"
+msgstr "Принять и загрузить"
+
+#. fr: Le fichier téléchargé ne correspond pas à celui du catalogue (empreinte SHA-256 différente) : le producteur l'a peut-être mis à jour, ou le téléchargement est abîmé. « Mettre à jour la liste » récupère les dernières empreintes.\n\nGarder ce fichier quand même ?
+msgid "The downloaded file does not match the catalogue (different SHA-256 fingerprint): the producer may have updated it, or the download is damaged. “Update the list” fetches the latest fingerprints.\n\nKeep this file anyway?"
+msgstr "Загруженный файл не совпадает с каталогом (другой отпечаток SHA-256): возможно, производитель обновил его или загрузка повреждена. «Обновить список» получает последние отпечатки.\n\nВсё равно сохранить этот файл?"
+
+#. fr: Fichiers installés. Recalculer maintenant les surfaces de référence de la base et corriger les sources concernées (« Mettre à jour les surfaces ») ?
+msgid "Files installed. Recompute the database reference surfaces now and correct the sources concerned (“Update surfaces”)?"
+msgstr "Файлы установлены. Пересчитать сейчас опорные поверхности базы и исправить затронутые источники («Обновить поверхности»)?"
+
+#. fr: Atlas FES2022 (*.pdtide)|*.pdtide|Tous|*
+msgid "FES2022 atlas (*.pdtide)|*.pdtide|All|*"
+msgstr "Атлас FES2022 (*.pdtide)|*.pdtide|Все|*"
+
+#. fr: Liste des données
+msgid "Data list"
+msgstr "Список данных"
+
+#. fr: Liste des données illisible : 
+msgid "Unreadable data list: "
+msgstr "Список данных не читается: "
+
+#. fr: La liste est déjà à jour (version %d du %s).
+msgid "The list is already up to date (version %d of %s)."
+msgstr "Список уже актуален (версия %d от %s)."
+
+#. fr: Liste des données mise à jour (version %d du %s).
+msgid "Data list updated (version %d of %s)."
+msgstr "Список данных обновлён (версия %d от %s)."
+
+#. fr: Téléchargement interrompu.
+msgid "Download aborted."
+msgstr "Загрузка прервана."
+
+#. fr: Téléchargement impossible (connexion Internet ?) : 
+msgid "Download failed (Internet connection?): "
+msgstr "Загрузка не удалась (подключение к Интернету?): "
+
+#. fr: Impossible d'écrire 
+msgid "Cannot write "
+msgstr "Не удаётся записать "
+
+#. fr: Impossible de lire 
+msgid "Cannot read "
+msgstr "Не удаётся прочитать "
+
+#. fr: Rechercher
+msgid "Search"
+msgstr "Поиск"
+
+#. fr: Marégraphe
+msgid "Tide gauge"
+msgstr "Мареограф"
+
+#. fr: Distance
+msgid "Distance"
+msgstr "Расстояние"
+
+#. fr: Réseau
+msgid "Network"
+msgstr "Сеть"
+
+#. fr: Période du
+msgid "Period from"
+msgstr "Период с"
+
+#. fr: (inclus, UTC)
+msgid "(inclusive, UTC)"
+msgstr "(включительно, UTC)"
+
+#. fr: Actualiser la liste
+msgid "Refresh the list"
+msgstr "Обновить список"
+
+#. fr: Liste des marégraphes
+msgid "Tide gauge list"
+msgstr "Список мареографов"
+
+#. fr: Choisir un marégraphe dans la liste.
+msgid "Choose a tide gauge in the list."
+msgstr "Выберите мареограф в списке."
+
+#. fr: La fin de la période doit suivre son début.
+msgid "The end of the period must follow its start."
+msgstr "Конец периода должен быть позже начала."
+
+#. fr: Période longue : %d téléchargements d'un mois. Continuer ?
+msgid "Long period: %d one-month downloads. Continue?"
+msgstr "Длинный период: %d загрузок по месяцу. Продолжить?"
+
+#. fr: Aucune mesure de ce marégraphe sur la période choisie.
+msgid "No measurement from this tide gauge in the chosen period."
+msgstr "Нет измерений этого мареографа за выбранный период."
+
+#. fr: Archive zip illisible
+msgid "Unreadable zip archive"
+msgstr "Архив zip не читается"
+
+#. fr: Archive zip de plus de 4 Go (zip64) non prise en charge
+msgid "Zip archives over 4 GB (zip64) are not supported"
+msgstr "Архивы zip больше 4 ГБ (zip64) не поддерживаются"
+
+#. fr: Archive zip tronquée
+msgid "Truncated zip archive"
+msgstr "Архив zip обрезан"
+
+#. fr: Archive zip : données compressées illisibles (
+msgid "Zip archive: unreadable compressed data ("
+msgstr "Архив zip: сжатые данные не читаются ("
+
+#. fr: Archive zip : méthode de compression non prise en charge (
+msgid "Zip archive: unsupported compression method ("
+msgstr "Архив zip: метод сжатия не поддерживается ("
+
+#. fr: Archive 7z : méthode de compression non prise en charge
+msgid "7z archive: unsupported compression method"
+msgstr "Архив 7z: метод сжатия не поддерживается"
+
+#. fr: Archive 7z : mémoire insuffisante
+msgid "7z archive: not enough memory"
+msgstr "Архив 7z: недостаточно памяти"
+
+#. fr: Archive 7z : somme de contrôle fausse (fichier abîmé)
+msgid "7z archive: wrong checksum (damaged file)"
+msgstr "Архив 7z: неверная контрольная сумма (файл повреждён)"
+
+#. fr: Archive 7z illisible
+msgid "Unreadable 7z archive"
+msgstr "Архив 7z не читается"
+
+#. fr: Ce fichier n'est pas une archive .zip ou .7z : 
+msgid "This file is not a .zip or .7z archive: "
+msgstr "Этот файл не является архивом .zip или .7z: "
+
+#. fr: Catalogue des données externes : format non pris en charge
+msgid "External data catalogue: unsupported format"
+msgstr "Каталог внешних данных: формат не поддерживается"
+
+#. fr: Catalogue des données externes vide
+msgid "Empty external data catalogue"
+msgstr "Каталог внешних данных пуст"
+
+#. fr: Liste des marégraphes REFMAR illisible
+msgid "Unreadable REFMAR tide gauge list"
+msgstr "Список мареографов REFMAR не читается"
+
+#. fr: Liste des marégraphes REFMAR vide
+msgid "Empty REFMAR tide gauge list"
+msgstr "Список мареографов REFMAR пуст"
+
+#. fr: Aucune hauteur d'eau dans le fichier REFMAR
+msgid "No water level in the REFMAR file"
+msgstr "В файле REFMAR нет уровней воды"
+
+#. fr: Où obtenir l'atlas FES2022 et les fichiers BathyElli ; téléchargement des fichiers libres.
+msgid "Where to get the FES2022 atlas and the BathyElli files; download of the open files."
+msgstr "Где получить атлас FES2022 и файлы BathyElli; загрузка открытых файлов."
+
+#. fr: Télécharger les fichiers libres (BathyElli, RAF20, RAC23) et obtenir les autres (FES2022, MSS, NOAA VDatum) : licences, liens, choix des fichiers.
+msgid "Download the open files (BathyElli, RAF20, RAC23) and get the others (FES2022, MSS, NOAA VDatum): licences, links, file choice."
+msgstr "Загрузить открытые файлы (BathyElli, RAF20, RAC23) и получить остальные (FES2022, MSS, NOAA VDatum): лицензии, ссылки, выбор файлов."
+
+#. fr: le plus proche
+msgid "nearest"
+msgstr "ближайший"
+
+#. fr: Marégraphe le plus proche du centre de la zone affichée ; décoché, celui choisi avec « Choisir… ».
+msgid "Tide gauge nearest to the centre of the displayed area; unticked, the one picked with “Choose…”."
+msgstr "Мареограф, ближайший к центру показанной области; без отметки — выбранный кнопкой «Выбрать…»."
+
+#. fr: Choisir…
+msgid "Choose…"
+msgstr "Выбрать…"
+
+#. fr: Choisir
+msgid "Choose"
+msgstr "Выбрать"
+
+#. fr: station 
+msgid "station "
+msgstr "станция "
+
+#. fr: Marégraphes en ligne
+msgid "Online tide gauges"
+msgstr "Мареографы онлайн"
+
+#. fr: Hauteurs d'eau mesurées par les marégraphes, au zéro des cartes, en UTC. Choisir le marégraphe le plus proche du levé et la période des sondes : les fichiers sont téléchargés une fois, puis lus directement par l'import.
+msgid "Water levels measured by tide gauges, above chart datum, in UTC. Choose the gauge closest to the survey and the period of the soundings: the files are downloaded once, then read directly by the import."
+msgstr "Уровни воды, измеренные мареографами, над нулём глубин, в UTC. Выберите ближайший к съёмке мареограф и период промеров: файлы загружаются один раз и затем читаются импортом напрямую."
+
+#. fr: Marégraphe dont la hauteur d'eau mesurée est ajoutée aux profondeurs (onglet Marée). Choisir le plus proche de la zone affichée.
+msgid "Tide gauge whose measured water height is added to the depths (Tide tab). Choose the one closest to the displayed area."
+msgstr "Мареограф, измеренная высота воды которого прибавляется к глубинам (вкладка «Прилив»). Выберите ближайший к показанной области."
+
+#. fr: Données %s, %s : citer « %s » si vous diffusez un résultat. Mesures brutes récentes non validées.
+msgid "%s data, %s: cite “%s” if you share a result. Recent raw measurements are not validated."
+msgstr "Данные %s, %s: укажите «%s», если публикуете результат. Свежие сырые измерения не проверены."
+
+#. fr: Liste des marégraphes indisponible
+msgid "Tide gauge list unavailable"
+msgstr "Список мареографов недоступен"
+
+#. fr: Marégraphe…
+msgid "Tide gauge…"
+msgstr "Мареограф…"
+
+#. fr: Liste des marégraphes en cours de téléchargement…
+msgid "Downloading the tide gauge list…"
+msgstr "Загрузка списка мареографов…"
+
+#. fr: Liste des marégraphes indisponible (connexion Internet ?)
+msgid "Tide gauge list unavailable (Internet connection?)"
+msgstr "Список мареографов недоступен (подключение к Интернету?)"
+
+#. fr: %s : pas de mesure dans le futur (%s). Pour une prédiction, choisir FES2022 ou les stations OpenCPN.
+msgid "%s: no measurement in the future (%s). For a prediction, choose FES2022 or the OpenCPN stations."
+msgstr "%s: нет измерений в будущем (%s). Для прогноза выберите FES2022 или станции OpenCPN."
+
+#. fr: %s : téléchargement des mesures…
+msgid "%s: downloading the measurements…"
+msgstr "%s: загрузка измерений…"
+
+#. fr: %s : pas de mesure le %s
+msgid "%s: no measurement on %s"
+msgstr "%s: нет измерения на %s"
+
+#. fr: Marégraphe %s (%.1f km, %s) : hauteur d'eau observée %+.2f %s le %s (mesure de %s UTC)
+msgid "Tide gauge %s (%.1f km, %s): observed water height %+.2f %s on %s (measured at %s UTC)"
+msgstr "Мареограф %s (%.1f км, %s): измеренная высота воды %+.2f %s на %s (измерение в %s UTC)"
+
+#. fr:  — mesures récentes brutes, non validées
+msgid " — recent raw measurements, not validated"
+msgstr " — свежие сырые измерения, не проверены"
+
+#. fr:  — marégraphe éloigné, à vérifier
+msgid " — distant tide gauge, check it"
+msgstr " — мареограф далеко, проверьте"
+
+#. fr: Aucun marégraphe
+msgid "No tide gauge"
+msgstr "Нет мареографа"
+
+#. fr: Marégraphe (hauteur observée)
+msgid "Tide gauge (observed height)"
+msgstr "Мареограф (измеренная высота)"
+
+#. fr:  (mesures)
+msgid " (measured)"
+msgstr " (измерения)"
+
+#. fr: Prédiction OpenCPN (%s) : %s
+msgid "OpenCPN prediction (%s): %s"
+msgstr "Прогноз OpenCPN (%s): %s"
+
+#. fr: fichiers de marée
+msgid "tide files"
+msgstr "файлы приливов"
+
+#. fr: TICON, zéro LAT de TICON
+msgid "TICON, TICON LAT datum"
+msgstr "TICON, нуль LAT TICON"
+
+#. fr: Marégraphe en ligne : hauteur observée (France, États-Unis)
+msgid "Online tide gauge: observed height (France, United States)"
+msgstr "Мареограф онлайн: измеренный уровень (Франция, США)"
+
+#. fr: Vérifier les fichiers
+msgid "Check the files"
+msgstr "Проверить файлы"
+
+#. fr: Recontrôle les empreintes SHA-256 des fichiers installés : un fichier abîmé ou remplacé par une autre version est signalé.
+msgid "Checks again the SHA-256 fingerprints of the installed files: a damaged file or one replaced by another version is reported."
+msgstr "Повторно проверяет отпечатки SHA-256 установленных файлов: повреждённый или заменённый другой версией файл отмечается."
+
+#. fr: fichier converti par l'utilisateur, pas d'empreinte de référence
+msgid "file converted by the user, no reference fingerprint"
+msgstr "файл преобразован пользователем, нет эталонного отпечатка"
+
+#. fr:  : conforme
+msgid ": correct"
+msgstr ": соответствует"
+
+#. fr:  : empreinte différente (fichier abîmé ou autre version) — Télécharger de nouveau
+msgid ": different fingerprint (damaged file or other version) — Download again"
+msgstr ": другой отпечаток (файл повреждён или другая версия) — загрузите заново"
+
+#. fr:  : absent
+msgid ": missing"
+msgstr ": отсутствует"
+
+#. fr:  : pas d'empreinte de référence
+msgid ": no reference fingerprint"
+msgstr ": нет эталонного отпечатка"
+
+#. fr: Aucun fichier installé à vérifier.
+msgid "No installed file to check."
+msgstr "Нет установленных файлов для проверки."
+
+#. fr: %d problème(s) trouvé(s).
+msgid "%d problem(s) found."
+msgstr "Найдено проблем: %d."
+
+#. fr: %d fichier(s) conforme(s).
+msgid "%d file(s) correct."
+msgstr "Файлов в порядке: %d."
+
+#. fr: Marégraphe choisi introuvable dans la liste : en choisir un autre
+msgid "Chosen tide gauge not found in the list: choose another one"
+msgstr "Выбранный мареограф не найден в списке: выберите другой"
+
+#. fr: Téléchargement des mesures…
+msgid "Downloading the measurements…"
+msgstr "Загрузка измерений…"
+
+#. fr: Liste des marégraphes NOAA illisible
+msgid "Unreadable NOAA tide gauge list"
+msgstr "Список мареографов NOAA не читается"
+
+#. fr: Liste des marégraphes NOAA vide
+msgid "Empty NOAA tide gauge list"
+msgstr "Список мареографов NOAA пуст"
+
+#. fr: Aucune hauteur d'eau dans le fichier NOAA
+msgid "No water level in the NOAA file"
+msgstr "В файле NOAA нет уровней воды"
+
+#. fr: États-Unis
+msgid "United States"
+msgstr "США"
+
+#. fr: domaine public (NOAA, gouvernement des États-Unis)
+msgid "public domain (NOAA, United States government)"
+msgstr "общественное достояние (NOAA, правительство США)"
+
+#. fr: Télécharger les hauteurs d'eau d'un marégraphe en ligne pour la période du levé (France : REFMAR du Shom ; États-Unis : NOAA CO-OPS).
+msgid "Download the water levels of an online tide gauge for the survey period (France: Shom REFMAR; United States: NOAA CO-OPS)."
+msgstr "Загрузить уровни воды онлайн-мареографа за период съёмки (Франция: REFMAR Shom; США: NOAA CO-OPS)."
+

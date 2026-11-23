@@ -1,0 +1,163 @@
+{
+  "format": 1,
+  "version": 2,
+  "date": "2026-11-23",
+  "items": [
+    {
+      "id": "bathyelli-zh",
+      "group": "france",
+      "use": "france",
+      "name": {"fr": "BathyElli v2.1 ZH/ellipsoïde", "en": "BathyElli v2.1 CD/ellipsoid", "ru": "BathyElli v2.1 ZH/эллипсоид"},
+      "producer": "Shom",
+      "desc": {
+        "fr": "Zéro des cartes (ZH) au-dessus de l'ellipsoïde, côtes de France métropolitaine. Relie les levés IGN69 / GNSS au zéro des cartes et sert à la base (profondeurs au ZH en France).",
+        "en": "Chart datum (ZH) above the ellipsoid, coasts of mainland France. Links IGN69 / GNSS surveys to chart datum and is used by the database (depths at chart datum in France).",
+        "ru": "Нуль глубин (ZH) над эллипсоидом, побережье континентальной Франции. Связывает съёмки IGN69 / GNSS с нулём глубин и используется базой (глубины от нуля глубин во Франции)."
+      },
+      "licence": "Licence Ouverte / Open Licence 2.0",
+      "licence_url": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "citation": "Shom, BathyElli v2.1 (surface ZH/ellipsoïde)",
+      "page": "https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1",
+      "download": {
+        "url": "https://services.data.shom.fr/INSPIRE/telechargement/prepackageGroup/BATHYELLI_2_1_PACK_DL/prepackage/BATHYELLI_ZH_ell_V2_1/file/BATHYELLI_ZH_ell_V2_1.7z",
+        "file": "BATHYELLI_ZH_ell_V2_1.7z",
+        "size": 2416974,
+        "sha256": "cfe7744038b1768344ca920a77d8efdccfe7a4b04c80851e0e8997fd2ff76e04",
+        "extract": true,
+        "subdir": "BathyElli"
+      },
+      "check": "*ZH*.glhi",
+      "files": [
+        {"name": "BathyElliv2.1_ATL_ZH.glhi", "sha256": "9c060a04e8ac377022ecf2556d3c5850446a16d33dbfcdc290d5a843c7e46b90"},
+        {"name": "BathyElliv2.1_MED_ZH.glhi", "sha256": "8757239743087fb65d942f052c40ca13f23bb1970f82db9b384f6bdca92ea1ba"}
+      ]
+    },
+    {
+      "id": "bathyelli-nm",
+      "group": "france",
+      "use": "france",
+      "name": {"fr": "BathyElli v2.1 NM/ellipsoïde", "en": "BathyElli v2.1 MSL/ellipsoid", "ru": "BathyElli v2.1 NM/эллипсоид"},
+      "producer": "Shom",
+      "desc": {
+        "fr": "Niveau moyen (NM) au-dessus de l'ellipsoïde, côtes de France métropolitaine. Niveau moyen de la base en France et Z0 de la marée FES2022.",
+        "en": "Mean sea level (NM) above the ellipsoid, coasts of mainland France. Mean sea level of the database in France and Z0 of the FES2022 tide.",
+        "ru": "Средний уровень (NM) над эллипсоидом, побережье континентальной Франции. Средний уровень базы во Франции и Z0 прилива FES2022."
+      },
+      "licence": "Licence Ouverte / Open Licence 2.0",
+      "licence_url": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "citation": "Shom, BathyElli v2.1 (surface NM/ellipsoïde)",
+      "page": "https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1",
+      "download": {
+        "url": "https://services.data.shom.fr/INSPIRE/telechargement/prepackageGroup/BATHYELLI_2_1_PACK_DL/prepackage/BATHYELLI_NM_ell_V2_1/file/BATHYELLI_NM_ell_V2_1.7z",
+        "file": "BATHYELLI_NM_ell_V2_1.7z",
+        "size": 2410473,
+        "sha256": "73b9bf4427644236b689e5746320a5432af494ae9e4fbf912a7678566bc52ffe",
+        "extract": true,
+        "subdir": "BathyElli"
+      },
+      "check": "*NM*.glhi",
+      "files": [
+        {"name": "BathyElliv2.1_ATL_NM.glhi", "sha256": "0403eff7772071778ba52bf3d0ae670e45dd3b5fb0351c7f1f6fcfef32feb461"},
+        {"name": "BathyElliv2.1_MED_NM.glhi", "sha256": "34b0a95a7da6136236c60e0e239d6f76099c18d2f22bdf897630e6ef6c3382a9"}
+      ]
+    },
+    {
+      "id": "raf20",
+      "group": "france",
+      "use": "france",
+      "name": {"fr": "RAF20 (France continentale)", "en": "RAF20 (mainland France)", "ru": "RAF20 (континентальная Франция)"},
+      "producer": "IGN",
+      "desc": {
+        "fr": "Grille de conversion des hauteurs ellipsoïdales en altitudes IGN69 (France continentale). Nécessaire pour les levés en IGN69.",
+        "en": "Grid converting ellipsoidal heights to IGN69 altitudes (mainland France). Needed for surveys in IGN69.",
+        "ru": "Сетка перевода эллипсоидальных высот в высоты IGN69 (континентальная Франция). Нужна для съёмок в IGN69."
+      },
+      "licence": "Licence Ouverte / Open Licence 2.0",
+      "licence_url": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "citation": "IGN, RAF20",
+      "page": "https://geodesie.ign.fr/grilles-de-conversion",
+      "download": {
+        "url": "https://www.ign.fr/publications-de-l-ign/Geodesie/RAF20.tac",
+        "file": "RAF20.tac",
+        "size": 1685906,
+        "sha256": "4196c68d1a5789c04f2ee104417462bcd5c3c70d83c9a64ca68467424e8c38ea"
+      },
+      "check": "RAF20.tac"
+    },
+    {
+      "id": "rac23",
+      "group": "france",
+      "use": "france",
+      "name": {"fr": "RAC23 (Corse)", "en": "RAC23 (Corsica)", "ru": "RAC23 (Корсика)"},
+      "producer": "IGN",
+      "desc": {
+        "fr": "Même grille pour les altitudes IGN78C en Corse. Seulement pour les levés en Corse.",
+        "en": "Same grid for IGN78C altitudes in Corsica. Only for surveys in Corsica.",
+        "ru": "Та же сетка для высот IGN78C на Корсике. Только для съёмок на Корсике."
+      },
+      "licence": "Licence Ouverte / Open Licence 2.0",
+      "licence_url": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+      "citation": "IGN, RAC23",
+      "page": "https://geodesie.ign.fr/grilles-de-conversion",
+      "download": {
+        "url": "https://www.ign.fr/publications-de-l-ign/Geodesie/RAC23.mnt",
+        "file": "RAC23.mnt",
+        "size": 87300,
+        "sha256": "83a06465193e49aba850e0e4d5dce19f8e0c5d44bb63c12b129f5351248715b3"
+      },
+      "check": "RAC23.mnt"
+    },
+    {
+      "id": "fes2022b",
+      "group": "world",
+      "use": "tide",
+      "name": {"fr": "Marée FES2022b", "en": "FES2022b tide", "ru": "Прилив FES2022b"},
+      "producer": "AVISO / CNES",
+      "desc": {
+        "fr": "Atlas mondial de la marée : marée maillée, plus basse mer astronomique, zéro des cartes hors France. Compte AVISO gratuit, puis conversion en .pdtide (tools/pdtide_convert.py). Le téléchargement direct depuis le plugin est en attente de l'accord d'AVISO.",
+        "en": "Worldwide tide atlas: gridded tide, lowest astronomical tide, chart datum outside France. Free AVISO account, then conversion to .pdtide (tools/pdtide_convert.py). Direct download from the plugin is waiting for AVISO's agreement.",
+        "ru": "Мировой атлас приливов: сеточный прилив, наинизший астрономический уровень, нуль глубин вне Франции. Бесплатная учётная запись AVISO, затем преобразование в .pdtide (tools/pdtide_convert.py). Прямая загрузка из плагина ожидает согласия AVISO."
+      },
+      "licence": "AVISO+ (Issue 20)",
+      "licence_url": "https://www.aviso.altimetry.fr/fileadmin/documents/data/License_Aviso.pdf",
+      "citation": "FES2022b, LEGOS / NOVELTIS / CLS / CNES, distributed by AVISO+",
+      "page": "https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/external-data.md#2-fes2022-gridded-tide",
+      "manual": true
+    },
+    {
+      "id": "mss2025",
+      "group": "world",
+      "use": "mss",
+      "name": {"fr": "Surface moyenne océanique CNES_CLS 2025", "en": "CNES_CLS 2025 mean sea surface", "ru": "Средняя поверхность океана CNES_CLS 2025"},
+      "producer": "AVISO / CNES, CLS",
+      "desc": {
+        "fr": "Niveau moyen au-dessus de l'ellipsoïde hors France (levés GNSS, affichage à l'ellipsoïde). Même compte AVISO, puis conversion en .pdgrid (tools/pdgrid_convert.py).",
+        "en": "Mean sea level above the ellipsoid outside France (GNSS surveys, display at the ellipsoid). Same AVISO account, then conversion to .pdgrid (tools/pdgrid_convert.py).",
+        "ru": "Средний уровень над эллипсоидом вне Франции (съёмки GNSS, отображение от эллипсоида). Та же учётная запись AVISO, затем преобразование в .pdgrid (tools/pdgrid_convert.py)."
+      },
+      "licence": "AVISO+ (Issue 20)",
+      "licence_url": "https://www.aviso.altimetry.fr/fileadmin/documents/data/License_Aviso.pdf",
+      "citation": "CNES_CLS 2025 Mean Sea Surface, CNES, DOI 10.24400/527896/a01-2024.011",
+      "page": "https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/external-data.md#3-mean-sea-surface-mss-cnes_cls-2025",
+      "manual": true
+    },
+    {
+      "id": "vdatum",
+      "group": "world",
+      "use": "national",
+      "name": {"fr": "NOAA VDatum (États-Unis)", "en": "NOAA VDatum (United States)", "ru": "NOAA VDatum (США)"},
+      "producer": "NOAA",
+      "desc": {
+        "fr": "Zéro des cartes officiel (MLLW) des États-Unis. Télécharger les régions sur le site de la NOAA (accord à accepter), les décompresser dans le dossier « Pays ».",
+        "en": "Official chart datum (MLLW) of the United States. Download the regions from the NOAA website (agreement to accept) and unzip them into the \"Countries\" folder.",
+        "ru": "Официальный нуль глубин (MLLW) США. Загрузите регионы с сайта NOAA (нужно принять соглашение) и распакуйте их в папку «Страны»."
+      },
+      "licence": "NOAA (public domain)",
+      "licence_url": "https://vdatum.noaa.gov/download.php",
+      "citation": "NOAA VDatum",
+      "page": "https://vdatum.noaa.gov/download.php",
+      "manual": true,
+      "check": "*mllw*.gtx"
+    }
+  ]
+}

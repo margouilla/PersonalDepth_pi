@@ -42,7 +42,9 @@ grids are never recomputed.
 | **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by `tools/pdtide_convert.py`, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
 | **Palette** | Continuous or stepped, editable table, presets, GMT `.cpt` import/export, automatic mode (N rounded thresholds over all data or the current view, optional fixed min/max), safety depth overlay |
 | **Grid or point cloud** | Each survey is analysed at import: regular grids (even projected with rounding noise, or written in degrees) keep their cell; point clouds (sounding lines, scattered or chart soundings, multibeam, lidar) are **interpolated** by triangulation (TIN) up to a maximum distance worked out from the survey. Measured cells always win; interpolated areas can be hidden or lightened. Survey type in simple words (single-beam, multibeam, lidar, chart soundings, lead line) |
-| **Observed water levels** | Time-stamped soundings corrected with a staff gauge or tide gauge series (text files, one file or a folder), with unit, convention, time zone and a curve window |
+| **Observed water levels** | Time-stamped soundings corrected with a staff gauge or tide gauge series (text files, one file or a folder), with unit, convention, time zone and a curve window; online tide gauges (France: Shom REFMAR, United States: NOAA CO-OPS) downloaded for the survey period from the import window |
+| **Online tide gauge** | *Tide* tab source: water height measured by the nearest online tide gauge (or a chosen one), surge included — now (fetched every 5 minutes in the background) or at a chosen past date; tide curve with the measurements and the prediction of the nearby OpenCPN station. Tide gauge networks are plug-ins of the core (REFMAR, NOAA CO-OPS; others can be added) |
+| **External data** | *External data* window: open reference files (Shom BathyElli, IGN RAF20 / RAC23) downloaded in one click from the producers' websites, licence shown, SHA-256 checked, `.7z` archives unpacked (LZMA SDK); files needing an account (FES2022, MSS) set with *Choose the file…*; *Check the files*; catalogue updatable from the repository |
 | **Large files** | Text files over 200 MB are read and imported in blocks (memory around 300 MB whatever the file size) |
 | **Palette banner** | On-chart banner, draggable (position can be locked), horizontal or vertical: min / max depth (click to set), **A**/**M** automatic or manual, **View**/**All** source, colour bar (click for presets and your own palettes), gear to open the panel, current tide height; rings icon for a contours / soundings menu (show, palette thresholds or interval) |
 | **Units** | Survey files can be imported in metres or feet; the database always stores metres. Soundings, isobaths, legend, palette thresholds, safety depth and tide heights follow OpenCPN's units (*Options › Display › Units*: metres or feet — fathoms are shown in feet) |
@@ -102,13 +104,20 @@ without importing anything:
 
 ### External data (not included, because of their licences)
 
-- **FES2022** tide atlas (AVISO): to be downloaded and converted with
-  `tools/pdtide_convert.py` (Python + netCDF4).
-- **MSS CNES_CLS 2025** mean sea surface (AVISO): to be downloaded and
-  converted with `tools/pdgrid_convert.py`; links mean sea level to the
-  ellipsoid outside France.
+The **External data** window (*Data* tab, *Vertical reference surfaces* box)
+lists them, with their licence and status:
+
 - **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN): French vertical datum
-  conversions (chart datum and mean sea level in France).
+  conversions (chart datum and mean sea level in France). Open licence:
+  **downloaded in one click** from the producers' websites (SHA-256 checked,
+  `.7z` archives unpacked by the plugin), no Python needed.
+- **FES2022** tide atlas (AVISO): free account, then conversion with
+  `tools/pdtide_convert.py` (Python + netCDF4); *Choose the file…* sets it.
+- **MSS CNES_CLS 2025** mean sea surface (AVISO): same, with
+  `tools/pdgrid_convert.py`; links mean sea level to the ellipsoid outside
+  France.
+- **Online tide gauges**: Shom REFMAR (France) and NOAA CO-OPS (United
+  States), downloaded by the plugin when used (import, *Tide* tab).
 
 The plugin also works without them: OpenCPN tide stations, and data at chart
 datum shown as imported.
@@ -204,7 +213,9 @@ grilles de profondeur ne sont jamais recalculées.
 | Unités | Fichiers de levé importés en mètres ou en pieds ; la base est toujours en mètres. Sondes, isobathes, légende, seuils de la palette, zone dangereuse et hauteurs de marée suivent les unités d'OpenCPN (*Options › Affichage › Unités* : mètres ou pieds — les brasses sont affichées en pieds) |
 | Palette | Dégradé continu ou paliers ; seuils et couleurs éditables ; 5 préréglages ; import/export GMT `.cpt`. Mode automatique : N seuils (valeurs rondes ou répartis) entre le min et le max de toutes les données ou de la zone affichée, bornes min/max imposables |
 | Grille ou nuage de points | Chaque levé est analysé à l'import : les grilles régulières (même projetées avec un bruit d'arrondi, ou écrites en degrés) gardent leur maille ; les nuages (lignes de sonde, sondes éparses ou de carte, multifaisceaux, lidar) sont **interpolés** par triangulation (TIN) jusqu'à une distance maximale déduite du levé. Les cases mesurées l'emportent toujours ; les zones interpolées peuvent être masquées ou éclaircies. Type de levé en termes simples (monofaisceau, multifaisceaux, lidar, sondes de carte, plomb) |
-| Hauteurs d'eau observées | Sondes horodatées corrigées par une série d'échelle ou de marégraphe (fichiers texte, un fichier ou un dossier), avec unité, convention, fuseau horaire et fenêtre de courbe |
+| Hauteurs d'eau observées | Sondes horodatées corrigées par une série d'échelle ou de marégraphe (fichiers texte, un fichier ou un dossier), avec unité, convention, fuseau horaire et fenêtre de courbe ; marégraphes en ligne (France : REFMAR du Shom, États-Unis : NOAA CO-OPS) téléchargés pour la période du levé depuis la fenêtre d'import |
+| Marégraphe en ligne | Source de l'onglet *Marée* : hauteur d'eau mesurée par le marégraphe en ligne le plus proche (ou celui choisi), surcote comprise — maintenant (reprise toutes les 5 minutes en tâche de fond) ou à une date passée choisie ; courbe de marée avec les mesures et la prédiction de la station OpenCPN voisine. Les réseaux de marégraphes sont des modules du cœur (REFMAR, NOAA CO-OPS ; d'autres peuvent s'ajouter) |
+| Données externes | Fenêtre *Données externes* : fichiers de référence libres (BathyElli du Shom, RAF20 / RAC23 de l'IGN) téléchargés d'un clic sur le site des producteurs, licence affichée, SHA-256 contrôlé, archives `.7z` décompressées (LZMA SDK) ; fichiers à compte (FES2022, MSS) réglés par *Choisir le fichier…* ; *Vérifier les fichiers* ; catalogue mis à jour depuis le dépôt |
 | Gros fichiers | Fichiers texte de plus de 200 Mo lus et importés par blocs (mémoire vers 300 Mo quelle que soit la taille) |
 | Bandeau de palette | Bandeau sur la carte, déplaçable (position verrouillable), horizontal ou vertical : profondeurs min / max (clic pour les saisir), **A**/**M** automatique ou manuel, **Vue**/**Tout**, rampe de couleurs (clic : préréglages et vos palettes), roue pour ouvrir le panneau, hauteur de marée du moment ; icône (anneaux) pour le menu des isobathes et des sondes (affichage, seuils de la palette ou intervalle) |
 | Sécurité | Zone « prof. < X m » en surcouche (tirant d'eau + pied de pilote), isobathe de sécurité rouge |
@@ -281,13 +292,21 @@ essayer le rendu sans rien importer :
 
 ### Données externes (non fournies, en raison de leurs licences)
 
-- Atlas de marée **FES2022** (AVISO) : à télécharger puis convertir avec
-  `tools/pdtide_convert.py` (Python + netCDF4).
-- Surface moyenne océanique **MSS CNES_CLS 2025** (AVISO) : à télécharger
-  puis convertir avec `tools/pdgrid_convert.py` ; relie le niveau moyen à
-  l'ellipsoïde hors de France.
+La fenêtre **Données externes** (onglet *Données*, cadre *Surfaces de
+référence verticale*) les liste, avec leur licence et leur état :
+
 - **BathyElli v2.1** (Shom), **RAF20 / RAC23** (IGN) : conversions de
   référence verticale en France (zéro hydrographique et niveau moyen).
+  Licence ouverte : **téléchargées d'un clic** sur le site des producteurs
+  (SHA-256 contrôlé, archives `.7z` décompressées par le plugin), sans Python.
+- Atlas de marée **FES2022** (AVISO) : compte gratuit, puis conversion avec
+  `tools/pdtide_convert.py` (Python + netCDF4) ; *Choisir le fichier…* le règle.
+- Surface moyenne océanique **MSS CNES_CLS 2025** (AVISO) : de même, avec
+  `tools/pdgrid_convert.py` ; relie le niveau moyen à l'ellipsoïde hors de
+  France.
+- **Marégraphes en ligne** : REFMAR du Shom (France) et NOAA CO-OPS
+  (États-Unis), téléchargés par le plugin quand ils servent (import, onglet
+  *Marée*).
 
 Le plugin fonctionne sans elles : stations de marée d'OpenCPN, et données au
 zéro des cartes affichées telles qu'importées.
@@ -366,6 +385,11 @@ src/core/          cœur C++17 sans wxWidgets (testable seul)
   TideField        hauteur d'eau (uniforme ou maillée)
   BathyLayer       chargement asynchrone
   Inflate          décompression zlib sans dépendance
+  Archive          extraction des archives .zip / .7z (données externes)
+  Catalog          catalogue des données externes (data/catalog.json), empreintes
+  TideGauge        marégraphes en ligne : interface des réseaux, séries de mesures
+  Refmar, NoaaCoops  réseaux REFMAR (Shom) et NOAA CO-OPS
+  Json, Sha256     lecture JSON, empreintes SHA-256
   Triangulate      enveloppe de delaunator
 src/PersonalDepth_pi.*   classe plugin, configuration, tâches de fond
 src/BathyRenderer.*      rendu GL / DC, sondes, bandeau de palette
@@ -373,6 +397,9 @@ src/BathyDialog.*        panneau principal
 src/DataDialog.*         fenêtre « Gestion des données »
 src/ImportDialog.*       fenêtre d'import / de modification des sources
 src/TideChart.*          fenêtre « Courbe de marée »
+src/ExternalDataDialog.* fenêtre « Données externes » (téléchargement, vérification)
+src/GaugeDialog.*        choix d'un marégraphe en ligne ; GaugeManager.* : téléchargements en tâche de fond
+data/catalog.json        catalogue des données externes (intégré au plugin, mis à jour depuis le dépôt)
 src/core/Lang.*          langue de l'interface ; LangTable.inc : table français -> anglais
 tools/pdtide_convert.py  conversion FES2022 NetCDF -> .pdtide
 tools/ci/                compilation Linux en conteneur (GitHub Actions)
@@ -380,7 +407,7 @@ cmake/                   paquet OpenCPN (PdPackage), correctif wxWidgets macOS
 packaging/               modèle de metadata.xml
 .github/workflows/       compilation automatique Linux / Raspberry Pi / macOS
 tests/test_core.cpp      tests du cœur
-third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT)
+third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT), LZMA SDK 7z (domaine public)
 ```
 
 ### Limites connues
@@ -424,4 +451,5 @@ see [`LICENSE`](LICENSE). / Licence GNU GPL version 2 ou (à votre choix) toute
 version ultérieure.
 
 Third-party code / code tiers : SQLite (public domain / domaine public),
-miniz (MIT), `delaunator.hpp` (MIT, © 2018 Volodymyr Bilonenko).
+miniz (MIT), `delaunator.hpp` (MIT, © 2018 Volodymyr Bilonenko), LZMA SDK
+7z decoder (public domain / domaine public, Igor Pavlov).

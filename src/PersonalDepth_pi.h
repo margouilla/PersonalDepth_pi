@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "ocpn_plugin.h"
+#include "core/TideGauge.h"
 #include "core/BathyDb.h"
 #include "core/BathyLayer.h"
 #include "core/ColorRamp.h"
@@ -48,6 +49,7 @@
 
 class BathyDialog;
 class TideChartDialog;
+class GaugeManager;
 class BathyRenderer;
 
 // Réglages d'affichage : tout ceci est appliqué à chaud, sans recalcul des grilles
@@ -150,7 +152,10 @@ struct DisplaySettings {
   int tideMode = 0;                 // 0 aucune, 1 maintenant, 2 date choisie
   long long tideTime = 0;           // date choisie (secondes UTC)
   int tideShiftMin = 0;             // décalage du curseur horaire (minutes)
-  int tideSource = 0;               // 0 stations OpenCPN, 1 FES2022 maillé
+  int tideSource = 0;               // 0 stations OpenCPN, 1 FES2022 maillé, 2 marégraphe (observé)
+  std::string tideGaugeProvider = "refmar";  // réseau du marégraphe (core/TideGauge.h)
+  std::string tideGaugeId;          // marégraphe choisi (vide : le plus proche)
+  bool tideGaugeAuto = true;        // le plus proche de la zone
   std::string tideAtlas;            // fichier .pdtide (tools/pdtide_convert.py)
   std::string tideZ0Files;          // grille(s) « NM au-dessus du ZH » (';'), facultatif
   bool tideUseBathyElli = true;     // Z0 = BathyElli NM/ell − ZH/ell (dossier France)
@@ -228,6 +233,8 @@ pd::ColorRamp ImageryRamp(const DisplaySettings& s);
 struct TideChartPoint {
   wxString name;
   double lon = 0, lat = 0;
+  int kind = 0;      // 0 source du moment, 1 mesures du marégraphe, 2 prédiction d'une station OpenCPN
+  int station = -1;  // kind 2 : station OpenCPN
 };
 
 std::string SerializeImportPrefs(const DisplaySettings& s);
@@ -295,7 +302,12 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   void TideChartSeries(const std::vector<TideChartPoint>& pts, const std::vector<time_t>& t,
                        std::vector<std::vector<double>>& h);
   time_t TideChartTime() const;
+  int TideChartDataVersion() const;  // change quand de nouvelles mesures arrivent
+  wxString TideDatasetLabel(const wxString& station);  // jeu de marées OpenCPN de la station
   void ShowTideChart();
+  GaugeManager& Gauges();            // marégraphes en ligne (listes, mesures)
+  const pd::GaugeStation& CurrentGauge() const { return m_gauge; }  // marégraphe de la marée
+  bool TideChartDownloading() const;  // mesures du marégraphe en cours de téléchargement
   // date du levé (AAAA-MM-JJ) et/ou classe, sans relire les fichiers (vide = inchangé) ;
   // params : réglages d'import déclarés pour les sources qui n'en ont pas encore
   void DbEditMeta(const std::vector<int64_t>& ids, const std::string& date, const std::string& group,
@@ -366,6 +378,14 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   bool TideZone(double box[4], std::string* sig) const;  // zone de la marée (sources à l'écran)
   std::string m_tideZoneSig;
   static wxString DefaultReferenceDir();
+  // Données externes (catalogue, REFMAR) : dossier des références (créé au
+  // besoin), téléchargement avec la fenêtre de progression d'OpenCPN (fichier
+  // .part renommé à la fin), centre de la carte, base non vide
+  wxString ExternalDir();
+  bool Download(const wxString& url, const wxString& dest, const wxString& title, const wxString& message,
+                wxWindow* parent, wxString& err, bool* aborted = nullptr);
+  bool ViewCenter(double& lat, double& lon) const;
+  bool HasDbSources() const { return !m_dbSources.empty(); }
 
   void ShowPanel(int tab = -1);                            // ouvre le panneau (onglet facultatif)
   void SetShown(bool on);                                  // affiche / masque tout le plugin
@@ -433,6 +453,13 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   double m_tideStationDistKm = 0, m_tideStationLat = 0, m_tideStationLon = 0;
   double m_tideRefLat = 1e9, m_tideRefLon = 1e9;
   long long m_lastTideMinute = 0;
+  // source « marégraphe » : station utilisée et ses mesures
+  std::unique_ptr<GaugeManager> m_gauges;
+  pd::GaugeStation m_gauge;
+  double m_gaugeDistKm = 0;
+  pd::GaugeSeries m_gaugeSeries;
+  std::string m_gaugeSeriesKey;
+  std::map<wxString, wxString> m_tideDatasetLabels;  // station OpenCPN -> jeu de marées
   unsigned m_tideVersion = 0;
   // Marée maillée FES : zone préparée en tâche de fond (plus basse mer…)
   void StartFes(const std::string& key, const std::string& atlas, const double bbox[4],

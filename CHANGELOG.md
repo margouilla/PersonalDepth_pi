@@ -4,6 +4,43 @@
 
 ## English
 
+### 0.1.0-beta.15 (unreleased)
+
+- **External data window** (*Data* tab, *Vertical reference surfaces* box,
+  and *Tide* tab): list of the reference files with producer, licence and
+  status. The open data (Shom BathyElli ZH and NM, IGN RAF20 and RAC23) are
+  downloaded in one click from the producers' own websites: licence shown
+  first, SHA-256 fingerprint checked, `.7z` archives unpacked by the plugin
+  (LZMA SDK decoder, public domain), files saved in the reference folder,
+  database surfaces updated on request. No Python needed. FES2022 and the
+  MSS (AVISO account) open their instructions page and are set with *Choose
+  the file…*; NOAA VDatum sets the *Countries* folder. The catalogue is
+  embedded in the plugin and can be updated from the repository
+  (`data/catalog.json`) without a new version.
+- **Online tide gauge as tide source** (*Tide* tab, *Online tide gauge:
+  observed height*): the water height measured by the nearest REFMAR tide
+  gauge (France; or a chosen one), surge included, is added to the depths: now
+  (fetched every 5 minutes in the background) or at a chosen past date. The
+  tide curve shows the measurements with the prediction of the nearby
+  OpenCPN station, named with its tide file (e.g. *OpenCPN prediction
+  (HARMONIC)*); the user guide explains that OpenCPN stations keep the datum
+  of their file (TICON at Le Conquet: about 0.34 m above the Shom chart
+  datum). While measurements are being downloaded, the curve says so.
+  Built for other countries' tide gauge networks to be added.
+- **NOAA CO-OPS tide gauges** (United States, public domain, water levels
+  above MLLW): second online tide gauge network, in the import and in the
+  *Tide* tab; in *nearest* mode, the nearest gauge of all networks is used.
+- *External data* window: **Check the files** checks again the SHA-256
+  fingerprints of the installed files (BathyElli files listed one by one in
+  the catalogue, now version 2).
+- **REFMAR tide gauges** (import, *Observed water levels*, **Tide gauge…**): the
+  water levels of the Shom tide gauges (France, Open Licence) are downloaded
+  for the survey period, from the gauge closest to the chart centre, and used
+  directly to correct the soundings. REFMAR text files downloaded by hand
+  are also recognised (best source of each day, metres above chart datum).
+- Docs: the RAF20 / RAC23 links of the IGN have moved (old links gave
+  "page not found").
+
 ### 0.1.0-beta.14 (2026-11-20)
 
 - `.prj` files without a known EPSG code (ESRI WKT exported by QGIS, WKT2)
@@ -447,6 +484,47 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.15 (non publiée)
+
+- **Fenêtre Données externes** (onglet *Données*, cadre *Surfaces de
+  référence verticale*, et onglet *Marée*) : liste des fichiers de référence
+  avec producteur, licence et état. Les données libres (BathyElli ZH et NM du
+  Shom, RAF20 et RAC23 de l'IGN) se téléchargent d'un clic sur le site même
+  des producteurs : licence affichée d'abord, empreinte SHA-256 contrôlée,
+  archives `.7z` décompressées par le plugin (décodeur du LZMA SDK, domaine
+  public), fichiers rangés dans le dossier des références, surfaces de la
+  base mises à jour sur demande. Plus besoin de Python. FES2022 et la MSS
+  (compte AVISO) ouvrent leur page d'instructions et se règlent avec
+  *Choisir le fichier…* ; NOAA VDatum règle le dossier *Pays*. Le catalogue
+  est intégré au plugin et se met à jour depuis le dépôt (`data/catalog.json`)
+  sans nouvelle version.
+- **Marégraphe en ligne comme source de marée** (onglet *Marée*,
+  *Marégraphe en ligne : hauteur observée*) : la hauteur d'eau mesurée par le
+  marégraphe REFMAR le plus proche (France ; ou celui choisi), surcote comprise,
+  s'ajoute aux profondeurs : maintenant (reprise toutes les 5 minutes en
+  tâche de fond) ou à une date passée choisie. La courbe de marée montre les
+  mesures avec la prédiction de la station OpenCPN voisine, nommée avec son
+  fichier de marées (ex. *Prédiction OpenCPN (HARMONIC)*) ; le guide explique
+  que les stations OpenCPN gardent le zéro de leur fichier (TICON à Le
+  Conquet : environ 0,34 m au-dessus du ZH du Shom). Pendant le
+  téléchargement des mesures, la courbe l'indique. Prévu pour accueillir les
+  réseaux de marégraphes d'autres pays.
+- **Marégraphes NOAA CO-OPS** (États-Unis, domaine public, hauteurs au-dessus
+  du MLLW) : deuxième réseau de marégraphes en ligne, à l'import et dans
+  l'onglet *Marée* ; en mode *le plus proche*, le marégraphe le plus proche
+  tous réseaux confondus.
+- Fenêtre *Données externes* : **Vérifier les fichiers** recontrôle les
+  empreintes SHA-256 des fichiers installés (fichiers BathyElli listés un à
+  un dans le catalogue, désormais version 2).
+- **Marégraphes REFMAR** (import, *Hauteurs d'eau observées*, **Marégraphe…**) :
+  les hauteurs d'eau des marégraphes du Shom (France, Licence Ouverte) se
+  téléchargent pour la période du levé, depuis le marégraphe le plus proche
+  du centre de la carte, et corrigent directement les sondes. Les fichiers
+  texte REFMAR téléchargés à la main sont aussi reconnus (meilleure source
+  de chaque jour, mètres au zéro hydrographique).
+- Docs : les liens RAF20 / RAC23 de l'IGN ont changé (les anciens donnaient
+  « page introuvable »).
 
 ### 0.1.0-beta.14 (2026-11-20)
 

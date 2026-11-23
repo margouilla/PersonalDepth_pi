@@ -192,6 +192,12 @@ class TideChartPanel : public wxPanel {
       dc.DrawText(s, std::max(plot.x, std::min(plot.GetRight() - e.x, xm - e.x / 2)), plot.y - e.y - 4);
     }
 
+    // mesures du marégraphe en cours de téléchargement (bornes élargies…)
+    if (D.Downloading()) {
+      dc.SetTextForeground(wxColour(150, 90, 0));
+      dc.DrawText(U8("Téléchargement des mesures…"), plot.x + FromDIP(6), plot.y + FromDIP(4));
+    }
+
     // légende à cocher
     int lx = plot.GetRight() + FromDIP(16), ly = plot.y;
     dc.SetTextForeground(ink);
@@ -283,6 +289,8 @@ TideChartDialog::TideChartDialog(wxWindow* parent, PersonalDepth_pi* pi)
 }
 
 // Nouvel instant ou nouveaux points (appelé à chaque mise à jour de la marée)
+bool TideChartDialog::Downloading() const { return m_pi->TideChartDownloading(); }
+
 void TideChartDialog::TideUpdated() {
   if (!IsShown()) return;
   wxString why;
@@ -292,7 +300,7 @@ void TideChartDialog::TideUpdated() {
   const DisplaySettings& st = m_pi->Settings();
   m_unit = st.heightUnit;
   std::string key = std::string(m_source.ToUTF8().data()) + "|" + std::to_string(st.heightK) + "|" +
-                    std::to_string(st.tideSource);
+                    std::to_string(st.tideSource) + "|" + std::to_string(m_pi->TideChartDataVersion());
   for (const auto& p : pts) {
     char b[96];
     std::snprintf(b, sizeof b, "|%.5f %.5f ", p.lon, p.lat);

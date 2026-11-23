@@ -54,6 +54,14 @@
 #include "../src/core/Tracks.h"
 #include "../src/core/SideScan.h"
 #include "../src/core/Shoreline.h"
+#include "../src/core/Json.h"
+#include "../src/core/Sha256.h"
+#include "../src/core/Archive.h"
+#include "../src/core/Refmar.h"
+#include "../src/core/TideGauge.h"
+#include "../src/core/NoaaCoops.h"
+#include "../src/core/Catalog.h"
+#include "test_archives.inc"
 #include <cstring>
 #include "../src/core/Projection.h"
 
@@ -62,6 +70,7 @@ using clk = std::chrono::steady_clock;
 static std::string Tmp(const char* n) {
   return (std::filesystem::temp_directory_path() / n).string();
 }
+static std::string Tmp(const std::string& n) { return Tmp(n.c_str()); }
 static double ms(clk::time_point a) {
   return std::chrono::duration<double, std::milli>(clk::now() - a).count();
 }
@@ -2719,6 +2728,225 @@ int main(int argc, char** argv) {
       prev = sm.pixelsPerDegLon();
     }
     std::printf("Écran tourné : échelle constante sur 360° (%.1f px/°) : OK\n", prev);
+  }
+  {  // Données externes : JSON, SHA-256, archives .7z / .zip, catalogue, REFMAR
+    std::string err;
+    Json j;
+    CHECK(Json::Parse("{\"a\":[1,2.5,-3e2],\"b\":{\"c\":\"\\u00e9\\n\",\"d\":true,\"e\":null},\"n\":\"42\"}", j, err));
+    CHECK(j["a"].size() == 3 && j["a"][1].num() == 2.5 && j["a"][2].num() == -300);
+    CHECK(j["b"]["c"].str() == "\xc3\xa9\n" && j["b"]["d"].boolean() && j["b"]["e"].isNull());
+    CHECK(j["n"].integer() == 42 && j["absent"]["x"].str("def") == "def");
+    CHECK(!Json::Parse("{\"a\":}", j, err) && !Json::Parse("[1,2", j, err) && !Json::Parse("{} x", j, err));
+    CHECK(Sha256::OfString("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(Sha256::OfString("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    CHECK(Sha256::OfString(std::string(1000, 'a')) == "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3");
+    // archives : même contenu en LZMA (comme BathyElli du Shom), LZMA2, deflate, stocké
+    const std::string glhiSha = "1eb2174e9bc5fcbc681034e530413c0e85378e3e6f1e380697acae7eda672430";
+    const std::string xmlSha = "7ab706c813b39468eec3eabf3abe5bfa7bd44886495bb29198f6355a802b6d49";
+    struct A { const char* name; const unsigned char* d; size_t n; ArchiveKind k; };
+    const A arcs[] = {{"lzma.7z", kArc_lzma_7z, sizeof kArc_lzma_7z, ArchiveKind::SevenZip},
+                      {"lzma2.7z", kArc_lzma2_7z, sizeof kArc_lzma2_7z, ArchiveKind::SevenZip},
+                      {"defl.zip", kArc_defl_zip, sizeof kArc_defl_zip, ArchiveKind::Zip},
+                      {"store.zip", kArc_store_zip, sizeof kArc_store_zip, ArchiveKind::Zip}};
+    for (const auto& a : arcs) {
+      const std::string f = Tmp(std::string("pd_test_") + a.name);
+      { std::ofstream o(f, std::ios::binary); o.write((const char*)a.d, (std::streamsize)a.n); }
+      CHECK(DetectArchive(f) == a.k);
+      std::vector<ArchiveEntry> ls;
+      CHECK(ListArchive(f, ls, err));
+      bool sawGlhi = false;
+      for (const auto& e : ls)
+        if (e.name == "BATHYELLI_ZH_ell_V2_1/DATA/BathyElliv2.1_ATL_ZH.glhi") sawGlhi = e.size == 3600 && !e.dir;
+      CHECK(sawGlhi);
+      const std::string dest = Tmp(std::string("pd_test_x_") + a.name);
+      std::filesystem::remove_all(dest);
+      std::vector<std::string> w;
+      CHECK(ExtractArchive(f, dest, nullptr, false, w, err));
+      CHECK(w.size() == 2);
+      CHECK(Sha256::OfFile(dest + "/BATHYELLI_ZH_ell_V2_1/DATA/BathyElliv2.1_ATL_ZH.glhi") == glhiSha);
+      CHECK(Sha256::OfFile(dest + "/BATHYELLI_ZH_ell_V2_1/notice.xml") == xmlSha);
+      // fichiers choisis, sans sous-dossiers
+      std::filesystem::remove_all(dest);
+      CHECK(ExtractArchive(f, dest, [](const std::string& n) { return catalog::WildMatch("*.glhi", n); }, true, w, err));
+      CHECK(w.size() == 1 && Sha256::OfFile(dest + "/BathyElliv2.1_ATL_ZH.glhi") == glhiSha);
+      CHECK(catalog::FindFile(dest, "*zh*.GLHI") == w[0] && catalog::FindFile(dest, "*NM*.glhi").empty());
+      std::filesystem::remove_all(dest);
+    }
+    {  // noms dangereux : jamais écrits hors du dossier
+      const std::string f = Tmp("pd_test_evil.zip");
+      { std::ofstream o(f, std::ios::binary); o.write((const char*)kArc_evil_zip, sizeof kArc_evil_zip); }
+      const std::string dest = Tmp("pd_test_x_evil");
+      std::filesystem::remove_all(dest);
+      std::vector<std::string> w;
+      CHECK(ExtractArchive(f, dest, nullptr, false, w, err));
+      CHECK(w.size() == 1 && w[0].find("ok") != std::string::npos);
+      CHECK(!std::filesystem::exists(Tmp("evil.txt")));
+      CHECK(SafeEntryName("../x") == "" && SafeEntryName("C:/x") == "" && SafeEntryName("./a//b\\c") == "a/b/c");
+      std::filesystem::remove_all(dest);
+      // fichier ordinaire : pas une archive
+      CHECK(DetectArchive(Tmp("pd_test_lzma.7z")) == ArchiveKind::SevenZip);
+    }
+    {  // catalogue intégré : adresses https, empreintes, motifs
+      Catalog c;
+      CHECK(catalog::Parse(catalog::BuiltinJson(), c, err));
+      CHECK(c.format == 1 && c.version >= 1 && c.items.size() >= 6);
+      const CatalogItem* zh = c.find("bathyelli-zh");
+      CHECK(zh && zh->downloadable() && zh->extract && zh->sha256.size() == 64 && zh->check == "*ZH*.glhi");
+      CHECK(zh->title("ru") != zh->title("fr") && !zh->description("xx").empty());
+      const CatalogItem* fes = c.find("fes2022b");
+      CHECK(fes && fes->manual && !fes->downloadable() && fes->use == "tide");
+      const CatalogItem* raf = c.find("raf20");
+      CHECK(raf && raf->check == "RAF20.tac" && raf->size == 1685906);
+      // adresse non https ou nom avec dossier : refusés
+      Catalog bad;
+      CHECK(catalog::Parse("{\"format\":1,\"items\":[{\"id\":\"x\",\"download\":{\"url\":\"http://a/b\",\"file\":\"b\"}},"
+                           "{\"id\":\"y\",\"download\":{\"url\":\"https://a/b\",\"file\":\"../b\"}}]}", bad, err));
+      CHECK(!bad.items[0].downloadable() && !bad.items[1].downloadable());
+      CHECK(!catalog::Parse("{\"format\":2,\"items\":[{\"id\":\"x\"}]}", bad, err));
+      // cache plus récent pris, plus ancien ignoré
+      const std::string cache = Tmp("pd_test_catalog.json");
+      { std::ofstream o(cache); o << "{\"format\":1,\"version\":999,\"items\":[{\"id\":\"z\",\"manual\":true}]}"; }
+      CHECK(catalog::Load(cache).find("z") != nullptr);
+      { std::ofstream o(cache); o << "{\"format\":1,\"version\":0,\"items\":[{\"id\":\"z\",\"manual\":true}]}"; }
+      CHECK(catalog::Load(cache).find("bathyelli-zh") != nullptr);
+      CHECK(catalog::WildMatch("*mllw*.gtx", "AKglacier00_8301_MLLW.gtx") && !catalog::WildMatch("RAF20.tac", "RAF20.tac.part"));
+      CHECK(catalog::WildMatch("RAC2?.mnt", "rac23.mnt") && !catalog::WildMatch("a*b", "ac"));
+    }
+    {  // REFMAR : liste des marégraphes, tranches, lecture (meilleure source du jour)
+      std::vector<GaugeStation> st;
+      CHECK(refmar::ParseStations("[{\"shom_id\":\"152\",\"name\":\"LE_CONQUET\",\"longitude\":-4.78075,\"latitude\":48.359098,"
+                                  "\"state\":\"OK\",\"reseau\":\"RONIM\"},{\"shom_id\":\"3\",\"name\":\"BREST\",\"longitude\":-4.495,"
+                                  "\"latitude\":48.383},{\"shom_id\":\"x/../1\",\"name\":\"BAD\",\"longitude\":0,\"latitude\":0}]",
+                                  st, err));
+      CHECK(st.size() == 2 && st[0].name == "BREST" && st[1].label() == "Le Conquet" && st[1].network == "RONIM");
+      CHECK(st[1].provider == "refmar" && st[1].folder() == "152_LE_CONQUET");
+      const double d = gauge::DistanceKm(st[0].lon, st[0].lat, st[1].lon, st[1].lat);
+      CHECK(d > 20 && d < 22);
+      double km = 0;
+      CHECK(gauge::Nearest(st, -4.77, 48.36, &km) == 1 && km < 2);
+      const GaugeProvider* prov = FindGaugeProvider("refmar");
+      CHECK(prov && prov == GaugeProviders().front() && prov->datum() == "ZH" && prov->maxChunkDays() == 31);
+      long long t0, t1;
+      CHECK(ParseDateTime("2026-01-01", "", 1, t0) && ParseDateTime("2026-03-15", "", 1, t1));
+      const auto ch = prov->chunks("152", t0, t1, 99);
+      CHECK(ch.size() == 3 && ch[0].file == "152_2026-01-01_31d.txt" && ch[1].file == "152_2026-02-01_31d.txt");
+      CHECK(ch[2].file == "152_2026-03-04_11d.txt");
+      const auto days = prov->chunks("152", t0 + 3600, t0 + 2 * 86400 - 60, 1);
+      CHECK(days.size() == 2 && days[1].file == "152_2026-01-02_1d.txt" &&
+            days[1].url.find("dtStart=2026-01-02T00:00:00Z&dtEnd=2026-01-02T23:59:59Z") != std::string::npos);
+      long long c0 = 0;
+      int nd = 0;
+      CHECK(gauge::ParseChunkFile("152_2026-01-02_1d.txt", c0, nd) && c0 == t0 + 86400 && nd == 1);
+      CHECK(gauge::ParseChunkFile("3_2026-02-01_31d.txt", c0, nd) && nd == 31);
+      CHECK(!gauge::ParseChunkFile("152_2026-01-02.txt", c0, nd) && !gauge::ParseChunkFile("stations.json", c0, nd));
+      CHECK(ch[0].url.find("txt/152?sources=1,2,3,4&dtStart=2026-01-01T00:00:00Z&dtEnd=2026-01-31T23:59:59Z") != std::string::npos);
+      CHECK(ch.back().t1 == t1);
+      const std::string txt =
+          "# Station : LE_CONQUET\n# Fuseau horaire : UTC\n# Référence verticale : zero_hydrographique\n# Unité : m\n"
+          "# Date;Valeur;Source\n"
+          "01/01/2025 00:00:00;2.274;4\n01/01/2025 00:00:00;2.285;3\n01/01/2025 00:00:00;2.280;2\n"
+          "01/01/2025 00:00:00;2.2801;1\n01/01/2025 00:01:00;2.2700;1\n01/01/2025 00:10:00;2.100;3\n"
+          "01/01/2025 00:10:00;2.101;2\n01/01/2025 06:12:00;6.5;6\n"
+          "02/01/2025 00:00:00;3.0;1\n02/01/2025 00:01:00;3.1;1\nligne illisible\n";
+      CHECK(prov->recognises(txt) && refmar::IsRefmarText(txt) && refmar::HasData(txt) && !refmar::HasData("# Station : X\n# Date;Valeur;Source\n"));
+      CHECK(refmar::HeaderValue(txt, "Référence verticale") == "zero_hydrographique");
+      std::vector<long long> T;
+      std::vector<double> H;
+      int sk = 0;
+      CHECK(refmar::Parse(txt, T, H, sk, err));
+      // 1er janvier : source 3 seule (2 valeurs) ; 2 janvier : source 1 (2 valeurs)
+      CHECK(T.size() == 4 && std::fabs(H[0] - 2.285) < 1e-9 && std::fabs(H[1] - 2.100) < 1e-9);
+      CHECK(T[1] - T[0] == 600 && std::fabs(H[2] - 3.0) < 1e-9 && sk == 1);
+      CHECK(FormatTime(T[0]) == "2025-01-01 00:00");
+      // série de hauteurs d'eau : dossier de fichiers REFMAR lu directement, en m même si l'unité choisie est le pied
+      const std::string dir = Tmp("pd_test_refmar");
+      std::filesystem::remove_all(dir);
+      std::filesystem::create_directories(dir);
+      { std::ofstream o(dir + "/152_2025-01-01_1d.txt", std::ios::binary); o << txt; }
+      WaterLevelSeries ws;
+      TextFormat tf;
+      CHECK(ws.load(dir, tf, 0.3048, err));
+      float hh = 0;
+      CHECK(ws.size() == 4 && ws.at(T[0] + 300, hh) && std::fabs(hh - 2.1925f) < 1e-4);
+      // série du marégraphe (onglet Marée) : tranches du dossier, trous et bords
+      GaugeSeries gs;
+      CHECK(gs.load(*prov, dir, T[0], T[0] + 2 * 86400) && gs.size() == 4);
+      double gh = 0;
+      long long tob = 0;
+      CHECK(gs.at(T[0] + 300, 1800, 600, gh, &tob) && std::fabs(gh - 2.1925) < 1e-9 && tob == T[0]);
+      CHECK(!gs.at(T[1] + 3600, 1800, 600, gh));          // trou de près d'un jour : pas d'interpolation
+      CHECK(gs.at(T[3] + 300, 1800, 600, gh) && gh == H[3]);  // après la dernière mesure : gardée 10 min
+      CHECK(!gs.at(T[3] + 900, 1800, 600, gh));
+      CHECK(!gs.load(*prov, dir, T[0] + 10 * 86400, T[0] + 11 * 86400));  // tranche hors période
+      std::filesystem::remove_all(dir);
+    }
+    {  // NOAA CO-OPS : liste (stations à marée seulement), adresse, réponse CSV, entête enregistré
+      const GaugeProvider* np = FindGaugeProvider("noaa");
+      CHECK(np && GaugeProviders().size() == 2 && np->datum() == "MLLW");
+      std::vector<GaugeStation> st;
+      CHECK(np->parseStations("{\"count\":3,\"stations\":[{\"id\":\"8454000\",\"name\":\"Providence\",\"lat\":41.8071,"
+                              "\"lng\":-71.4012,\"state\":\"RI\",\"tidal\":true,\"greatlakes\":false},"
+                              "{\"id\":\"9063020\",\"name\":\"Buffalo\",\"lat\":42.87,\"lng\":-78.89,\"state\":\"NY\","
+                              "\"tidal\":false,\"greatlakes\":true},{\"id\":\"1612340\",\"name\":\"Honolulu\",\"lat\":21.3,"
+                              "\"lng\":-157.86,\"state\":\"HI\",\"tidal\":true}]}", st, err));
+      CHECK(st.size() == 2 && st[0].name == "Honolulu" && st[1].provider == "noaa" && st[1].network == "RI");
+      long long a, b;
+      CHECK(ParseDateTime("2026-11-20", "", 1, a));
+      b = a + 86400;
+      const auto c = np->chunks("8454000", a, b, 1);
+      CHECK(c.size() == 1 && c[0].file == "8454000_2026-11-20_1d.txt" &&
+            c[0].url.find("begin_date=20261120&end_date=20261120&datum=MLLW&station=8454000&time_zone=gmt&units=metric") !=
+                std::string::npos);
+      const std::string csv =
+          "Date Time, Water Level, Sigma, O or I (for verified), F, R, L, Quality \n"
+          "2026-11-20 00:00,0.568,0.005,0,0,0,0,p\n2026-11-20 00:06,0.55,0.006,0,0,0,0,p\n2026-11-20 00:12,,,,,,,\n";
+      CHECK(np->hasData(csv) && !np->hasData("\nThere is no MLLW for the station: 9999999\n"));
+      CHECK(!np->recognises(csv));  // réponse brute : référence inconnue
+      const std::string stored = np->store(csv);
+      CHECK(np->recognises(stored) && np->store(stored) == stored && !refmar::Provider().recognises(stored));
+      std::vector<long long> T;
+      std::vector<double> H;
+      int sk = 0;
+      CHECK(np->parse(stored, T, H, sk, err) && T.size() == 2 && T[0] == a && T[1] == a + 360 && H[1] == 0.55);
+      // import : un fichier NOAA enregistré par le plugin est lu tel quel
+      const std::string dir = Tmp("pd_test_noaa");
+      std::filesystem::remove_all(dir);
+      std::filesystem::create_directories(dir);
+      { std::ofstream o(dir + "/" + c[0].file, std::ios::binary); o << stored; }
+      WaterLevelSeries ws;
+      TextFormat tf;
+      float hh = 0;
+      CHECK(ws.load(dir, tf, 1.0, err) && ws.size() == 2 && ws.at(a + 180, hh) && std::fabs(hh - 0.559f) < 1e-4);
+      GaugeSeries gs;
+      CHECK(gs.load(*np, dir, a, b) && gs.size() == 2);
+      std::filesystem::remove_all(dir);
+    }
+    {  // catalogue : empreintes des fichiers installés
+      Catalog c;
+      CHECK(catalog::Parse(catalog::BuiltinJson(), c, err) && c.version >= 2);
+      const CatalogItem* zh = c.find("bathyelli-zh");
+      CHECK(zh && zh->files.size() == 2 && zh->files[0].first == "BathyElliv2.1_ATL_ZH.glhi");
+      const std::string dir = Tmp("pd_test_verify");
+      std::filesystem::remove_all(dir);
+      std::filesystem::create_directories(dir + "/sub");
+      CatalogItem it;
+      it.files = {{"a.txt", Sha256::OfString("abc")}, {"b.txt", Sha256::OfString("x")}, {"c.txt", Sha256::OfString("y")}};
+      { std::ofstream o(dir + "/sub/a.txt", std::ios::binary); o << "abc"; }
+      { std::ofstream o(dir + "/b.txt", std::ios::binary); o << "changed"; }
+      auto v = catalog::Verify(it, dir);
+      CHECK(v.size() == 3 && v[0].status == catalog::FileCheck::Ok && v[1].status == catalog::FileCheck::Different &&
+            v[2].status == catalog::FileCheck::Missing);
+      CatalogItem one;  // fichier téléchargé tel quel : son empreinte de téléchargement
+      one.check = "a.txt";
+      one.sha256 = Sha256::OfString("abc");
+      v = catalog::Verify(one, dir);
+      CHECK(v.size() == 1 && v[0].status == catalog::FileCheck::Ok);
+      one.extract = true;  // archive : pas d'empreinte du contenu
+      v = catalog::Verify(one, dir);
+      CHECK(v.size() == 1 && v[0].status == catalog::FileCheck::NoFingerprint);
+      std::filesystem::remove_all(dir);
+    }
+    std::printf("Données externes (JSON, SHA-256, .7z / .zip, catalogue, REFMAR, NOAA, vérification) : OK\n");
   }
   std::printf("\nTOUS LES TESTS PASSENT\n");
   return 0;

@@ -65,6 +65,7 @@ class BathyDialog : public wxDialog {
   wxSizer* BuildDbBox(wxWindow* p);    // cadre Bathymétrie (et cadre du dossier, m_dbTopBox)
   wxSizer* m_dbTopBox = nullptr;
   wxSizer* BuildDatumBox(wxWindow* p);  // référence verticale de l'affichage
+  void OpenExternalData();              // fenêtre « Données externes »
   wxSizer* BuildDispDatumBox(wxWindow* p);  // référence verticale affichée (onglet Affichage)
   wxSizer* BuildLandBox(wxWindow* p);   // trait de côte (pas d'interpolation sur la terre)
   wxSizer* BuildImageryBox(wxWindow* p);  // imagerie du fond : images de la base, import
@@ -149,8 +150,11 @@ class BathyDialog : public wxDialog {
   DataDialog* m_data = nullptr;  // fenêtre « Gestion des données » (enfant)
   // Marée
   wxChoice *m_tideMode, *m_tideSrc;
-  wxTextCtrl *m_tideAtlas, *m_tideZ0;
+  wxTextCtrl *m_tideAtlas = nullptr, *m_tideZ0 = nullptr;
   wxButton *m_tideAtlasBtn, *m_tideZ0Btn;
+  wxCheckBox* m_gaugeAuto = nullptr;   // marégraphe : le plus proche de la zone
+  wxStaticText* m_gaugeName = nullptr;
+  wxButton* m_gaugeBtn = nullptr;
   wxCheckBox* m_tideBE;
   wxDatePickerCtrl* m_tideDate;
   wxTimePickerCtrl* m_tideTime;

@@ -19,6 +19,7 @@
 #include "core/BathyDb.h"
 #include "TextFormatDialog.h"
 #include "WaterLevelDialog.h"
+#include "GaugeDialog.h"
 #include "core/WaterLevel.h"
 
 #include <wx/collpane.h>
@@ -515,6 +516,9 @@ wxSizer* ImportDialog::BuildWater(wxWindow* p) {
   m_waterFile = new wxButton(p, wxID_ANY, U8("Fichier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
   m_waterDir = new wxButton(p, wxID_ANY, U8("Dossier…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
   m_waterCurve = new wxButton(p, wxID_ANY, U8("Courbe…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterRefmar = new wxButton(p, wxID_ANY, U8("Marégraphe…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  m_waterRefmar->SetToolTip(U8("Télécharger les hauteurs d'eau d'un marégraphe en ligne pour la période du "
+                               "levé (France : REFMAR du Shom ; États-Unis : NOAA CO-OPS)."));
   m_waterFmtBtn = new wxButton(p, wxID_ANY, U8("Format…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
   m_waterInfo = new wxStaticText(p, wxID_ANY, "");
   m_waterInfo->SetForegroundColour(wxColour(90, 90, 90));
@@ -534,6 +538,7 @@ wxSizer* ImportDialog::BuildWater(wxWindow* p) {
   wr->Add(m_water, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   wr->Add(m_waterFile, 0, wxRIGHT, 2);
   wr->Add(m_waterDir, 0, wxRIGHT, 2);
+  wr->Add(m_waterRefmar, 0, wxRIGHT, 2);
   wr->Add(m_waterFmtBtn, 0, wxRIGHT, 2);
   wr->Add(m_waterCurve, 0);
   col->Add(wr, 0, wxEXPAND);
@@ -558,6 +563,18 @@ wxSizer* ImportDialog::BuildWater(wxWindow* p) {
     CallAfter([this] { OnWaterFormat(); });
   });
   m_waterFmtBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnWaterFormat(); });
+  m_waterRefmar->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    GaugeDialog d(this, m_pi, GaugeDialog::Download);
+    if (d.ShowModal() != wxID_OK) return;
+    // fichiers du marégraphe : reconnus tels quels (mètres au zéro des cartes, UTC)
+    m_water->SetValue(d.Folder());
+    m_waterFmt = TextFormat();
+    m_waterSignV = 0;
+    m_waterFeet = false;
+    m_waterOn->SetValue(true);
+    wxCommandEvent e(wxEVT_CHECKBOX); m_waterOn->GetEventHandler()->ProcessEvent(e);
+    UpdateWaterInfo();
+  });
   m_waterCurve->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     auto ser = std::make_shared<WaterLevelSeries>();
     std::string err;

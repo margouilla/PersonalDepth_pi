@@ -31,6 +31,8 @@
 #include <map>
 
 #include "DataDialog.h"
+#include "ExternalDataDialog.h"
+#include "GaugeDialog.h"
 #include "PersonalDepth_pi.h"
 #include "core/Projection.h"
 
@@ -132,8 +134,9 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
   auto* box = new wxStaticBoxSizer(wxVERTICAL, p, U8("Marée"));
   wxWindow* sb = box->GetStaticBox();
   wxString srcs[] = {U8("Stations de marée OpenCPN (hauteur unique)"),
-                     U8("FES2022 maillé (hauteur variable sur la zone)")};
-  m_tideSrc = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 2, srcs);
+                     U8("FES2022 maillé (hauteur variable sur la zone)"),
+                     U8("Marégraphe en ligne : hauteur observée (France, États-Unis)")};
+  m_tideSrc = new wxChoice(sb, wxID_ANY, wxDefaultPosition, wxDefaultSize, 3, srcs);
   m_tideSrc->SetToolTip(U8("FES2022 : hauteur calculée en chaque nœud de l'atlas (1/30°), "
                            "ajoutée cellule par cellule ; nécessite le fichier .pdtide."));
   auto fileRow = [&](wxTextCtrl*& t, wxButton*& b) {
@@ -151,15 +154,33 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
   m_tideBE = new wxCheckBox(sb, wxID_ANY, U8("Z0 par BathyElli NM/ell − ZH/ell (dossier France) si présents"));
   m_tideBE->SetToolTip(U8("Ordre de priorité de Z0 : grille fournie, puis BathyElli NM/ell − ZH/ell, "
                           "puis plus basse mer astronomique FES sur 19 ans (approximation du ZH)."));
+  // marégraphe en ligne : station choisie ou la plus proche de la zone
+  auto* rG = new wxBoxSizer(wxHORIZONTAL);
+  m_gaugeAuto = new wxCheckBox(sb, wxID_ANY, U8("le plus proche"));
+  m_gaugeAuto->SetToolTip(U8("Marégraphe le plus proche du centre de la zone affichée ; décoché, celui choisi "
+                             "avec « Choisir… »."));
+  m_gaugeName = new wxStaticText(sb, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+  m_gaugeBtn = new wxButton(sb, wxID_ANY, U8("Choisir…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  rG->Add(m_gaugeAuto, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  rG->Add(m_gaugeName, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
+  rG->Add(m_gaugeBtn, 0);
   auto* g = new wxFlexGridSizer(2, 4, 6);
   g->AddGrowableCol(1, 1);
+  g->Add(new wxStaticText(sb, wxID_ANY, U8("Marégraphe")), 0, wxALIGN_CENTER_VERTICAL);
+  g->Add(rG, 1, wxEXPAND);
   g->Add(new wxStaticText(sb, wxID_ANY, U8("Atlas")), 0, wxALIGN_CENTER_VERTICAL);
   g->Add(rAt, 1, wxEXPAND);
   g->Add(new wxStaticText(sb, wxID_ANY, U8("Grille Z0")), 0, wxALIGN_CENTER_VERTICAL);
   g->Add(rZ0, 1, wxEXPAND);
   box->Add(m_tideSrc, 0, wxEXPAND | wxALL, 4);
   box->Add(g, 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
-  box->Add(m_tideBE, 0, wxALL, 4);
+  auto* rBE = new wxBoxSizer(wxHORIZONTAL);
+  rBE->Add(m_tideBE, 1, wxALIGN_CENTER_VERTICAL);
+  auto* ext = new wxButton(sb, wxID_ANY, U8("Données externes…"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+  ext->SetToolTip(U8("Où obtenir l'atlas FES2022 et les fichiers BathyElli ; téléchargement des fichiers libres."));
+  ext->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OpenExternalData(); });
+  rBE->Add(ext, 0, wxLEFT, 4);
+  box->Add(rBE, 0, wxEXPAND | wxALL, 4);
   wxString modes[] = {U8("Aucune — profondeurs au zéro hydrographique"),
                       U8("Hauteur d'eau actuelle (heure du PC)"),
                       U8("Date et heure choisies")};
@@ -190,7 +211,8 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
 
   const DisplaySettings& s = m_pi->Settings();
   m_tideMode->SetSelection(std::max(0, std::min(2, s.tideMode)));
-  m_tideSrc->SetSelection(std::max(0, std::min(1, s.tideSource)));
+  m_tideSrc->SetSelection(std::max(0, std::min(2, s.tideSource)));
+  m_gaugeAuto->SetValue(s.tideGaugeAuto || s.tideGaugeId.empty());
   m_tideAtlas->SetValue(W8(s.tideAtlas.c_str()));
   m_tideZ0->SetValue(W8(s.tideZ0Files.c_str()));
   m_tideBE->SetValue(s.tideUseBathyElli);
@@ -204,6 +226,22 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
   m_tideMode->Bind(wxEVT_CHOICE, &BathyDialog::OnTide, this);
   m_tideSrc->Bind(wxEVT_CHOICE, &BathyDialog::OnTide, this);
   m_tideBE->Bind(wxEVT_CHECKBOX, &BathyDialog::OnTide, this);
+  m_gaugeAuto->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& e) {
+    DisplaySettings& st = m_pi->Settings();
+    st.tideGaugeAuto = m_gaugeAuto->GetValue() || st.tideGaugeId.empty();
+    m_gaugeAuto->SetValue(st.tideGaugeAuto);
+    OnTide(e);
+  });
+  m_gaugeBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent& e) {
+    DisplaySettings& st = m_pi->Settings();
+    GaugeDialog d(this, m_pi, GaugeDialog::Pick, st.tideGaugeProvider, st.tideGaugeId);
+    if (d.ShowModal() != wxID_OK) return;
+    st.tideGaugeProvider = d.Station().provider;
+    st.tideGaugeId = d.Station().id;
+    st.tideGaugeAuto = false;
+    m_gaugeAuto->SetValue(false);
+    OnTide(e);
+  });
   for (wxTextCtrl* t : {m_tideAtlas, m_tideZ0}) {
     t->Bind(wxEVT_TEXT_ENTER, &BathyDialog::OnTide, this);
     t->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) { wxCommandEvent c; OnTide(c); e.Skip(); });
@@ -235,9 +273,18 @@ wxSizer* BathyDialog::BuildTideBox(wxWindow* p) {
 
 void BathyDialog::UpdateTideControls() {
   const bool date = m_tideMode->GetSelection() == 2;
-  const bool fes = m_tideSrc->GetSelection() == 1;
+  const bool fes = m_tideSrc->GetSelection() == 1, gauge = m_tideSrc->GetSelection() == 2;
   for (wxWindow* w : std::initializer_list<wxWindow*>{m_tideAtlas, m_tideAtlasBtn, m_tideZ0, m_tideZ0Btn, m_tideBE})
     w->Enable(fes);
+  for (wxWindow* w : std::initializer_list<wxWindow*>{m_gaugeAuto, m_gaugeName, m_gaugeBtn}) w->Enable(gauge);
+  {  // nom du marégraphe utilisé (le plus proche : connu après le calcul de la marée)
+    const DisplaySettings& st = m_pi->Settings();
+    const pd::GaugeStation& g = m_pi->CurrentGauge();
+    wxString n;
+    if (!g.id.empty() && (st.tideGaugeAuto || g.id == st.tideGaugeId)) n = wxString::FromUTF8(g.label().c_str());
+    else if (!st.tideGaugeAuto) n = U8("station ") + wxString::FromUTF8(st.tideGaugeId.c_str());
+    m_gaugeName->SetLabel(n);
+  }
   m_tideDate->Enable(date);
   m_tideTime->Enable(date);
   m_tideShift->Enable(date);
@@ -292,7 +339,11 @@ void BathyDialog::RelayoutPage(wxWindow* w) {
 }
 
 void BathyDialog::SetTideInfo(const wxString& t) {
-  if (m_tideInfo && m_tideRaw != t) { m_tideRaw = t; SetWrapped(m_tideInfo, t); }
+  if (m_tideInfo && m_tideRaw != t) {
+    m_tideRaw = t;
+    if (m_gaugeName) UpdateTideControls();  // marégraphe le plus proche : nom affiché
+    SetWrapped(m_tideInfo, t);
+  }
 }
 
 // ------------------------------------------------------ base de bathymétrie
@@ -457,6 +508,19 @@ wxSizer* BathyDialog::BuildDispDatumBox(wxWindow* p) {
   return box;
 }
 
+// Données externes : fichiers obtenus ou choisis, champs du panneau relus
+void BathyDialog::OpenExternalData() {
+  ExternalDataDialog d(this, m_pi);
+  d.ShowModal();
+  if (!d.Changed()) return;
+  const DisplaySettings& s = m_pi->Settings();
+  if (m_mss) m_mss->ChangeValue(W8(s.mssGrid.c_str()));
+  if (m_national) m_national->ChangeValue(W8(s.nationalDir.c_str()));
+  if (m_tideAtlas) m_tideAtlas->ChangeValue(W8(s.tideAtlas.c_str()));
+  RefreshDatum();
+  RefreshDb();
+}
+
 wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   // fichiers des surfaces de référence (la référence affichée se choisit dans
   // l'onglet Affichage)
@@ -497,6 +561,11 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   m_datumMigrate = new wxButton(sb, wxID_ANY, U8("Migrer la base…"));
   m_datumMigrate->SetToolTip(U8("Base d'une version antérieure : profondeurs ramenées au niveau moyen "
                                 "(copie de sauvegarde d'abord)."));
+  auto* ext = new wxButton(sb, wxID_ANY, U8("Données externes…"));
+  ext->SetToolTip(U8("Télécharger les fichiers libres (BathyElli, RAF20, RAC23) et obtenir les autres "
+                     "(FES2022, MSS, NOAA VDatum) : licences, liens, choix des fichiers."));
+  ext->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OpenExternalData(); });
+  r3->Add(ext, 0, wxRIGHT, 8);
   r3->Add(m_datumUpdate, 0, wxRIGHT, 8);
   r3->Add(m_datumMigrate, 0);
   box->Add(r3, 0, wxALL, 4);

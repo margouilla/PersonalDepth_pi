@@ -15,6 +15,8 @@
 
 #include "core/Lang.h"
 #include "core/WaterLevel.h"
+#include "GaugeManager.h"
+#include "core/FileUtil.h"
 #include "PersonalDepth_pi.h"
 
 #include <wx/dir.h>
@@ -146,6 +148,8 @@ bool PersonalDepth_pi::DeInit() {
   if (m_cursorRefresh) m_cursorRefresh->Stop();
   m_cursorRefresh.reset();
   StopFes();
+  if (m_gauges) m_gauges->Stop();
+  m_gauges.reset();
   m_dbCancel = true;
   if (m_dbThread.joinable()) m_dbThread.join();
   ResetView(m_vd, m_renderer.get());
@@ -564,6 +568,58 @@ wxString PersonalDepth_pi::DefaultReferenceDir() {
   return a;
 }
 
+wxString PersonalDepth_pi::ExternalDir() {
+  if (m_set.vrefFranceDir.empty()) m_set.vrefFranceDir = DefaultReferenceDir().ToUTF8().data();
+  const wxString d = W8(m_set.vrefFranceDir.c_str());
+  if (!wxDirExists(d)) wxFileName::Mkdir(d, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+  return d;
+}
+
+bool PersonalDepth_pi::Download(const wxString& url, const wxString& dest, const wxString& title,
+                                const wxString& message, wxWindow* parent, wxString& err, bool* aborted) {
+  if (aborted) *aborted = false;
+  const wxFileName fn(dest);
+  if (!wxDirExists(fn.GetPath())) wxFileName::Mkdir(fn.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+  const wxString part = dest + ".part";
+  if (wxFileExists(part)) wxRemoveFile(part);
+  const long style = OCPN_DLDS_ELAPSED_TIME | OCPN_DLDS_ESTIMATED_TIME | OCPN_DLDS_REMAINING_TIME |
+                     OCPN_DLDS_SPEED | OCPN_DLDS_SIZE | OCPN_DLDS_CAN_ABORT | OCPN_DLDS_AUTO_CLOSE;
+  const _OCPN_DLStatus st = OCPN_downloadFile(url, part, title, message, wxNullBitmap, parent, style, 0);  // pas de limite : l'utilisateur peut interrompre
+  if (st != OCPN_DL_NO_ERROR || !wxFileExists(part)) {
+    if (wxFileExists(part)) wxRemoveFile(part);
+    if (st == OCPN_DL_ABORTED) {
+      if (aborted) *aborted = true;
+      err = U8("Téléchargement interrompu.");
+    } else {
+      err = U8("Téléchargement impossible (connexion Internet ?) : ") + url;
+    }
+    return false;
+  }
+  if (wxFileExists(dest)) wxRemoveFile(dest);
+  if (!wxRenameFile(part, dest)) {
+    err = U8("Impossible d'écrire ") + dest;
+    return false;
+  }
+  return true;
+}
+
+bool PersonalDepth_pi::ViewCenter(double& lat, double& lon) const {
+  if (!m_vpValid) return false;
+  lat = m_vpCenter[0];
+  lon = m_vpCenter[1];
+  return true;
+}
+
+GaugeManager& PersonalDepth_pi::Gauges() {
+  if (!m_gauges) {
+    m_gauges = std::make_unique<GaugeManager>(this);
+    // nouvelles mesures (tâche de fond) : marée et courbe mises à jour
+    m_gauges->SetOnUpdate([this] {
+      if (m_set.tideMode && m_set.tideSource == 2) UpdateTide(false);
+    });
+  }
+  return *m_gauges;
+}
 
 void PersonalDepth_pi::TideChanged() {
   UpdateTide(true);
@@ -753,6 +809,79 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
           when, hc * hk, hu, nm * hk, hu, z * hk, hu, F.hMin * hk, F.hMax * hk, hu,
           U8(m_fes->info().c_str()));
       if (m_fesBusy) info += U8(" — nouvelle zone en préparation");
+      return info;
+    }
+
+    if (s.tideSource == 2) {  // ------------------------- marégraphe en ligne (mesures)
+      const GaugeProvider* chosen = FindGaugeProvider(s.tideGaugeProvider);
+      if (!chosen) chosen = GaugeProviders().front();
+      GaugeManager& gm = Gauges();
+      const GaugeProvider* prov = nullptr;
+      if (!s.tideGaugeAuto) {  // marégraphe choisi
+        const auto* list = gm.Stations(*chosen, true);
+        if (list)
+          for (const auto& st : *list)
+            if (st.id == s.tideGaugeId) { m_gauge = st; prov = chosen; }
+        if (list && !prov) return U8("Marégraphe choisi introuvable dans la liste : en choisir un autre");
+      }
+      if (!prov) {
+        // le plus proche, tous réseaux : liste du réseau choisi téléchargée au
+        // besoin, les autres lues si elles sont déjà là ; loin de tout
+        // marégraphe connu, les listes des autres réseaux sont demandées
+        double best = 1e30;
+        bool any = false;
+        for (int pass = 0; pass < 2 && best > 100; ++pass) {
+          for (const auto* p : GaugeProviders()) {
+            const auto* list = gm.Stations(*p, p == chosen || pass == 1);
+            if (!list || list->empty()) continue;
+            any = true;
+            double km = 0;
+            const int i = gauge::Nearest(*list, clon, clat, &km);
+            if (i >= 0 && km < best) { best = km; m_gauge = (*list)[(size_t)i]; prov = p; }
+          }
+        }
+        if (!any)
+          return gm.Busy() ? U8("Liste des marégraphes en cours de téléchargement…")
+                           : U8("Liste des marégraphes indisponible (connexion Internet ?)");
+      }
+      if (!prov)
+        return gm.Busy() ? U8("Liste des marégraphes en cours de téléchargement…")
+                         : U8("Liste des marégraphes indisponible (connexion Internet ?)");
+      m_gaugeDistKm = gauge::DistanceKm(clon, clat, m_gauge.lon, m_gauge.lat);
+      const wxString name = W8(m_gauge.label().c_str());
+      const long long now = (long long)std::time(nullptr);
+      if ((long long)t > now + 120)
+        return wxString::Format(U8("%s : pas de mesure dans le futur (%s). Pour une prédiction, choisir FES2022 "
+                                   "ou les stations OpenCPN."),
+                                name, when);
+      // mesures de la journée autour de l'instant (et de la courbe de marée) ;
+      // la tranche du jour est reprise toutes les 5 min en mode « maintenant »
+      const long long w0 = (long long)t - 13 * 3600, w1 = (long long)t + 13 * 3600;
+      gm.Ensure(*prov, m_gauge, w0, w1, s.tideMode == 1 ? 300 : 1800);
+      const std::string key = m_gauge.provider + "/" + m_gauge.id + "|" + std::to_string(w0 / 3600) + "|" +
+                              std::to_string(gm.Version());
+      if (key != m_gaugeSeriesKey) {
+        m_gaugeSeries.load(*prov, gm.StationDir(*prov, m_gauge).ToStdString(wxConvUTF8), w0 - 86400, w1 + 86400);
+        m_gaugeSeriesKey = key;
+      }
+      double h = 0;
+      long long tObs = 0;
+      // interpolation entre mesures à moins de 30 min ; dernière mesure gardée
+      // 30 min (retard de diffusion des mesures en temps réel)
+      if (!m_gaugeSeries.at((long long)t, 1800, 1800, h, &tObs) || !std::isfinite(h)) {
+        if (gm.Busy()) return wxString::Format(U8("%s : téléchargement des mesures…"), name);
+        return wxString::Format(U8("%s : pas de mesure le %s"), name, when);
+      }
+      s.tideH = (float)h;
+      s.tideOk = true;
+      setUniform((float)h);
+      s.tideLegend = legend((float)h);
+      wxString info = wxString::Format(
+          U8("Marégraphe %s (%.1f km, %s) : hauteur d'eau observée %+.2f %s le %s (mesure de %s UTC)"), name,
+          m_gaugeDistKm, W8(prov->title().c_str()), h * s.heightK, s.heightUnit, when,
+          W8(FormatTime(tObs).substr(11).c_str()));
+      if (tObs > now - 7 * 86400) info += U8(" — mesures récentes brutes, non validées");
+      if (m_gaugeDistKm > 30) info += U8(" — marégraphe éloigné, à vérifier");
       return info;
     }
 
@@ -1113,6 +1242,9 @@ void PersonalDepth_pi::SaveConfig() {
   c->Write("TideTime", wxString::Format("%lld", m_set.tideTime));
   c->Write("TideShift", m_set.tideShiftMin);
   c->Write("TideSource", m_set.tideSource);
+  c->Write("TideGaugeProvider", W8(m_set.tideGaugeProvider.c_str()));
+  c->Write("TideGaugeId", W8(m_set.tideGaugeId.c_str()));
+  c->Write("TideGaugeAuto", m_set.tideGaugeAuto);
   c->Write("TideAtlas", W8(m_set.tideAtlas.c_str()));
   c->Write("TideZ0", W8(m_set.tideZ0Files.c_str()));
   c->Write("TideBathyElli", m_set.tideUseBathyElli);
@@ -1273,6 +1405,9 @@ void PersonalDepth_pi::LoadConfig() {
   if (c->Read("TideTime", &ws)) ws.ToLongLong(&m_set.tideTime);
   c->Read("TideShift", &m_set.tideShiftMin, m_set.tideShiftMin);
   c->Read("TideSource", &m_set.tideSource, m_set.tideSource);
+  if (c->Read("TideGaugeProvider", &ws) && !ws.empty()) m_set.tideGaugeProvider = ws.ToUTF8().data();
+  if (c->Read("TideGaugeId", &ws)) m_set.tideGaugeId = ws.ToUTF8().data();
+  c->Read("TideGaugeAuto", &m_set.tideGaugeAuto, m_set.tideGaugeAuto);
   if (c->Read("TideAtlas", &ws)) m_set.tideAtlas = ws.ToUTF8().data();
   if (c->Read("TideZ0", &ws)) m_set.tideZ0Files = ws.ToUTF8().data();
   c->Read("TideBathyElli", &m_set.tideUseBathyElli, m_set.tideUseBathyElli);
@@ -3033,6 +3168,34 @@ std::vector<TideChartPoint> PersonalDepth_pi::TideChartPoints(wxString& source, 
     });
     return pts;
   }
+  if (m_set.tideSource == 2) {  // marégraphe : mesures, et prédiction de la station OpenCPN voisine
+    if (m_gauge.id.empty()) { why = U8("Aucun marégraphe"); return pts; }
+    source = U8("Marégraphe (hauteur observée)");
+    TideChartPoint p;
+    p.name = W8(m_gauge.label().c_str()) + U8(" (mesures)");
+    p.lon = m_gauge.lon;
+    p.lat = m_gauge.lat;
+    p.kind = 1;
+    pts.push_back(p);
+    std::unique_ptr<HostApi> api;
+    try { api = GetHostApi(); } catch (...) {}
+    HostApi121* a = dynamic_cast<HostApi121*>(api.get());
+    PlugIn_TideStation st;
+    if (a && a->GetNearestTideStation(m_gauge.lat, m_gauge.lon, &st) &&
+        gauge::DistanceKm(m_gauge.lon, m_gauge.lat, st.lon, st.lat) < 30) {
+      TideChartPoint q;
+      wxString n = wxString(st.name, wxConvUTF8);
+      if (n.empty()) n = wxString(st.name, wxConvISO8859_1);
+      n = n.Trim().Trim(false);
+      q.name = wxString::Format(U8("Prédiction OpenCPN (%s) : %s"), TideDatasetLabel(n), n);
+      q.lon = st.lon;
+      q.lat = st.lat;
+      q.kind = 2;
+      q.station = st.index;
+      pts.push_back(q);
+    }
+    return pts;
+  }
   if (m_tideStation < 0) { why = U8("Aucune station de marée"); return pts; }
   source = U8("Station OpenCPN");
   TideChartPoint p;
@@ -3060,12 +3223,129 @@ void PersonalDepth_pi::TideChartSeries(const std::vector<TideChartPoint>& pts,
   std::unique_ptr<HostApi> api;
   try { api = GetHostApi(); } catch (...) {}
   HostApi121* a = dynamic_cast<HostApi121*>(api.get());
+  if (m_set.tideSource == 2) {
+    const GaugeProvider* prov = FindGaugeProvider(m_gauge.provider);
+    for (size_t k = 0; k < pts.size(); ++k) {
+      if (pts[k].kind == 1 && prov) {
+        // mesures de la période de la courbe (moins d'un mois : téléchargées au besoin)
+        const long long t0 = (long long)t.front(), t1 = (long long)t.back() + 1;
+        if (t1 - t0 <= 31LL * 86400) Gauges().Ensure(*prov, m_gauge, t0, t1, 1800);
+        GaugeSeries gs;
+        gs.load(*prov, Gauges().StationDir(*prov, m_gauge).ToStdString(wxConvUTF8), t0 - 3600, t1 + 3600);
+        for (size_t i = 0; i < t.size(); ++i) {
+          double v;
+          if (gs.at((long long)t[i], 1800, 0, v)) h[k][i] = v;  // trous laissés vides
+        }
+      } else if (pts[k].kind == 2 && a) {
+        for (size_t i = 0; i < t.size(); ++i) {
+          float v = 0;
+          if (a->GetTideHeight(pts[k].station, t[i], &v) && std::isfinite(v)) h[k][i] = v;
+        }
+      }
+    }
+    return;
+  }
   if (!a || m_tideStation < 0) return;
   for (size_t i = 0; i < t.size(); ++i) {
     float v = 0;
     if (a->GetTideHeight(m_tideStation, t[i], &v) && std::isfinite(v)) h[0][i] = v;
   }
 }
+
+// Nom de station présent dans un fichier .tcd (chaînes de 8 bits rangées à
+// n'importe quelle position de bit)
+static bool TcdHasName(const wxString& file, const wxString& station) {
+  const wxScopedCharBuffer nb = station.mb_str(wxConvISO8859_1);
+  const std::string name(nb.data() ? nb.data() : "");
+  if (name.size() < 3) return false;
+  std::string d;
+  FILE* in = pd::OpenFile(file.ToStdString(wxConvUTF8), "rb");
+  if (!in) return false;
+  char b[65536];
+  size_t k;
+  while ((k = std::fread(b, 1, sizeof b, in)) > 0) d.append(b, k);
+  std::fclose(in);
+  if (d.find(name) != std::string::npos) return true;
+  std::string sh(d.size(), 0);
+  for (int s = 1; s < 8; ++s) {
+    for (size_t i = 0; i + 1 < d.size(); ++i)
+      sh[i] = (char)((((unsigned char)d[i]) << s) | (((unsigned char)d[i + 1]) >> (8 - s)));
+    if (sh.find(name) != std::string::npos) return true;
+  }
+  return false;
+}
+
+// Jeu de marées d'OpenCPN d'où vient une station (l'API ne le dit pas) :
+// fichiers actifs lus dans la configuration d'OpenCPN ; un HARMONIC.IDX
+// (texte) qui contient le nom de la station l'emporte, sinon le seul .tcd
+// actif, sinon le .tcd qui contient ce nom. Zéro connu seulement pour TICON
+// (LAT de TICON).
+wxString PersonalDepth_pi::TideDatasetLabel(const wxString& station) {
+  auto it = m_tideDatasetLabels.find(station);
+  if (it != m_tideDatasetLabels.end()) return it->second;
+  std::vector<wxString> files;
+  if (wxFileConfig* c = GetOCPNConfigObject()) {
+    const wxString old = c->GetPath();
+    c->SetPath("/TideCurrentDataSources");
+    wxString key;
+    long idx = 0;
+    for (bool more = c->GetFirstEntry(key, idx); more; more = c->GetNextEntry(key, idx)) {
+      wxString v;
+      if (c->Read(key, &v) && !v.empty()) files.push_back(v);
+    }
+    c->SetPath(old);
+  }
+  wxString label, tcd;
+  int nTcd = 0;
+  const wxString lname = station.Lower().Left(40);
+  for (const wxString& f0 : files) {
+    wxString f = f0;
+    if (!wxFileExists(f)) {  // chemin relatif : dossier tcdata d'OpenCPN
+      wxString d = *GetpSharedDataLocation();
+      if (!d.EndsWith(wxFileName::GetPathSeparator())) d += wxFileName::GetPathSeparator();
+      f = d + "tcdata" + wxFileName::GetPathSeparator() + wxFileName(f0).GetFullName();
+    }
+    const wxFileName fn(f);
+    if (fn.GetExt().Lower() == "tcd") {
+      ++nTcd;
+      tcd = fn.GetName();
+      // les noms des stations d'un .tcd sont rangés bit à bit (libtcd) : le
+      // nom est cherché aux 8 décalages possibles
+      if (label.empty() && TcdHasName(f, station)) label = fn.GetName();
+      continue;
+    }
+    // HARMONIC.IDX (ou dossier qui le contient) : index texte des stations
+    wxString idx = f;
+    if (wxDirExists(f)) idx = f + wxFileName::GetPathSeparator() + "HARMONIC.IDX";
+    if (!fn.GetExt().IsSameAs("idx", false) && !wxDirExists(f)) idx = f + ".IDX";
+    if (!label.empty() || !wxFileExists(idx)) continue;
+    const std::string text = [&] {
+      std::string s8;
+      FILE* in = pd::OpenFile(idx.ToStdString(wxConvUTF8), "rb");
+      if (!in) return s8;
+      char b[16384];
+      size_t k;
+      while ((k = std::fread(b, 1, sizeof b, in)) > 0) s8.append(b, k);
+      std::fclose(in);
+      return s8;
+    }();
+    wxString lower = wxString(text.c_str(), wxConvISO8859_1).Lower();
+    if (!lname.empty() && lower.Contains(lname)) label = wxFileName(idx).GetName();
+  }
+  if (label.empty()) {
+    if (nTcd == 1) label = tcd;  // nom non retrouvé : le seul .tcd actif
+    else label = U8("fichiers de marée");
+  }
+  if (label.Lower().Contains("ticon")) label = U8("TICON, zéro LAT de TICON");
+  m_tideDatasetLabels[station] = label;
+  return label;
+}
+
+bool PersonalDepth_pi::TideChartDownloading() const {
+  return m_set.tideSource == 2 && m_gauges && m_gauges->Busy();
+}
+
+int PersonalDepth_pi::TideChartDataVersion() const { return m_gauges ? m_gauges->Version() : 0; }
 
 void PersonalDepth_pi::ShowTideChart() {
   if (!m_chart) m_chart = new TideChartDialog(GetOCPNCanvasWindow(), this);

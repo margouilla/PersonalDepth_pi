@@ -113,6 +113,7 @@ class ImportDialog : public wxDialog {
   wxButton* m_waterFile = nullptr;
   wxButton* m_waterDir = nullptr;
   wxButton* m_waterCurve = nullptr;
+  wxButton* m_waterRefmar = nullptr;   // téléchargement REFMAR (Shom)
   wxComboBox* m_nodata = nullptr;
   wxSpinCtrlDouble *m_boundMin = nullptr, *m_boundMax = nullptr;
   // Coordonnées

@@ -50,6 +50,7 @@ class TideChartDialog : public wxDialog {
   time_t m_x0 = 0, m_x1 = 0, m_marker = 0;
   double m_y0 = 0, m_y1 = 1;
   wxString m_unit = "m", m_message, m_source;
+  bool Downloading() const;  // mesures du marégraphe en cours de téléchargement
 
  private:
   void Recompute(bool keepVisibility);

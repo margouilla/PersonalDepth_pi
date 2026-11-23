@@ -8,12 +8,54 @@ tide and to link the vertical datums: the database stores depths below mean
 sea level and shows them at chart datum, LAT, mean sea level or the ellipsoid.
 They are **not included** in the plugin because of their licences.
 
+**The quick way — *External data* window.** *Data* tab, *Vertical reference
+surfaces* box (or *Tide* tab), **External data…**: the list shows each file,
+its producer, licence and whether it is installed.
+- **Open data** (BathyElli ZH and NM, RAF20, RAC23): **Download**, or
+  **Everything missing (France)**. The plugin shows the licence, downloads the
+  file from the producer's own website, checks its SHA-256 fingerprint,
+  unpacks it (`.7z` archives of the Shom) into the reference folder, then
+  offers to update the database surfaces. No Python, nothing else to install.
+- **Data needing an account** (FES2022, MSS — AVISO): **Open the page** leads
+  to the steps below; once converted, **Choose the file…** sets it in the
+  plugin. Direct download of these two is waiting for AVISO's agreement.
+- **NOAA VDatum**: opens NOAA's download page (agreement to accept);
+  **Choose the folder…** sets the *Countries* folder.
+- **Check the files** checks again the SHA-256 fingerprints of the installed
+  files (damaged file, or another version).
+- **Update the list** fetches the up-to-date catalogue (addresses, new data)
+  from the plugin repository, without a new plugin version.
+- Observed water levels of online tide gauges (REFMAR in France, NOAA CO-OPS
+  in the United States): see section 6.
+
 PersonalDepth fonctionne sans ces fichiers (stations de marée d'OpenCPN,
 données au zéro des cartes affichées telles qu'importées). Ils servent à la
 marée maillée FES2022 et à relier les références verticales : la base range
 les profondeurs sous le niveau moyen et les affiche au zéro des cartes, au
 LAT, au niveau moyen ou à l'ellipsoïde. Ils ne sont **pas fournis** avec le
 plugin, en raison de leurs licences.
+
+**Le plus simple — fenêtre *Données externes*.** Onglet *Données*, cadre
+*Surfaces de référence verticale* (ou onglet *Marée*), **Données externes…** :
+la liste donne chaque fichier, son producteur, sa licence et s'il est installé.
+- **Données libres** (BathyElli ZH et NM, RAF20, RAC23) : **Télécharger**, ou
+  **Tout ce qui manque (France)**. Le plugin affiche la licence, télécharge le
+  fichier sur le site même du producteur, contrôle son empreinte SHA-256, le
+  décompresse (archives `.7z` du Shom) dans le dossier des références, puis
+  propose de mettre à jour les surfaces de la base. Ni Python ni autre
+  logiciel à installer.
+- **Données à compte** (FES2022, MSS — AVISO) : **Ouvrir la page** mène aux
+  étapes ci-dessous ; une fois converti, **Choisir le fichier…** le règle dans
+  le plugin. Le téléchargement direct de ces deux données attend l'accord
+  d'AVISO.
+- **NOAA VDatum** : ouvre la page de téléchargement de la NOAA (accord à
+  accepter) ; **Choisir le dossier…** règle le dossier *Pays*.
+- **Vérifier les fichiers** recontrôle les empreintes SHA-256 des fichiers
+  installés (fichier abîmé, ou autre version).
+- **Mettre à jour la liste** récupère le catalogue à jour (adresses, nouvelles
+  données) sur le dépôt du plugin, sans nouvelle version du plugin.
+- Hauteurs d'eau observées des marégraphes en ligne (REFMAR en France, NOAA
+  CO-OPS aux États-Unis) : voir section 6.
 
 | Data / Donnée | Producer / Producteur | Used for / Sert à | Files / Fichiers |
 |---|---|---|---|
@@ -46,25 +88,31 @@ ReferenceElevation\
 ```
 
 **BathyElli v2.1** (Shom, *Licence Ouverte / Open Licence 2.0*)
-- Download page: [data.gouv.fr — Surfaces BathyElli v2.1](https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1)
-- Download the **ZH / ell** and **NM / ell** files (`.glhi`): together they
-  link chart datum (ZH) to mean sea level in France, for the database and
-  the FES2022 tide.
+- In the *External data* window: **Download** (`.7z` archives of the Shom,
+  unpacked by the plugin).
+- By hand: [data.gouv.fr — Surfaces BathyElli v2.1](https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1),
+  files **ZH / ell** and **NM / ell** (`.7z` archives containing the
+  `.glhi`): together they link chart datum (ZH) to mean sea level in France,
+  for the database and the FES2022 tide.
 - Keep the original file names: PersonalDepth recognises them by `ZH` and
   `NM` in the name.
 
 **RAF20** (IGN): geoid grid converting ellipsoidal heights to IGN69.
-- Direct link (as published by IGN):
-  `https://geodesie.ign.fr/contenu/fichiers/documentation/grilles/metropole/RAF20.tac`
-- Otherwise: [IGN geodesy website](https://geodesie.ign.fr), "grilles"
-  (conversion grids) page.
+- In the *External data* window: **Download**.
+- By hand: [IGN geodesy website — conversion grids](https://geodesie.ign.fr/grilles-de-conversion)
+  (direct link `https://www.ign.fr/publications-de-l-ign/Geodesie/RAF20.tac`).
 - Keep the `.tac` format. PROJ's GeoTIFF version `fr_ign_RAF20.tif` is not
   read by PersonalDepth.
 
-**RAC23** (IGN): same for IGN78C in Corsica. File `RAC23.mnt`, on the same
-IGN geodesy website. Only needed for surveys in Corsica.
+**RAC23** (IGN): same for IGN78C in Corsica. File `RAC23.mnt`
+(`https://www.ign.fr/publications-de-l-ign/Geodesie/RAC23.mnt`), also in the
+*External data* window. Only needed for surveys in Corsica.
+
+IGN grids: *Licence Ouverte / Open Licence 2.0*.
 
 **In PersonalDepth**
+- The *External data* window saves the files in the reference folder
+  (*Folder* row of the window, the same as *France folder* of the import).
 - *Data management… › Import…*, section "Vertical reference":
   - **IGN69 / IGN78C → CD**: choose the reference folder. It must contain
     `*ZH*.glhi` and `RAF20.tac`. `RAC23.mnt` is used automatically in
@@ -248,6 +296,39 @@ python tools/pdgrid_convert.py cd.nc CD_country.pdgrid --var=Band1 --quantity=CD
 Any `.pdgrid` of quantity `CD/MSL` or `CD/WGS84` in the *Countries* folder is
 used; its name (`--name`) is shown in the box and under the cursor.
 
+### 6. Observed water levels of online tide gauges (REFMAR, NOAA)
+
+The Shom publishes the measurements of about 180 tide gauges on the French
+coasts (REFMAR network: RONIM and partner gauges), above chart datum, in UTC,
+under *Licence Ouverte / Open Licence 2.0*. They correct the soundings of a
+survey for the real water level (tide and surge), better than a prediction.
+
+**In PersonalDepth**: *Data management… › Import…*, section *Observed water
+levels*, **Tide gauge…**:
+1. the gauges are listed by distance from the centre of the chart (search
+   box to find one by name);
+2. choose the period of the soundings (start and end dates, inclusive, UTC);
+3. **Download**: one file per month, saved in `REFMAR\<id>_<NAME>\` inside
+   the reference folder and read directly (best source of each day: validated
+   10-min data, then raw delayed, raw real-time, validated hourly). Periods
+   already downloaded are kept; the last days are downloaded again (recent
+   raw data are completed and validated later by the Shom).
+
+*Tide* tab, source **Online tide gauge: observed height**: the measured
+water height of the nearest gauge (or a chosen one) is added to the depths,
+now (fetched every 5 minutes) or at a chosen past date.
+
+**United States — NOAA CO-OPS.** The same works with the NOAA tide gauges
+(about 240 tidal stations, public domain, 6-minute water levels above MLLW,
+the US chart datum, in UTC): choose the *NOAA CO-OPS* network in the tide
+gauge window; in *nearest* mode, the nearest gauge of all networks is used.
+Files are saved in `NOAA\<id>_<NAME>\`. NOAA files downloaded by hand are
+not read as they are (their datum and units are not written in the file).
+
+Files downloaded by hand from [data.shom.fr](https://data.shom.fr) (text
+format `DD/MM/YYYY hh:mm:ss;value;source`) are also recognised as they are.
+Cite "REFMAR" (DOI 10.17183/REFMAR) if you share a result.
+
 ---
 
 ## Français
@@ -267,25 +348,32 @@ ReferenceElevation\
 ```
 
 **BathyElli v2.1** (Shom, *Licence Ouverte 2.0*)
-- Page de téléchargement : [data.gouv.fr — Surfaces BathyElli v2.1](https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1)
-- Télécharger les fichiers **ZH / ell** et **NM / ell** (`.glhi`) : ensemble,
-  ils relient le zéro hydrographique au niveau moyen en France, pour la base
-  et pour la marée FES2022.
+- Dans la fenêtre *Données externes* : **Télécharger** (archives `.7z` du
+  Shom, décompressées par le plugin).
+- À la main : [data.gouv.fr — Surfaces BathyElli v2.1](https://www.data.gouv.fr/datasets/surfaces-bathyelli-v2-1-1),
+  fichiers **ZH / ell** et **NM / ell** (archives `.7z` contenant les
+  `.glhi`) : ensemble, ils relient le zéro hydrographique au niveau moyen en
+  France, pour la base et pour la marée FES2022.
 - Garder les noms d'origine : PersonalDepth les reconnaît à `ZH` et `NM` dans
   le nom.
 
 **RAF20** (IGN) : grille de géoïde, hauteurs ellipsoïdales → IGN69.
-- Lien direct (publié par l'IGN) :
-  `https://geodesie.ign.fr/contenu/fichiers/documentation/grilles/metropole/RAF20.tac`
-- Sinon : [site de géodésie de l'IGN](https://geodesie.ign.fr), page des
-  grilles de conversion.
+- Dans la fenêtre *Données externes* : **Télécharger**.
+- À la main : [site de géodésie de l'IGN — grilles de conversion](https://geodesie.ign.fr/grilles-de-conversion)
+  (lien direct `https://www.ign.fr/publications-de-l-ign/Geodesie/RAF20.tac`).
 - Garder le format `.tac`. La version GeoTIFF de PROJ `fr_ign_RAF20.tif` n'est
   pas lue par PersonalDepth.
 
-**RAC23** (IGN) : idem pour l'IGN78C en Corse. Fichier `RAC23.mnt`, sur le
-même site de géodésie de l'IGN. Utile seulement pour des levés en Corse.
+**RAC23** (IGN) : idem pour l'IGN78C en Corse. Fichier `RAC23.mnt`
+(`https://www.ign.fr/publications-de-l-ign/Geodesie/RAC23.mnt`), aussi dans
+la fenêtre *Données externes*. Utile seulement pour des levés en Corse.
+
+Grilles de l'IGN : *Licence Ouverte 2.0*.
 
 **Dans PersonalDepth**
+- La fenêtre *Données externes* range les fichiers dans le dossier des
+  références (ligne *Dossier* de la fenêtre, le même que *Dossier France* de
+  l'import).
 - *Gestion des données… › Importer…*, section « Référence verticale » :
   - **IGN69 / IGN78C → ZH** : choisir le dossier des références. Il doit
     contenir `*ZH*.glhi` et `RAF20.tac`. `RAC23.mnt` est utilisé
@@ -474,3 +562,39 @@ python tools/pdgrid_convert.py cd.nc CD_pays.pdgrid --var=Band1 --quantity=CD/WG
 
 Tout `.pdgrid` de grandeur `CD/MSL` ou `CD/WGS84` du dossier *Pays* est
 utilisé ; son nom (`--name`) s'affiche dans le cadre et sous le curseur.
+
+### 6. Hauteurs d'eau observées des marégraphes en ligne (REFMAR, NOAA)
+
+Le Shom diffuse les mesures d'environ 180 marégraphes des côtes françaises
+(réseau REFMAR : marégraphes RONIM et partenaires), au zéro hydrographique,
+en UTC, sous *Licence Ouverte 2.0*. Elles corrigent les sondes d'un levé de
+la hauteur d'eau réelle (marée et surcote), mieux qu'une prédiction.
+
+**Dans PersonalDepth** : *Gestion des données… › Importer…*, section
+*Hauteurs d'eau observées*, **Marégraphe…** :
+1. les marégraphes sont classés par distance au centre de la carte (case de
+   recherche pour en trouver un par son nom) ;
+2. choisir la période des sondes (dates de début et de fin incluses, UTC) ;
+3. **Télécharger** : un fichier par mois, rangé dans `REFMAR\<id>_<NOM>\` du
+   dossier des références et lu directement (meilleure source de chaque jour :
+   validées 10 min, puis brutes temps différé, brutes temps réel, validées
+   horaires). Les périodes déjà téléchargées sont gardées ; les derniers jours sont
+   repris (les données brutes récentes sont complétées et validées plus tard
+   par le Shom).
+
+Onglet *Marée*, source **Marégraphe en ligne : hauteur observée** : la
+hauteur d'eau mesurée au marégraphe le plus proche (ou à celui choisi)
+s'ajoute aux profondeurs, maintenant (reprise toutes les 5 minutes) ou à une
+date passée choisie.
+
+**États-Unis — NOAA CO-OPS.** Il en est de même avec les marégraphes de la
+NOAA (environ 240 stations à marée, domaine public, hauteurs d'eau toutes les
+6 minutes au-dessus du MLLW, le zéro des cartes américain, en UTC) : choisir
+le réseau *NOAA CO-OPS* dans la fenêtre des marégraphes ; en mode *le plus
+proche*, c'est le marégraphe le plus proche, tous réseaux confondus. Fichiers
+rangés dans `NOAA\<id>_<NOM>\`. Les fichiers NOAA téléchargés à la main ne
+sont pas lus tels quels (ni leur référence ni leur unité n'y sont écrites).
+
+Les fichiers téléchargés à la main sur [data.shom.fr](https://data.shom.fr)
+(format texte `JJ/MM/AAAA hh:mm:ss;valeur;source`) sont aussi reconnus tels
+quels. Citer « REFMAR » (DOI 10.17183/REFMAR) si vous diffusez un résultat.

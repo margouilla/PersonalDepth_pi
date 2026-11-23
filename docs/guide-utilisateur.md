@@ -125,7 +125,7 @@ sa position**.
 
 <img src="images/fr/11-banner_horizontal.png" alt="Bandeau horizontal" height="50"> &nbsp; <img src="images/fr/11-banner_vertical.png" alt="Bandeau vertical" height="220">
 
-![Bandeau : déplacement, A/M, préréglage, orientation](images/gif/g1-banner.gif)
+![Bandeau : borne minimale, A / M, Vue / Tout, menu des isobathes et des sondes, préréglages](images/gif/g1-banner.gif)
 
 > 🧪 **Testeurs — à vérifier :** chaque clic sur le bandeau fonctionne (y
 > compris le menu des anneaux isobathes / sondes), la carte ne se déplace pas quand on
@@ -354,6 +354,18 @@ hauteur** (hauteur au-dessus du zéro) ; *profondeur = sonde + hauteur* est
 l'autre convention. **Courbe…** affiche la série des hauteurs en UTC
 (molette : zoom sur le temps, double-clic : toute la période).
 
+**Marégraphe…** — les hauteurs d'eau d'un marégraphe en ligne se
+téléchargent sans quitter l'import ; en France, celles des marégraphes du Shom
+(réseau REFMAR, Licence Ouverte). Choisir le
+marégraphe (classés par distance au centre de la carte, case de recherche) et
+la période des sondes (dates incluses, UTC), puis **Télécharger**. Les
+fichiers (un par mois) sont rangés dans `REFMAR` du dossier des références et
+le chemin est réglé tout seul : hauteurs en mètres au zéro hydrographique,
+*profondeur = sonde − hauteur*, meilleure source de chaque jour (validée
+10 min, sinon brute). Les fichiers REFMAR téléchargés à la main sur
+data.shom.fr sont aussi reconnus tels quels. Voir
+[external-data.md](external-data.md#6-hauteurs-deau-observées-des-marégraphes-en-ligne-refmar-noaa).
+
 Les sondes portent de préférence leur date et heure : **format
 personnalisé** avec une colonne date (et heure). Sondes et hauteurs sont
 comparées en UTC : régler le **fuseau horaire** de chaque format sur celui
@@ -397,7 +409,8 @@ du fichier sont rapportées. La base les range ensuite sous le **niveau moyen**
 | *Autre référence terrestre* ou *grille d'écart* | Vos propres grilles | Vos fichiers |
 | *Non rattachée* | Lac, retenue, plan d'eau sans marée | Aucun : profondeurs gardées telles quelles |
 
-Voir [external-data.md](external-data.md#français) pour obtenir ces fichiers.
+Pour obtenir ces fichiers : onglet **Données**, **Données externes…** (§ 5) ;
+détails dans [external-data.md](external-data.md#français).
 
 **Date du levé imposée** — sinon la date est lue dans le nom du fichier
 (`AAAAMMJJ`), à défaut la date du fichier. Elle sert à la règle de priorité
@@ -480,6 +493,17 @@ se règlent dans l'onglet **Données**, cadre *Surfaces de référence verticale
   dit en clair si le zéro est **officiel** (✓) ou **approché** (≈ LAT FES,
   écart possible de quelques décimètres), et liste les fichiers de référence
   trouvés.
+- **Données externes…** : liste des fichiers de référence, avec leur
+  producteur, leur licence et leur état (✓ installé). Les fichiers libres
+  (BathyElli ZH et NM, RAF20, RAC23) se téléchargent d'un clic, ou tous à la
+  fois avec *Tout ce qui manque (France)* : le plugin affiche la licence,
+  télécharge sur le site du producteur, contrôle l'empreinte SHA-256,
+  décompresse dans le dossier des références et propose de mettre à jour les
+  surfaces ; *Vérifier les fichiers* recontrôle les empreintes des fichiers
+  installés. Pour l'atlas FES2022 et la MSS (compte AVISO), *Ouvrir la page*
+  explique comment les obtenir et *Choisir le fichier…* les règle ; pour NOAA
+  VDatum, *Choisir le dossier…* règle le dossier *Pays*. *Mettre à jour la
+  liste* récupère le catalogue à jour sur le dépôt du plugin.
 - **Mettre à jour les surfaces** : après avoir ajouté ou changé BathyElli,
   l'atlas FES2022 ou la MSS, recalcule les surfaces et corrige les sources
   concernées. L'affichage au zéro des cartes d'une source importée au zéro
@@ -644,17 +668,48 @@ hauteur d'eau d'un moment donné au zéro des cartes, pixel par pixel :
 - **Source** : *Stations de marée OpenCPN* (hauteur unique de la station la
   plus proche ; les données de marée d'OpenCPN doivent être activées) ou
   *FES2022 maillé* (hauteur variable sur la zone ; nécessite l'atlas converti,
-  voir [external-data.md](external-data.md#français)).
+  voir **Données externes…** et [external-data.md](external-data.md#français)), ou
+  *Marégraphe en ligne : hauteur observée* (voir plus bas).
 - **Moment** : *Aucune — profondeurs au zéro hydrographique*, *Hauteur d'eau
   actuelle (heure du PC)*, ou *Date et heure choisies* avec le curseur ±12 h
   par pas de 15 min.
 - La ligne d'information donne la hauteur utilisée, la station ou l'étendue
   FES2022 sur la zone.
 
+**Marégraphe en ligne** (France : réseau REFMAR du Shom ; États-Unis : NOAA
+CO-OPS) — la hauteur d'eau
+**mesurée** par un marégraphe, surcote comprise, au lieu d'une prédiction :
+- *le plus proche* : le marégraphe le plus proche du centre de la zone
+  affichée, tous réseaux confondus ; décoché, celui choisi avec **Choisir…**
+  (réseau, liste classée par distance, case de recherche) ;
+- *Hauteur d'eau actuelle* : la dernière mesure, reprise toutes les 5 minutes
+  en tâche de fond (la ligne d'information donne l'heure de la mesure ; elle
+  est gardée 30 minutes au plus ; pendant un téléchargement, la courbe de
+  marée affiche « Téléchargement des mesures… ») ;
+- *Date et heure choisies* : la mesure de ce moment, dans le passé seulement
+  (aucune mesure dans le futur : prendre FES2022 ou les stations OpenCPN) ;
+- comme une station, une seule hauteur pour toute la zone : valable près du
+  marégraphe (au-delà de 30 km, la ligne d'information le signale) ;
+- les mesures récentes sont brutes, pas encore validées par le Shom ; une
+  connexion Internet est nécessaire, les mesures téléchargées restent dans le
+  dossier des références (`REFMAR`) et servent aussi à l'import.
+
 **Courbe de marée…** ouvre une fenêtre indépendante : hauteur d'eau en fonction
 du temps pour chaque point de marée utilisé (la station OpenCPN, ou jusqu'à
 9 points FES2022 — NO, N, NE, O, Centre, E, SO, S, SE — répartis sur vos
-données).
+données ; avec un marégraphe, ses mesures et la prédiction de la station
+OpenCPN voisine, nommée avec son fichier de marées, par exemple
+*Prédiction OpenCPN (HARMONIC)*, pour voir la surcote).
+
+**Zéro des stations OpenCPN** — chaque station des fichiers de marées
+d'OpenCPN (`HARMONIC`, `.tcd`, ou un jeu ajouté comme HARMONIC V10) a son
+propre zéro et son niveau moyen, qui peuvent différer du zéro des cartes de
+quelques décimètres. Exemple : à Le Conquet, la station TICON livrée avec
+OpenCPN est rapportée au « LAT » de TICON, environ 0,34 m au-dessus du ZH du
+Shom : ses hauteurs sont trop faibles d'autant (profondeurs affichées trop
+faibles). En France, préférer *FES2022 maillé* (rapporté au ZH du Shom par
+BathyElli) pour une prédiction, et le *marégraphe en ligne* pour la hauteur
+réelle.
 
 ![Fenêtre Courbe de marée](images/fr/09-tide-curve.png)
 
