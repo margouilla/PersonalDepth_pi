@@ -4,7 +4,7 @@
 
 ## English
 
-### 0.1.0-beta.15 (unreleased)
+### 0.1.0-beta.15 (2026-11-25)
 
 - **External data window** (*Data* tab, *Vertical reference surfaces* box,
   and *Tide* tab): list of the reference files with producer, licence and
@@ -517,7 +517,7 @@ crash of OpenCPN when opening the plugin panel.
 
 ## Français
 
-### 0.1.0-beta.15 (non publiée)
+### 0.1.0-beta.15 (2026-11-25)
 
 - **Fenêtre Données externes** (onglet *Données*, cadre *Surfaces de
   référence verticale*, et onglet *Marée*) : liste des fichiers de référence
