@@ -30,6 +30,38 @@
 - **NOAA CO-OPS tide gauges** (United States, public domain, water levels
   above MLLW): second online tide gauge network, in the import and in the
   *Tide* tab; in *nearest* mode, the nearest gauge of all networks is used.
+- *External data* window: **Convert…** turns the AVISO netCDF files into
+  the plugin's formats, without Python: the FES2022b folder into a
+  `.pdtide` (a few minutes), the CNES_CLS 2025 mean sea surface into a
+  `.pdgrid` (under a minute), then sets them. Built-in reader for netCDF-3
+  and netCDF-4 / HDF5 (the parts written by netCDF-C and GDAL for grids:
+  deflate, shuffle, fletcher32), no external library. Runs in the background
+  with a progress bar; a cancelled conversion resumes where it stopped.
+  Same values as the Python scripts, checked on the full AVISO files (no
+  difference on the 34 constituents and on the 217 million MSS nodes). The
+  scripts stay available. Catalogue version 3.
+- *External data* window: new line **Chart datum of another country
+  (official grid)**: **Convert…** turns the grid of a hydrographic office
+  (VORF, HyVSEPs…; GeoTIFF in longitude / latitude, netCDF, `.gtx`, `.asc`)
+  into a `.pdgrid` saved in the *Countries* folder, with its name and what
+  its values give (chart datum relative to mean sea level, or above the
+  ellipsoid; sign reversal). No more GDAL or Python for these grids.
+- Fixed: dashes and check marks of the *External data* window (conversion
+  progress, *Check the files* report) showed as garbled characters on
+  Windows.
+- Fixed: OpenCPN tide stations whose data are in feet (most NOAA stations
+  of the `harmonics-dwf` file, some stations of `HARMONIC`) gave heights
+  3.28 times too large, both in the tide added to the depths and in the tide
+  curve: OpenCPN gives the height in the station's own unit without saying
+  which. The plugin now reads the unit of the station in the tide files
+  (`.tcd`, `HARMONIC`). Seen at Charleston (NOAA tide gauge and prediction).
+- Tide curve: the legend widens to show long names (tide file of the
+  prediction); names too long for the window are shortened with "…".
+- Known issue: in the United States, the OpenCPN tide stations of
+  `harmonics-dwf` predict about 1 ft (0.3 m) lower than the NOAA tide gauges,
+  on the East and West coasts alike, with the same shape and timing. Probably
+  the datum of these stations in the tide file; under investigation. Prefer
+  the online tide gauge for the actual height there.
 - *External data* window: **Check the files** checks again the SHA-256
   fingerprints of the installed files (BathyElli files listed one by one in
   the catalogue, now version 2).
@@ -514,6 +546,42 @@ crash of OpenCPN when opening the plugin panel.
   du MLLW) : deuxième réseau de marégraphes en ligne, à l'import et dans
   l'onglet *Marée* ; en mode *le plus proche*, le marégraphe le plus proche
   tous réseaux confondus.
+- Fenêtre *Données externes* : **Convertir…** transforme les fichiers
+  netCDF d'AVISO aux formats du plugin, sans Python : le dossier FES2022b en
+  `.pdtide` (quelques minutes), la surface moyenne CNES_CLS 2025 en
+  `.pdgrid` (moins d'une minute), puis les règle. Lecteur netCDF-3 et
+  netCDF-4 / HDF5 intégré (ce qu'écrivent netCDF-C et GDAL pour des grilles :
+  deflate, shuffle, fletcher32), sans bibliothèque externe. Conversion en
+  tâche de fond avec barre de progression ; annulée, elle reprend où elle
+  s'était arrêtée. Mêmes valeurs que les scripts Python, vérifiées sur les
+  fichiers AVISO complets (aucune différence sur les 34 ondes et sur les
+  217 millions de nœuds de la MSS). Les scripts restent disponibles.
+  Catalogue version 3.
+- Fenêtre *Données externes* : nouvelle ligne **Zéro des cartes d'un autre
+  pays (grille officielle)** : **Convertir…** transforme la grille d'un
+  service hydrographique (VORF, HyVSEPs… ; GeoTIFF en longitude / latitude,
+  netCDF, `.gtx`, `.asc`) en un `.pdgrid` rangé dans le dossier *Pays*, avec
+  son nom et ce que donnent ses valeurs (zéro des cartes par rapport au
+  niveau moyen, ou au-dessus de l'ellipsoïde ; inversion du signe). Plus
+  besoin de GDAL ni de Python pour ces grilles.
+- Corrigé : les tirets et coches de la fenêtre *Données externes*
+  (progression de la conversion, rapport de *Vérifier les fichiers*)
+  s'affichaient en caractères illisibles sous Windows.
+- Corrigé : les stations de marée d'OpenCPN dont les données sont en pieds
+  (la plupart des stations NOAA du fichier `harmonics-dwf`, certaines
+  stations de `HARMONIC`) donnaient des hauteurs 3,28 fois trop grandes, dans
+  la marée ajoutée aux profondeurs comme dans la courbe de marée : OpenCPN
+  rend la hauteur dans l'unité de la station sans dire laquelle. Le plugin lit
+  maintenant l'unité de la station dans les fichiers de marées (`.tcd`,
+  `HARMONIC`). Vu à Charleston (marégraphe NOAA et prédiction).
+- Courbe de marée : la légende s'élargit pour montrer les noms longs
+  (fichier de marées de la prédiction) ; un nom trop long pour la fenêtre est
+  abrégé par « … ».
+- Problème connu : aux États-Unis, les stations de marée `harmonics-dwf`
+  d'OpenCPN prédisent environ 0,3 m (1 ft) plus bas que les marégraphes de la
+  NOAA, sur les côtes Est comme Ouest, avec la même forme et les mêmes heures.
+  Probablement le zéro de ces stations dans le fichier de marées ; en cours
+  d'analyse. Préférer là-bas le marégraphe en ligne pour la hauteur réelle.
 - Fenêtre *Données externes* : **Vérifier les fichiers** recontrôle les
   empreintes SHA-256 des fichiers installés (fichiers BathyElli listés un à
   un dans le catalogue, désormais version 2).

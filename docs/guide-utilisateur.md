@@ -501,8 +501,14 @@ se règlent dans l'onglet **Données**, cadre *Surfaces de référence verticale
   décompresse dans le dossier des références et propose de mettre à jour les
   surfaces ; *Vérifier les fichiers* recontrôle les empreintes des fichiers
   installés. Pour l'atlas FES2022 et la MSS (compte AVISO), *Ouvrir la page*
-  explique comment les obtenir et *Choisir le fichier…* les règle ; pour NOAA
-  VDatum, *Choisir le dossier…* règle le dossier *Pays*. *Mettre à jour la
+  explique comment les télécharger, puis *Convertir…* transforme les fichiers
+  netCDF d'AVISO au format du plugin et les règle (quelques minutes pour
+  FES2022, moins d'une minute pour la MSS, sans Python ; une conversion
+  annulée reprend où elle s'était arrêtée) ; un fichier déjà converti se
+  règle par *Choisir le fichier…*. Pour NOAA
+  VDatum, *Choisir le dossier…* règle le dossier *Pays* ; la grille officielle
+  du zéro des cartes d'un autre pays (VORF, HyVSEPs… en GeoTIFF, netCDF,
+  `.gtx` ou `.asc`) se convertit par *Convertir…* et se range dans ce dossier. *Mettre à jour la
   liste* récupère le catalogue à jour sur le dépôt du plugin.
 - **Mettre à jour les surfaces** : après avoir ajouté ou changé BathyElli,
   l'atlas FES2022 ou la MSS, recalcule les surfaces et corrige les sources
@@ -514,6 +520,10 @@ se règlent dans l'onglet **Données**, cadre *Surfaces de référence verticale
   dossier de la base). Sans migration, la base reste affichée telle quelle,
   mais l'import est bloqué. Une base migrée ne doit plus être ouverte avec
   une version antérieure du plugin.
+
+![Fenêtre Données externes](images/fr/16-external-data.png)
+
+![Conversion d'un fichier AVISO en cours](images/fr/17-conversion.png)
 
 Le **Nettoyage** (bornes Z1 – Z2) compare les profondeurs au zéro des cartes
 local, comme les cartes.
@@ -694,12 +704,27 @@ CO-OPS) — la hauteur d'eau
   connexion Internet est nécessaire, les mesures téléchargées restent dans le
   dossier des références (`REFMAR`) et servent aussi à l'import.
 
+![Choix d'un marégraphe en ligne](images/fr/18-tide-gauge-choice.png)
+
 **Courbe de marée…** ouvre une fenêtre indépendante : hauteur d'eau en fonction
 du temps pour chaque point de marée utilisé (la station OpenCPN, ou jusqu'à
 9 points FES2022 — NO, N, NE, O, Centre, E, SO, S, SE — répartis sur vos
 données ; avec un marégraphe, ses mesures et la prédiction de la station
 OpenCPN voisine, nommée avec son fichier de marées, par exemple
 *Prédiction OpenCPN (HARMONIC)*, pour voir la surcote).
+
+![Courbe de marée : mesures du marégraphe et prédiction de la station OpenCPN](images/fr/19-tide-curve-gauge.png)
+
+La prédiction est la seule marée astronomique, alors que le marégraphe
+mesure le niveau réel (surcote ou décote dues au vent et à la pression,
+variations saisonnières, montée du niveau de la mer depuis la période de
+calcul du zéro de la station) : un écart entre les deux courbes est normal.
+**Problème connu (en cours d'analyse) :** sur les côtes des États-Unis, Est
+comme Ouest, les prédictions des stations `harmonics-dwf` d'OpenCPN sont
+partout environ 0,3 m (1 ft) sous les mesures de la NOAA, avec la même forme
+et les mêmes heures. Un écart aussi uniforme désigne le zéro de ces stations
+dans le fichier de marées plutôt que la météo ; en attendant, préférer le
+marégraphe en ligne pour la hauteur réelle aux États-Unis.
 
 **Zéro des stations OpenCPN** — chaque station des fichiers de marées
 d'OpenCPN (`HARMONIC`, `.tcd`, ou un jeu ajouté comme HARMONIC V10) a son
@@ -919,6 +944,9 @@ un PC puis copier les fichiers `.pdb`.
 - Pas compatible Android (OpenGL ES).
 - Projection de carte supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36…) : paramètres de Helmert moyens (~1–2 m).
+- États-Unis : les stations de marée `harmonics-dwf` d'OpenCPN prédisent
+  environ 0,3 m (1 ft) plus bas que les marégraphes de la NOAA, sur toutes les
+  côtes (zéro des stations en cours d'analyse, voir § 8).
 - L'interpolation est faite à l'import : réimporter un levé pour appliquer
   un autre type de levé, une autre nature ou une autre distance max. Les
   levés en lignes importés avant la beta.9 sont à réimporter (surface

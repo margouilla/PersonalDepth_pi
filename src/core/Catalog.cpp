@@ -84,6 +84,8 @@ bool Parse(const std::string& json, Catalog& out, std::string& err) {
     it.page = v["page"].str();
     it.manual = v["manual"].boolean();
     it.check = v["check"].str();
+    it.convert = v["convert"].str();
+    if (it.convert != "fes" && it.convert != "mss" && it.convert != "cd") it.convert.clear();
     const Json& d = v["download"];
     if (d.isObject()) {
       it.url = d["url"].str();

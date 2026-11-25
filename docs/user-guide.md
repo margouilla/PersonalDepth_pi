@@ -478,9 +478,15 @@ reference surfaces* box.
   producer's website, checks the SHA-256 fingerprint, unpacks into the
   reference folder and offers to update the surfaces; *Check the files*
   checks again the fingerprints of the installed files. For the FES2022 atlas
-  and the MSS (AVISO account), *Open the page* explains how to get them and
-  *Choose the file…* sets them; for NOAA VDatum, *Choose the folder…* sets
-  the *Countries* folder. *Update the list* fetches the up-to-date catalogue
+  and the MSS (AVISO account), *Open the page* explains how to download
+  them, then *Convert…* turns AVISO's netCDF files into the plugin's format
+  and sets them (a few minutes for FES2022, under a minute for the MSS, no
+  Python; a cancelled conversion resumes where it stopped); an already
+  converted file is set with *Choose the file…*. For NOAA VDatum, *Choose
+  the folder…* sets
+  the *Countries* folder; the official chart datum grid of another country
+  (VORF, HyVSEPs… as GeoTIFF, netCDF, `.gtx` or `.asc`) is converted with
+  *Convert…* and saved in that folder. *Update the list* fetches the up-to-date catalogue
   from the plugin repository.
 - **Update surfaces**: after adding or changing BathyElli, the FES2022 atlas
   or the MSS, recomputes the surfaces and corrects the sources concerned. The
@@ -491,6 +497,10 @@ reference surfaces* box.
   `backup_before_MSL` (in the database folder). Without migration the
   database is still displayed as it is, but import is blocked. A migrated
   database must no longer be opened with an earlier version of the plugin.
+
+![External data window](images/en/16-external-data.png)
+
+![Conversion of an AVISO file in progress](images/en/17-conversion.png)
 
 **Clean** (Z1 – Z2 bounds) compares depths at local chart datum, like the
 charts.
@@ -668,11 +678,25 @@ CO-OPS) — the water height
   connection is needed; the downloaded measurements stay in the reference
   folder (`REFMAR`) and are also used by the import.
 
+![Choosing an online tide gauge](images/en/18-tide-gauge-choice.png)
+
 **Tide curve…** opens a separate window: water height against time for each
 tide point used (the OpenCPN station, or up to 9 FES2022 points — NW, N, NE,
 W, Centre, E, SW, S, SE — spread over your data; with a tide gauge, its
 measurements and the prediction of the nearby OpenCPN station, named with
 its tide file, e.g. *OpenCPN prediction (HARMONIC)*, to see the surge).
+
+![Tide curve: tide gauge measurements and OpenCPN station prediction](images/en/19-tide-curve-gauge.png)
+
+The prediction is the astronomical tide alone, while the gauge measures the
+actual level (surge or set-down from wind and pressure, seasonal changes,
+sea level rise since the period of the station's datum): a gap between the
+two curves is normal. **Known issue (under investigation):** on the US
+coasts, East and West, the predictions of OpenCPN's `harmonics-dwf` stations
+are about 1 ft below the NOAA measurements everywhere, with the same shape
+and timing. Such a uniform gap points to the datum of these stations in the
+tide file rather than to the weather; until it is cleared up, prefer the
+online tide gauge for the actual height in the United States.
 
 **Datum of OpenCPN stations** — each station of OpenCPN's tide files
 (`HARMONIC`, `.tcd`, or an added set such as HARMONIC V10) has its own datum
@@ -883,6 +907,9 @@ On a Raspberry Pi, prefer importing on a PC and copying the `.pdb` files.
 - Not compatible with Android (OpenGL ES).
 - Mercator chart projection assumed; antimeridian not handled.
 - Older datums (NTF, ED50, OSGB36…): mean Helmert parameters (~1–2 m).
+- United States: the OpenCPN tide stations of `harmonics-dwf` predict about
+  1 ft lower than the NOAA tide gauges, on every coast (datum of the stations
+  under investigation, see § 8).
 - Interpolation is done at import: re-import a survey to apply a new survey
   type, nature or max distance. Line surveys imported before beta.9 should be
   re-imported (interpolated surface computed differently).

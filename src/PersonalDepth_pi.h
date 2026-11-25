@@ -235,6 +235,7 @@ struct TideChartPoint {
   double lon = 0, lat = 0;
   int kind = 0;      // 0 source du moment, 1 mesures du marégraphe, 2 prédiction d'une station OpenCPN
   int station = -1;  // kind 2 : station OpenCPN
+  double unitK = 1;  // kind 2 : unité de la station -> mètres
 };
 
 std::string SerializeImportPrefs(const DisplaySettings& s);
@@ -304,6 +305,10 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   time_t TideChartTime() const;
   int TideChartDataVersion() const;  // change quand de nouvelles mesures arrivent
   wxString TideDatasetLabel(const wxString& station);  // jeu de marées OpenCPN de la station
+  // Facteur vers le mètre des hauteurs d'une station OpenCPN (GetTideHeight
+  // rend l'unité de la station : pieds pour la plupart des stations NOAA)
+  double TideStationToMetres(const wxString& station, double lat, double lon);
+  std::vector<wxString> TideDataFiles();  // fichiers de marées actifs d'OpenCPN
   void ShowTideChart();
   GaugeManager& Gauges();            // marégraphes en ligne (listes, mesures)
   const pd::GaugeStation& CurrentGauge() const { return m_gauge; }  // marégraphe de la marée
@@ -460,6 +465,8 @@ class PersonalDepth_pi : public opencpn_plugin_118 {
   pd::GaugeSeries m_gaugeSeries;
   std::string m_gaugeSeriesKey;
   std::map<wxString, wxString> m_tideDatasetLabels;  // station OpenCPN -> jeu de marées
+  std::map<wxString, double> m_tideStationUnits;      // station OpenCPN -> facteur vers le mètre
+  double m_tideStationK = 1;                          // station courante
   unsigned m_tideVersion = 0;
   // Marée maillée FES : zone préparée en tâche de fond (plus basse mer…)
   void StartFes(const std::string& key, const std::string& atlas, const double bbox[4],

@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "version": 2,
-  "date": "2026-11-23",
+  "version": 3,
+  "date": "2026-11-25",
   "items": [
     {
       "id": "bathyelli-zh",
@@ -114,15 +114,16 @@
       "name": {"fr": "Marée FES2022b", "en": "FES2022b tide", "ru": "Прилив FES2022b"},
       "producer": "AVISO / CNES",
       "desc": {
-        "fr": "Atlas mondial de la marée : marée maillée, plus basse mer astronomique, zéro des cartes hors France. Compte AVISO gratuit, puis conversion en .pdtide (tools/pdtide_convert.py). Le téléchargement direct depuis le plugin est en attente de l'accord d'AVISO.",
-        "en": "Worldwide tide atlas: gridded tide, lowest astronomical tide, chart datum outside France. Free AVISO account, then conversion to .pdtide (tools/pdtide_convert.py). Direct download from the plugin is waiting for AVISO's agreement.",
-        "ru": "Мировой атлас приливов: сеточный прилив, наинизший астрономический уровень, нуль глубин вне Франции. Бесплатная учётная запись AVISO, затем преобразование в .pdtide (tools/pdtide_convert.py). Прямая загрузка из плагина ожидает согласия AVISO."
+        "fr": "Atlas mondial de la marée : marée maillée, plus basse mer astronomique, zéro des cartes hors France. Compte AVISO gratuit, téléchargement du dossier fes2022b (ocean_tide_extrapolated et ocean_tide), puis « Convertir… » le transforme en .pdtide (quelques minutes, une fois). Le téléchargement direct depuis le plugin est en attente de l'accord d'AVISO.",
+        "en": "Worldwide tide atlas: gridded tide, lowest astronomical tide, chart datum outside France. Free AVISO account, download of the fes2022b folder (ocean_tide_extrapolated and ocean_tide), then \"Convert…\" turns it into a .pdtide (a few minutes, once). Direct download from the plugin is waiting for AVISO's agreement.",
+        "ru": "Мировой атлас приливов: сеточный прилив, наинизший астрономический уровень, нуль глубин вне Франции. Бесплатная учётная запись AVISO, загрузка папки fes2022b (ocean_tide_extrapolated и ocean_tide), затем «Преобразовать…» создаёт файл .pdtide (несколько минут, один раз). Прямая загрузка из плагина ожидает согласия AVISO."
       },
       "licence": "AVISO+ (Issue 20)",
       "licence_url": "https://www.aviso.altimetry.fr/fileadmin/documents/data/License_Aviso.pdf",
       "citation": "FES2022b, LEGOS / NOVELTIS / CLS / CNES, distributed by AVISO+",
       "page": "https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/external-data.md#2-fes2022-gridded-tide",
-      "manual": true
+      "manual": true,
+      "convert": "fes"
     },
     {
       "id": "mss2025",
@@ -131,15 +132,16 @@
       "name": {"fr": "Surface moyenne océanique CNES_CLS 2025", "en": "CNES_CLS 2025 mean sea surface", "ru": "Средняя поверхность океана CNES_CLS 2025"},
       "producer": "AVISO / CNES, CLS",
       "desc": {
-        "fr": "Niveau moyen au-dessus de l'ellipsoïde hors France (levés GNSS, affichage à l'ellipsoïde). Même compte AVISO, puis conversion en .pdgrid (tools/pdgrid_convert.py).",
-        "en": "Mean sea level above the ellipsoid outside France (GNSS surveys, display at the ellipsoid). Same AVISO account, then conversion to .pdgrid (tools/pdgrid_convert.py).",
-        "ru": "Средний уровень над эллипсоидом вне Франции (съёмки GNSS, отображение от эллипсоида). Та же учётная запись AVISO, затем преобразование в .pdgrid (tools/pdgrid_convert.py)."
+        "fr": "Niveau moyen au-dessus de l'ellipsoïde hors France (levés GNSS, affichage à l'ellipsoïde). Même compte AVISO, téléchargement de mss_cnes_cls_2025.nc, puis « Convertir… » le transforme en .pdgrid (moins d'une minute).",
+        "en": "Mean sea level above the ellipsoid outside France (GNSS surveys, display at the ellipsoid). Same AVISO account, download of mss_cnes_cls_2025.nc, then \"Convert…\" turns it into a .pdgrid (under a minute).",
+        "ru": "Средний уровень над эллипсоидом вне Франции (съёмки GNSS, отображение от эллипсоида). Та же учётная запись AVISO, загрузка mss_cnes_cls_2025.nc, затем «Преобразовать…» создаёт файл .pdgrid (меньше минуты)."
       },
       "licence": "AVISO+ (Issue 20)",
       "licence_url": "https://www.aviso.altimetry.fr/fileadmin/documents/data/License_Aviso.pdf",
       "citation": "CNES_CLS 2025 Mean Sea Surface, CNES, DOI 10.24400/527896/a01-2024.011",
       "page": "https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/external-data.md#3-mean-sea-surface-mss-cnes_cls-2025",
-      "manual": true
+      "manual": true,
+      "convert": "mss"
     },
     {
       "id": "vdatum",
@@ -158,6 +160,23 @@
       "page": "https://vdatum.noaa.gov/download.php",
       "manual": true,
       "check": "*mllw*.gtx"
+    },
+    {
+      "id": "national-grid",
+      "group": "world",
+      "use": "national",
+      "name": {"fr": "Zéro des cartes d'un autre pays (grille officielle)", "en": "Chart datum of another country (official grid)", "ru": "Нуль глубин другой страны (официальная сетка)"},
+      "producer": "UKHO, CHS…",
+      "desc": {
+        "fr": "Grille du zéro des cartes fournie par un service hydrographique (VORF du Royaume-Uni, HyVSEPs du Canada…), par rapport au niveau moyen ou à l'ellipsoïde. « Convertir… » lit le GeoTIFF en longitude / latitude, le netCDF, le .gtx ou le .asc, et range le .pdgrid dans le dossier « Pays ».",
+        "en": "Chart datum grid supplied by a hydrographic office (VORF of the United Kingdom, HyVSEPs of Canada…), relative to mean sea level or to the ellipsoid. \"Convert…\" reads the GeoTIFF in longitude / latitude, the netCDF, the .gtx or the .asc, and saves the .pdgrid in the \"Countries\" folder.",
+        "ru": "Сетка нуля глубин гидрографической службы (VORF Великобритании, HyVSEPs Канады…) относительно среднего уровня или эллипсоида. «Преобразовать…» читает GeoTIFF в долготе / широте, netCDF, .gtx или .asc и сохраняет .pdgrid в папку «Страны»."
+      },
+      "licence": "Licence du producteur / producer's licence",
+      "page": "https://github.com/margouilla/PersonalDepth_pi/blob/main/docs/external-data.md#5-official-chart-datum-of-other-countries",
+      "manual": true,
+      "check": "*.pdgrid",
+      "convert": "cd"
     }
   ]
 }

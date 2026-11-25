@@ -16,6 +16,7 @@
 #include "core/Lang.h"
 #include "TideChart.h"
 
+#include <wx/control.h>
 #include <wx/dcbuffer.h>
 #include <wx/dcgraph.h>
 
@@ -96,7 +97,12 @@ class TideChartPanel : public wxPanel {
       dc.DrawText(m, (sz.x - e.x) / 2, (sz.y - e.y) / 2);
       return;
     }
-    const int legendW = FromDIP(230), L = FromDIP(62), T = FromDIP(28), B = FromDIP(46);
+    // légende : aussi large que ses textes, au plus 40 % de la fenêtre (au-delà,
+    // textes abrégés par « … »)
+    int need = D.m_source.empty() ? 0 : dc.GetTextExtent(D.m_source).x;
+    for (const auto& s : D.m_series) need = std::max(need, dc.GetTextExtent(s.pt.name + "  +00.00 ft").x);
+    const int legendW = std::max(FromDIP(230), std::min(need + FromDIP(30), sz.x * 2 / 5));
+    const int L = FromDIP(62), T = FromDIP(28), B = FromDIP(46);
     const wxRect plot(L, T, std::max(50, sz.x - L - legendW - FromDIP(16)), std::max(50, sz.y - T - B));
     const double x0 = (double)D.m_x0, x1 = (double)D.m_x1, y0 = D.m_y0, y1 = D.m_y1;
     if (!(x1 > x0) || !(y1 > y0)) return;
@@ -214,6 +220,8 @@ class TideChartPanel : public wxPanel {
       wxString t = s.pt.name;
       if (!std::isnan(atMarker[k])) t += wxString::Format("  %+.2f %s", atMarker[k], D.m_unit);
       dc.SetTextForeground(s.visible ? ink : wxColour(160, 160, 160));
+      const int room = legendW - box - FromDIP(10);
+      if (dc.GetTextExtent(t).x > room) t = wxControl::Ellipsize(t, dc, wxELLIPSIZE_MIDDLE, room);
       dc.DrawText(t, lx + box + FromDIP(6), ly);
       const wxString c = wxString::Format(U8("%.4f°, %.4f°"), s.pt.lat, s.pt.lon);
       wxFont fSmall = GetFont();

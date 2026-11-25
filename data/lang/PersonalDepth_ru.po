@@ -3466,9 +3466,9 @@ msgstr "Глубины"
 msgid "mean sea surface: MSS_CNES_CLS_2025.pdgrid"
 msgstr "средняя поверхность океана: MSS_CNES_CLS_2025.pdgrid"
 
-#. fr: Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage à l'ellipsoïde). Fichier converti par tools/pdgrid_convert.py depuis la MSS CNES_CLS d'AVISO (voir docs/external-data.md).
-msgid "Mean sea level above the ellipsoid outside France (GNSS heights, display at the ellipsoid). File converted by tools/pdgrid_convert.py from the AVISO CNES_CLS MSS (see docs/external-data.md)."
-msgstr "Средний уровень над эллипсоидом вне Франции (высоты GNSS, отображение от эллипсоида). Файл преобразован tools/pdgrid_convert.py из MSS CNES_CLS AVISO (см. docs/external-data.md)."
+#. fr: Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage à l'ellipsoïde). Fichier .pdgrid obtenu depuis la MSS CNES_CLS d'AVISO par « Convertir… » de la fenêtre Données externes.
+msgid "Mean sea level above the ellipsoid outside France (GNSS heights, display at the ellipsoid). .pdgrid file made from the AVISO CNES_CLS MSS with \"Convert…\" in the External data window."
+msgstr "Средний уровень над эллипсоидом вне Франции (высоты GNSS, отображение от эллипсоида). Файл .pdgrid, полученный из MSS CNES_CLS AVISO кнопкой «Преобразовать…» в окне «Внешние данные»."
 
 #. fr: MSS
 msgid "MSS"
@@ -3710,9 +3710,9 @@ msgstr "национальный нуль глубин"
 msgid "folder of official files (NOAA VDatum…)"
 msgstr "папка официальных файлов (NOAA VDatum…)"
 
-#. fr: Zéro des cartes officiel des autres pays : déposer dans ce dossier les fichiers téléchargés (régions NOAA VDatum des États-Unis…), le plugin les reconnaît et les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. Liens et licences : docs/external-data.md.
-msgid "Official chart datum of other countries: put the downloaded files in this folder (NOAA VDatum regions of the United States…); the plugin recognises them and uses them where they exist; elsewhere, lowest astronomical tide of the FES tide. Links and licences: docs/external-data.md."
-msgstr "Официальный нуль глубин других стран: положите загруженные файлы в эту папку (регионы NOAA VDatum в США…); плагин распознаёт их и использует там, где они есть; в остальных местах — наинизший астрономический уровень по приливу FES. Ссылки и лицензии: docs/external-data.md."
+#. fr: Zéro des cartes officiel des autres pays : déposer dans ce dossier les fichiers téléchargés (régions NOAA VDatum des États-Unis…) ou les grilles converties par « Convertir… » de la fenêtre Données externes (VORF, HyVSEPs…) ; le plugin les reconnaît et les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. Liens et licences : docs/external-data.md.
+msgid "Official chart datum of other countries: put the downloaded files in this folder (NOAA VDatum regions of the United States…) or the grids converted with \"Convert…\" in the External data window (VORF, HyVSEPs…); the plugin recognises them and uses them where they exist; elsewhere, lowest astronomical tide of the FES tide. Links and licences: docs/external-data.md."
+msgstr "Официальный нуль глубин других стран: поместите в эту папку загруженные файлы (регионы NOAA VDatum США…) или сетки, преобразованные кнопкой «Преобразовать…» в окне «Внешние данные» (VORF, HyVSEPs…); плагин распознаёт их и использует там, где они есть; в остальных местах — наинизший астрономический уровень прилива FES. Ссылки и лицензии: docs/external-data.md."
 
 #. fr: Pays
 msgid "Countries"
@@ -4862,9 +4862,9 @@ msgstr "Проверить файлы"
 msgid "Checks again the SHA-256 fingerprints of the installed files: a damaged file or one replaced by another version is reported."
 msgstr "Повторно проверяет отпечатки SHA-256 установленных файлов: повреждённый или заменённый другой версией файл отмечается."
 
-#. fr: fichier converti par l'utilisateur, pas d'empreinte de référence
-msgid "file converted by the user, no reference fingerprint"
-msgstr "файл преобразован пользователем, нет эталонного отпечатка"
+#. fr: fichier converti, pas d'empreinte de référence
+msgid "converted file, no reference fingerprint"
+msgstr "преобразованный файл, нет эталонного отпечатка"
 
 #. fr:  : conforme
 msgid ": correct"
@@ -4925,4 +4925,172 @@ msgstr "общественное достояние (NOAA, правительс�
 #. fr: Télécharger les hauteurs d'eau d'un marégraphe en ligne pour la période du levé (France : REFMAR du Shom ; États-Unis : NOAA CO-OPS).
 msgid "Download the water levels of an online tide gauge for the survey period (France: Shom REFMAR; United States: NOAA CO-OPS)."
 msgstr "Загрузить уровни воды онлайн-мареографа за период съёмки (Франция: REFMAR Shom; США: NOAA CO-OPS)."
+
+#. fr: Convertir…
+msgid "Convert…"
+msgstr "Преобразовать…"
+
+#. fr: Convertit le fichier téléchargé chez le producteur (dossier FES2022b, surface moyenne .nc, grille du zéro des cartes d'un pays) au format compact du plugin, puis l'utilise. Une seule fois ; une conversion interrompue reprend où elle s'était arrêtée.
+msgid "Converts the file downloaded from the producer (FES2022b folder, mean sea surface .nc, chart datum grid of a country) to the plugin's compact format, then uses it. Only once; an interrupted conversion resumes where it stopped."
+msgstr "Преобразует файл, загруженный у производителя (папка FES2022b, средняя поверхность .nc, сетка нуля глубин страны), в компактный формат плагина и использует его. Один раз; прерванное преобразование продолжается с места остановки."
+
+#. fr: Dossier FES2022b téléchargé chez AVISO (il contient ocean_tide_extrapolated)
+msgid "FES2022b folder downloaded from AVISO (it contains ocean_tide_extrapolated)"
+msgstr "Папка FES2022b, загруженная с AVISO (содержит ocean_tide_extrapolated)"
+
+#. fr: Aucun fichier m2_fes2022.nc dans ce dossier ni dans son sous-dossier ocean_tide_extrapolated. Choisir le dossier fes2022b téléchargé chez AVISO.
+msgid "No m2_fes2022.nc file in this folder or in its ocean_tide_extrapolated subfolder. Choose the fes2022b folder downloaded from AVISO."
+msgstr "В этой папке и в её подпапке ocean_tide_extrapolated нет файла m2_fes2022.nc. Выберите папку fes2022b, загруженную с AVISO."
+
+#. fr: Surface moyenne océanique téléchargée chez AVISO (.nc)
+msgid "Mean sea surface downloaded from AVISO (.nc)"
+msgstr "Средняя поверхность океана, загруженная с AVISO (.nc)"
+
+#. fr: netCDF (*.nc)|*.nc|Tous|*
+msgid "netCDF (*.nc)|*.nc|All|*"
+msgstr "netCDF (*.nc)|*.nc|Все|*"
+
+#. fr: Place insuffisante dans le dossier des données externes : il faut environ %llu Mo libres.
+msgid "Not enough space in the external data folder: about %llu MB free are needed."
+msgstr "Недостаточно места в папке внешних данных: нужно около %llu МБ свободного места."
+
+#. fr: Conversion
+msgid "Conversion"
+msgstr "Преобразование"
+
+#. fr: onde 
+msgid "constituent "
+msgstr "волна "
+
+#. fr: Conversion interrompue. Relancer « Convertir… » avec le même fichier ou dossier : elle reprendra où elle s'était arrêtée.
+msgid "Conversion interrupted. Run \"Convert…\" again with the same file or folder: it will resume where it stopped."
+msgstr "Преобразование прервано. Снова запустите «Преобразовать…» с тем же файлом или папкой: оно продолжится с места остановки."
+
+#. fr: Conversion impossible :
+msgid "Conversion failed:"
+msgstr "Преобразование невозможно:"
+
+#. fr: Conversion terminée en %s. Le plugin utilise maintenant :
+msgid "Conversion finished in %s. The plugin now uses:"
+msgstr "Преобразование завершено за %s. Плагин теперь использует:"
+
+#. fr: Variable absente du fichier : 
+msgid "Variable missing from the file: "
+msgstr "Переменная отсутствует в файле: "
+
+#. fr: Variable : 2 dimensions attendues (lat, lon)
+msgid "Variable: 2 dimensions expected (lat, lon)"
+msgstr "Переменная: ожидаются 2 измерения (lat, lon)"
+
+#. fr: Coordonnées lat / lon introuvables dans le fichier
+msgid "Lat / lon coordinates not found in the file"
+msgstr "Координаты lat / lon не найдены в файле"
+
+#. fr: Compression impossible
+msgid "Compression failed"
+msgstr "Сжатие невозможно"
+
+#. fr: Écriture impossible : 
+msgid "Cannot write: "
+msgstr "Запись невозможна: "
+
+#. fr: Partie illisible : 
+msgid "Unreadable part: "
+msgstr "Нечитаемая часть: "
+
+#. fr: Variables amplitude / phase absentes : 
+msgid "Amplitude / phase variables missing: "
+msgstr "Переменные amplitude / phase отсутствуют: "
+
+#. fr: netCDF/HDF5 : structure non prise en charge
+msgid "netCDF/HDF5: unsupported structure"
+msgstr "netCDF/HDF5: неподдерживаемая структура"
+
+#. fr: netCDF/HDF5 : fichier tronqué ou endommagé
+msgid "netCDF/HDF5: truncated or damaged file"
+msgstr "netCDF/HDF5: файл усечён или повреждён"
+
+#. fr: netCDF : format non reconnu (ni netCDF-3, ni netCDF-4/HDF5)
+msgid "netCDF: unrecognised format (neither netCDF-3 nor netCDF-4/HDF5)"
+msgstr "netCDF: формат не распознан (ни netCDF-3, ни netCDF-4/HDF5)"
+
+#. fr: netCDF : filtre de compression non pris en charge
+msgid "netCDF: unsupported compression filter"
+msgstr "netCDF: неподдерживаемый фильтр сжатия"
+
+#. fr: netCDF : fichier introuvable ou illisible
+msgid "netCDF: file not found or unreadable"
+msgstr "netCDF: файл не найден или нечитаем"
+
+#. fr: netCDF : lecture hors des dimensions de la variable
+msgid "netCDF: read outside the variable's dimensions"
+msgstr "netCDF: чтение за пределами размеров переменной"
+
+#. fr: netCDF : type de données non pris en charge
+msgid "netCDF: unsupported data type"
+msgstr "netCDF: неподдерживаемый тип данных"
+
+#. fr: netCDF : mémoire insuffisante pour cette lecture
+msgid "netCDF: not enough memory for this read"
+msgstr "netCDF: недостаточно памяти для этого чтения"
+
+#. fr: Grille du zéro des cartes fournie par le service hydrographique
+msgid "Chart datum grid supplied by the hydrographic office"
+msgstr "Сетка нуля глубин гидрографической службы"
+
+#. fr: Grilles (*.tif;*.tiff;*.nc;*.gtx;*.asc)|*.tif;*.tiff;*.nc;*.gtx;*.asc|Tous|*
+msgid "Grids (*.tif;*.tiff;*.nc;*.gtx;*.asc)|*.tif;*.tiff;*.nc;*.gtx;*.asc|All|*"
+msgstr "Сетки (*.tif;*.tiff;*.nc;*.gtx;*.asc)|*.tif;*.tiff;*.nc;*.gtx;*.asc|Все|*"
+
+#. fr: Dossier « Pays » des fichiers officiels (la grille convertie y sera rangée)
+msgid "\"Countries\" folder of the official files (the converted grid will be saved there)"
+msgstr "Папка «Страны» официальных файлов (преобразованная сетка будет сохранена там)"
+
+#. fr: Grille du zéro des cartes
+msgid "Chart datum grid"
+msgstr "Сетка нуля глубин"
+
+#. fr: Nom affiché :
+msgid "Displayed name:"
+msgstr "Отображаемое имя:"
+
+#. fr: Nom donné dans le cadre des surfaces de référence et sous le curseur (ex. « VORF CD »).
+msgid "Name shown in the reference surfaces box and under the cursor (e.g. \"VORF CD\")."
+msgstr "Имя в рамке опорных поверхностей и под курсором (напр. «VORF CD»)."
+
+#. fr: zéro des cartes par rapport au niveau moyen (valeurs négatives, quelques mètres)
+msgid "chart datum relative to mean sea level (negative values, a few metres)"
+msgstr "нуль глубин относительно среднего уровня (отрицательные значения, несколько метров)"
+
+#. fr: hauteur du zéro des cartes au-dessus de l'ellipsoïde (dizaines de mètres)
+msgid "height of chart datum above the ellipsoid (tens of metres)"
+msgstr "высота нуля глубин над эллипсоидом (десятки метров)"
+
+#. fr: Les valeurs de la grille donnent
+msgid "The grid values give"
+msgstr "Значения сетки дают"
+
+#. fr: Inverser le signe (la grille donne le niveau moyen au-dessus du zéro des cartes, en valeurs positives)
+msgid "Reverse the sign (the grid gives mean sea level above chart datum, as positive values)"
+msgstr "Обратить знак (сетка даёт средний уровень над нулём глубин, положительными значениями)"
+
+#. fr: GeoTIFF, netCDF, .gtx ou .asc en longitude / latitude (WGS84 ou ETRS89). Une grille en projection se convertit d'abord en longitude / latitude (QGIS, GDAL).
+msgid "GeoTIFF, netCDF, .gtx or .asc in longitude / latitude (WGS84 or ETRS89). A projected grid must first be converted to longitude / latitude (QGIS, GDAL)."
+msgstr "GeoTIFF, netCDF, .gtx или .asc в долготе / широте (WGS84 или ETRS89). Сетку в проекции сначала нужно перевести в долготу / широту (QGIS, GDAL)."
+
+#. fr: Aucune grille lat / lon dans le fichier
+msgid "No lat / lon grid in the file"
+msgstr "В файле нет сетки lat / lon"
+
+#. fr: GeoTIFF sans géoréférencement
+msgid "GeoTIFF without georeferencing"
+msgstr "GeoTIFF без географической привязки"
+
+#. fr: GeoTIFF en projection : une grille en longitude / latitude est attendue
+msgid "Projected GeoTIFF: a grid in longitude / latitude is expected"
+msgstr "GeoTIFF в проекции: ожидается сетка в долготе / широте"
+
+#. fr: Grille trop grande
+msgid "Grid too large"
+msgstr "Сетка слишком велика"
 

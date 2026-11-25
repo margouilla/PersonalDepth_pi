@@ -9,7 +9,8 @@
 //      "download":{"url", "file", "size", "sha256", "extract", "subdir"},
 //      "manual": true (pas de téléchargement direct : page à ouvrir),
 //      "check": motif du fichier installé (« *ZH*.glhi »),
-//      "files": [{"name", "sha256"}, ...] (fichiers installés, pour « Vérifier »)}, ...]}
+//      "files": [{"name", "sha256"}, ...] (fichiers installés, pour « Vérifier »),
+//      "convert": "fes" | "mss" | "cd" (conversion intégrée du fichier du producteur)}, ...]}
 //
 // Copyright (C) 2026 Marcaurelio Franzetti
 // SPDX-License-Identifier: GPL-2.0-or-later
@@ -31,6 +32,7 @@ struct CatalogItem {
   long long size = 0;
   bool extract = false;
   std::string check;  // motif (* et ?) du nom du fichier installé
+  std::string convert;  // "fes" (.pdtide), "mss" ou "cd" (.pdgrid) : bouton « Convertir… »
   // fichiers installés et leur empreinte (contenu des archives) ; vide : le
   // fichier téléchargé lui-même (sha256), s'il n'est pas une archive
   std::vector<std::pair<std::string, std::string>> files;

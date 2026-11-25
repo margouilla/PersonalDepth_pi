@@ -8,11 +8,20 @@
 #include <wx/filename.h>
 #include <wx/hyperlink.h>
 #include <wx/listctrl.h>
+#include <wx/progdlg.h>
+#include <wx/radiobox.h>
+
+#include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <mutex>
+#include <thread>
 
 #include "PersonalDepth_pi.h"
 #include "core/Archive.h"
 #include "core/FileUtil.h"
 #include "core/Lang.h"
+#include "core/NcConvert.h"
 #include "core/Sha256.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
@@ -83,6 +92,11 @@ ExternalDataDialog::ExternalDataDialog(wxWindow* parent, PersonalDepth_pi* pi)
   auto* br = new wxBoxSizer(wxHORIZONTAL);
   m_get = new wxButton(this, wxID_ANY, U8("Télécharger"));
   m_choose = new wxButton(this, wxID_ANY, U8("Choisir le fichier…"));
+  m_convert = new wxButton(this, wxID_ANY, U8("Convertir…"));
+  m_convert->SetToolTip(U8("Convertit le fichier téléchargé chez le producteur (dossier FES2022b, surface "
+                           "moyenne .nc, grille du zéro des cartes d'un pays) au format compact du plugin, puis "
+                           "l'utilise. Une seule fois ; une conversion interrompue reprend où elle s'était "
+                           "arrêtée."));
   m_all = new wxButton(this, wxID_ANY, U8("Tout ce qui manque (France)"));
   m_all->SetToolTip(U8("Télécharge les fichiers libres de France absents du dossier : BathyElli ZH et NM, "
                        "RAF20, RAC23."));
@@ -94,6 +108,7 @@ ExternalDataDialog::ExternalDataDialog(wxWindow* parent, PersonalDepth_pi* pi)
                      "du plugin."));
   br->Add(m_get, 0, wxRIGHT, 4);
   br->Add(m_choose, 0, wxRIGHT, 4);
+  br->Add(m_convert, 0, wxRIGHT, 4);
   br->Add(m_all, 0, wxRIGHT, 12);
   br->AddStretchSpacer();
   br->Add(ver, 0, wxRIGHT, 4);
@@ -132,6 +147,10 @@ ExternalDataDialog::ExternalDataDialog(wxWindow* parent, PersonalDepth_pi* pi)
   m_choose->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
     const int i = Selected();
     if (i >= 0) ChooseFile(m_cat.items[(size_t)i]);
+  });
+  m_convert->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+    const int i = Selected();
+    if (i >= 0) Convert(m_cat.items[(size_t)i]);
   });
   m_all->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { InstallMissing(); });
   upd->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { UpdateCatalog(); });
@@ -195,6 +214,7 @@ void ExternalDataDialog::ShowDetails() {
   const bool any = i >= 0 && (size_t)i < m_cat.items.size();
   m_get->Enable(any);
   m_choose->Enable(false);
+  m_convert->Enable(false);
   if (!any) {
     m_desc->SetLabel("");
     m_lic->SetLabel("");
@@ -223,6 +243,7 @@ void ExternalDataDialog::ShowDetails() {
   m_get->Enable(it.downloadable() || !it.page.empty());
   m_choose->Enable(it.use == "tide" || it.use == "mss" || it.use == "national");
   m_choose->SetLabel(it.use == "national" ? U8("Choisir le dossier…") : U8("Choisir le fichier…"));
+  m_convert->Enable(!it.convert.empty());
   // la fenêtre grandit si le texte ne tient plus (jamais ne rétrécit)
   if (GetSizer()) {
     const wxSize best = GetSizer()->GetMinSize() + (GetSize() - GetClientSize()), cur = GetSize();
@@ -332,6 +353,189 @@ void ExternalDataDialog::ChooseFile(const CatalogItem& it) {
   Fill();
 }
 
+namespace {
+namespace fs = std::filesystem;
+
+// Fichier de sortie : `base`, sauf s'il existe déjà (fichier peut-être en
+// service) : « base (2) »… ; une conversion interrompue (dossier .parts) est
+// reprise sous son nom
+std::string OutputName(const fs::path& dir, const std::string& stem, const std::string& ext) {
+  std::error_code ec;
+  std::vector<fs::path> cand;
+  for (int k = 1; k <= 20; ++k)
+    cand.push_back(dir / pd::U8Path(k == 1 ? stem + ext : stem + " (" + std::to_string(k) + ")" + ext));
+  for (const auto& c : cand)
+    if (fs::is_directory(fs::path(c.u8string() + ".parts"), ec)) return c.u8string();
+  for (const auto& c : cand)
+    if (!fs::exists(c, ec)) return c.u8string();
+  return cand.back().u8string();
+}
+
+wxString Duration(double s) {
+  if (s < 90) return wxString::Format("%.0f s", s);
+  return wxString::Format("%.0f min", s / 60.0);
+}
+}  // namespace
+
+void ExternalDataDialog::Convert(const CatalogItem& it) {
+  DisplaySettings& s = m_pi->Settings();
+  const bool fes = it.convert == "fes", cd = it.convert == "cd";
+  PdgridOptions opt;
+  if (cd) opt.var.clear();  // première grille lat / lon du fichier
+  std::string in;
+  if (fes) {
+    wxDirDialog dd(this, U8("Dossier FES2022b téléchargé chez AVISO (il contient ocean_tide_extrapolated)"),
+                   m_pi->ExternalDir(), wxDD_DIR_MUST_EXIST);
+    if (dd.ShowModal() != wxID_OK) return;
+    in = FindFesFolder(dd.GetPath().ToStdString(wxConvUTF8));
+    if (in.empty()) {
+      wxMessageBox(U8("Aucun fichier m2_fes2022.nc dans ce dossier ni dans son sous-dossier "
+                      "ocean_tide_extrapolated. Choisir le dossier fes2022b téléchargé chez AVISO."),
+                   "PersonalDepth", wxOK | wxICON_WARNING, this);
+      return;
+    }
+  } else if (!cd) {
+    wxFileDialog fd(this, U8("Surface moyenne océanique téléchargée chez AVISO (.nc)"), "", "",
+                    U8("netCDF (*.nc)|*.nc|Tous|*"), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (fd.ShowModal() != wxID_OK) return;
+    in = fd.GetPath().ToStdString(wxConvUTF8);
+  } else {
+    wxFileDialog fd(this, U8("Grille du zéro des cartes fournie par le service hydrographique"), "", "",
+                    U8("Grilles (*.tif;*.tiff;*.nc;*.gtx;*.asc)|*.tif;*.tiff;*.nc;*.gtx;*.asc|Tous|*"),
+                    wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (fd.ShowModal() != wxID_OK) return;
+    in = fd.GetPath().ToStdString(wxConvUTF8);
+    if (!AskGridOptions(pd::U8Path(in).stem().u8string(), opt)) return;
+    if (s.nationalDir.empty() || !wxDirExists(W8(s.nationalDir.c_str()))) {
+      wxDirDialog dd(this, U8("Dossier « Pays » des fichiers officiels (la grille convertie y sera rangée)"),
+                     m_pi->ExternalDir());
+      if (dd.ShowModal() != wxID_OK) return;
+      s.nationalDir = dd.GetPath().ToUTF8().data();
+      m_pi->SaveConfig();
+    }
+  }
+  const fs::path outDir = pd::U8Path(cd ? s.nationalDir : m_pi->ExternalDir().ToStdString(wxConvUTF8));
+  std::error_code ec;
+  fs::create_directories(outDir, ec);
+  const std::string stem = fes ? std::string("FES2022b_ocean") : pd::U8Path(in).stem().u8string();
+  const std::string out = OutputName(outDir, stem, fes ? ".pdtide" : ".pdgrid");
+  // place : fichier final + parties (≈ 2 × 230 Mo pour FES, 2 × 125 Mo pour la MSS)
+  const uint64_t need = (fes ? 520ull : cd ? 64ull : 280ull) << 20;
+  const fs::space_info sp = fs::space(outDir, ec);
+  if (!ec && sp.available < need) {
+    wxMessageBox(wxString::Format(U8("Place insuffisante dans le dossier des données externes : il faut environ "
+                                     "%llu Mo libres."),
+                                  (unsigned long long)(need >> 20)),
+                 "PersonalDepth", wxOK | wxICON_WARNING, this);
+    return;
+  }
+  // conversion en tâche de fond ; la fenêtre de progression reste réactive
+  std::atomic<double> frac{0.0};
+  std::atomic<bool> cancel{false}, done{false};
+  std::mutex mu;
+  std::string step, err;
+  int rc = -1;
+  const auto t0 = std::chrono::steady_clock::now();
+  std::thread worker([&] {
+    ConvertProgress prog = [&](double f, const std::string& st) {
+      frac = f;
+      {
+        std::lock_guard<std::mutex> lk(mu);
+        step = st;
+      }
+      return !cancel.load();
+    };
+    try {
+      if (fes) rc = ConvertFesToPdtide(in, out, prog, err);
+      else rc = ConvertToPdgrid(in, out, opt, prog, err);
+    } catch (const std::exception& e) {
+      rc = -1;
+      err = e.what();
+    }
+    done = true;
+  });
+  {
+    const wxString title = W8(it.title(LangCode()).c_str());
+    wxProgressDialog dlg(U8("Conversion"), title + "\n" + W8(out.c_str()), 1000, this,
+                        wxPD_APP_MODAL | wxPD_CAN_ABORT | wxPD_ELAPSED_TIME | wxPD_REMAINING_TIME);
+    while (!done) {
+      wxMilliSleep(150);
+      wxString st;
+      {
+        std::lock_guard<std::mutex> lk(mu);
+        st = W8(step.c_str());
+      }
+      const int v = std::min(999, (int)(frac.load() * 1000));
+      wxString msg = title;
+      if (!st.empty()) msg += W8(" — ") + (fes ? U8("onde ") + st : st);
+      if (!dlg.Update(v, msg)) cancel = true;
+    }
+  }
+  worker.join();
+  const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  if (rc == 0) {
+    wxMessageBox(U8("Conversion interrompue. Relancer « Convertir… » avec le même fichier ou dossier : elle "
+                    "reprendra où elle s'était arrêtée."),
+                 "PersonalDepth", wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  if (rc < 0) {
+    wxMessageBox(U8("Conversion impossible :") + "\n" + W8(err.c_str()), "PersonalDepth", wxOK | wxICON_WARNING,
+                 this);
+    return;
+  }
+  if (fes) {
+    s.tideAtlas = out;
+    m_pi->TideChanged();
+  } else if (!cd) {
+    s.mssGrid = out;
+  }
+  m_changed = true;
+  Fill();
+  wxMessageBox(wxString::Format(U8("Conversion terminée en %s. Le plugin utilise maintenant :"), Duration(secs)) +
+                   "\n" + W8(out.c_str()),
+               "PersonalDepth", wxOK | wxICON_INFORMATION, this);
+  if (cd) m_pi->NationalChanged();  // relit le dossier « Pays », met à jour les surfaces de la base
+  else AfterFranceChange(1);        // marée (LAT) ou MSS : proposer la mise à jour des surfaces de la base
+}
+
+// Grille de zéro des cartes : nom affiché et grandeur des valeurs
+bool ExternalDataDialog::AskGridOptions(const std::string& stem, PdgridOptions& opt) {
+  wxDialog d(this, wxID_ANY, U8("Grille du zéro des cartes"));
+  auto* v = new wxBoxSizer(wxVERTICAL);
+  auto* g = new wxFlexGridSizer(2, 6, 8);
+  g->AddGrowableCol(1);
+  g->Add(new wxStaticText(&d, wxID_ANY, U8("Nom affiché :")), 0, wxALIGN_CENTER_VERTICAL);
+  auto* name = new wxTextCtrl(&d, wxID_ANY, W8(stem.c_str()), wxDefaultPosition, wxSize(FromDIP(260), -1));
+  name->SetToolTip(U8("Nom donné dans le cadre des surfaces de référence et sous le curseur (ex. « VORF CD »)."));
+  g->Add(name, 1, wxEXPAND);
+  v->Add(g, 0, wxEXPAND | wxALL, 10);
+  const wxString choices[] = {
+      U8("zéro des cartes par rapport au niveau moyen (valeurs négatives, quelques mètres)"),
+      U8("hauteur du zéro des cartes au-dessus de l'ellipsoïde (dizaines de mètres)")};
+  auto* q = new wxRadioBox(&d, wxID_ANY, U8("Les valeurs de la grille donnent"), wxDefaultPosition, wxDefaultSize, 2,
+                           choices, 1, wxRA_SPECIFY_COLS);
+  v->Add(q, 0, wxEXPAND | wxLEFT | wxRIGHT, 10);
+  auto* neg = new wxCheckBox(&d, wxID_ANY, U8("Inverser le signe (la grille donne le niveau moyen au-dessus du zéro "
+                                              "des cartes, en valeurs positives)"));
+  v->Add(neg, 0, wxALL, 10);
+  auto* hint = new wxStaticText(&d, wxID_ANY,
+                                U8("GeoTIFF, netCDF, .gtx ou .asc en longitude / latitude (WGS84 ou ETRS89). "
+                                   "Une grille en projection se convertit d'abord en longitude / latitude "
+                                   "(QGIS, GDAL)."));
+  hint->Wrap(FromDIP(440));
+  hint->SetForegroundColour(wxColour(90, 90, 90));
+  v->Add(hint, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  v->Add(d.CreateSeparatedButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, 8);
+  d.SetSizerAndFit(v);
+  d.CentreOnParent();
+  if (d.ShowModal() != wxID_OK) return false;
+  opt.name = name->GetValue().ToStdString(wxConvUTF8);
+  opt.quantity = q->GetSelection() == 0 ? "CD/MSL" : "CD/WGS84";
+  opt.negate = neg->GetValue();
+  return true;
+}
+
 void ExternalDataDialog::VerifyFiles() {
   const std::string lang = LangCode();
   const DisplaySettings& st = m_pi->Settings();
@@ -345,22 +549,22 @@ void ExternalDataDialog::VerifyFiles() {
     if (it.use == "tide" || it.use == "mss") {
       const std::string f = it.use == "tide" ? st.tideAtlas : st.mssGrid;
       if (f.empty() || !wxFileExists(W8(f.c_str()))) continue;
-      report += wxString::Format("– %s : %s\n", W8(it.title(lang).c_str()),
-                                 U8("fichier converti par l'utilisateur, pas d'empreinte de référence"));
+      report += W8("– ") + wxString::Format("%s : %s\n", W8(it.title(lang).c_str()),
+                                 U8("fichier converti, pas d'empreinte de référence"));
       continue;
     }
     if (Installed(it).empty()) continue;  // pas installée : rien à vérifier
     for (const auto& c : catalog::Verify(it, dir)) {
       wxString line;
-      const wxString what = W8(it.title(lang).c_str()) + " — " + W8(c.name.c_str());
+      const wxString what = W8(it.title(lang).c_str()) + W8(" — ") + W8(c.name.c_str());
       switch (c.status) {
-        case catalog::FileCheck::Ok: line = "✓ " + what + U8(" : conforme"); ++checked; break;
+        case catalog::FileCheck::Ok: line = W8("✓ ") + what + U8(" : conforme"); ++checked; break;
         case catalog::FileCheck::Different:
-          line = "✗ " + what + U8(" : empreinte différente (fichier abîmé ou autre version) — Télécharger de nouveau");
+          line = W8("✗ ") + what + U8(" : empreinte différente (fichier abîmé ou autre version) — Télécharger de nouveau");
           ++bad;
           break;
-        case catalog::FileCheck::Missing: line = "✗ " + what + U8(" : absent"); ++bad; break;
-        case catalog::FileCheck::NoFingerprint: line = "– " + what + U8(" : pas d'empreinte de référence"); break;
+        case catalog::FileCheck::Missing: line = W8("✗ ") + what + U8(" : absent"); ++bad; break;
+        case catalog::FileCheck::NoFingerprint: line = W8("– ") + what + U8(" : pas d'empreinte de référence"); break;
       }
       report += line + "\n";
     }

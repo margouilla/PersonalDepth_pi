@@ -47,6 +47,7 @@
 #include "core/GeoGrid.h"
 #include "core/Imagery.h"
 #include "core/SideScan.h"
+#include "core/TideUnits.h"
 
 #define U8(s) wxString::FromUTF8(pd::tr(s))
 #define W8(s) wxString::FromUTF8(s)  // données : pas de traduction
@@ -906,10 +907,12 @@ void PersonalDepth_pi::UpdateTide(bool findStation) {
       m_tideStationDistKm = std::hypot(dx, dy);
       m_tideStationLat = st.lat; m_tideStationLon = st.lon;
       m_tideRefLat = clat; m_tideRefLon = clon;
+      m_tideStationK = TideStationToMetres(m_tideStationName, st.lat, st.lon);
     }
     float h = 0;
     if (!a->GetTideHeight(m_tideStation, t, &h) || !std::isfinite(h))
       return U8("Hauteur de marée indisponible pour ") + m_tideStationName;
+    h = (float)(h * m_tideStationK);  // unité de la station -> mètres
     s.tideH = h;
     s.tideOk = true;
     setUniform(h);
@@ -3192,6 +3195,7 @@ std::vector<TideChartPoint> PersonalDepth_pi::TideChartPoints(wxString& source, 
       q.lat = st.lat;
       q.kind = 2;
       q.station = st.index;
+      q.unitK = TideStationToMetres(n, st.lat, st.lon);
       pts.push_back(q);
     }
     return pts;
@@ -3239,7 +3243,7 @@ void PersonalDepth_pi::TideChartSeries(const std::vector<TideChartPoint>& pts,
       } else if (pts[k].kind == 2 && a) {
         for (size_t i = 0; i < t.size(); ++i) {
           float v = 0;
-          if (a->GetTideHeight(pts[k].station, t[i], &v) && std::isfinite(v)) h[k][i] = v;
+          if (a->GetTideHeight(pts[k].station, t[i], &v) && std::isfinite(v)) h[k][i] = v * pts[k].unitK;
         }
       }
     }
@@ -3248,7 +3252,7 @@ void PersonalDepth_pi::TideChartSeries(const std::vector<TideChartPoint>& pts,
   if (!a || m_tideStation < 0) return;
   for (size_t i = 0; i < t.size(); ++i) {
     float v = 0;
-    if (a->GetTideHeight(m_tideStation, t[i], &v) && std::isfinite(v)) h[0][i] = v;
+    if (a->GetTideHeight(m_tideStation, t[i], &v) && std::isfinite(v)) h[0][i] = v * m_tideStationK;
   }
 }
 
@@ -3280,9 +3284,7 @@ static bool TcdHasName(const wxString& file, const wxString& station) {
 // (texte) qui contient le nom de la station l'emporte, sinon le seul .tcd
 // actif, sinon le .tcd qui contient ce nom. Zéro connu seulement pour TICON
 // (LAT de TICON).
-wxString PersonalDepth_pi::TideDatasetLabel(const wxString& station) {
-  auto it = m_tideDatasetLabels.find(station);
-  if (it != m_tideDatasetLabels.end()) return it->second;
+std::vector<wxString> PersonalDepth_pi::TideDataFiles() {
   std::vector<wxString> files;
   if (wxFileConfig* c = GetOCPNConfigObject()) {
     const wxString old = c->GetPath();
@@ -3291,20 +3293,55 @@ wxString PersonalDepth_pi::TideDatasetLabel(const wxString& station) {
     long idx = 0;
     for (bool more = c->GetFirstEntry(key, idx); more; more = c->GetNextEntry(key, idx)) {
       wxString v;
-      if (c->Read(key, &v) && !v.empty()) files.push_back(v);
+      if (!c->Read(key, &v) || v.empty()) continue;
+      if (!wxFileExists(v) && !wxDirExists(v)) {  // chemin relatif : dossier tcdata d'OpenCPN
+        wxString d = *GetpSharedDataLocation();
+        if (!d.EndsWith(wxFileName::GetPathSeparator())) d += wxFileName::GetPathSeparator();
+        v = d + "tcdata" + wxFileName::GetPathSeparator() + wxFileName(v).GetFullName();
+      }
+      files.push_back(v);
     }
     c->SetPath(old);
   }
+  return files;
+}
+
+double PersonalDepth_pi::TideStationToMetres(const wxString& station, double lat, double lon) {
+  auto it = m_tideStationUnits.find(station);
+  if (it != m_tideStationUnits.end()) return it->second;
+  double k = NAN;
+  const wxScopedCharBuffer nb = station.mb_str(wxConvISO8859_1);  // noms des fichiers : Latin-1
+  const std::string name(nb.data() ? nb.data() : "");
+  const wxScopedCharBuffer nu = station.ToUTF8();
+  const std::string name8(nu.data() ? nu.data() : "");
+  for (const wxString& f : TideDataFiles()) {
+    const wxFileName fn(f);
+    const std::string p = f.ToStdString(wxConvUTF8);
+    if (fn.GetExt().Lower() == "tcd") {
+      k = pd::TcdStationToMetres(p, name, lat, lon);
+      if (std::isnan(k) && name8 != name) k = pd::TcdStationToMetres(p, name8, lat, lon);
+    } else {
+      // HARMONIC (fichier, dossier, ou son .IDX) : fichier des harmoniques
+      wxString h = f;
+      if (wxDirExists(f)) h = f + wxFileName::GetPathSeparator() + "HARMONIC";
+      else if (fn.GetExt().IsSameAs("idx", false)) h = fn.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + fn.GetName();
+      k = pd::HarmonicStationToMetres(h.ToStdString(wxConvUTF8), name);
+    }
+    if (!std::isnan(k)) break;
+  }
+  if (std::isnan(k)) k = 1.0;  // station non retrouvée : mètres (cas de la plupart des jeux)
+  m_tideStationUnits[station] = k;
+  return k;
+}
+
+wxString PersonalDepth_pi::TideDatasetLabel(const wxString& station) {
+  auto it = m_tideDatasetLabels.find(station);
+  if (it != m_tideDatasetLabels.end()) return it->second;
+  const std::vector<wxString> files = TideDataFiles();
   wxString label, tcd;
   int nTcd = 0;
   const wxString lname = station.Lower().Left(40);
-  for (const wxString& f0 : files) {
-    wxString f = f0;
-    if (!wxFileExists(f)) {  // chemin relatif : dossier tcdata d'OpenCPN
-      wxString d = *GetpSharedDataLocation();
-      if (!d.EndsWith(wxFileName::GetPathSeparator())) d += wxFileName::GetPathSeparator();
-      f = d + "tcdata" + wxFileName::GetPathSeparator() + wxFileName(f0).GetFullName();
-    }
+  for (const wxString& f : files) {
     const wxFileName fn(f);
     if (fn.GetExt().Lower() == "tcd") {
       ++nTcd;

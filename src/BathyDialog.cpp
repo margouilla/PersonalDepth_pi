@@ -531,9 +531,9 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
   m_mss = new wxTextCtrl(sb, wxID_ANY, W8(s.mssGrid.c_str()), wxDefaultPosition, wxDefaultSize,
                          wxTE_PROCESS_ENTER);
   m_mss->SetHint(U8("surface moyenne océanique : MSS_CNES_CLS_2025.pdgrid"));
-  m_mss->SetToolTip(U8("Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage "
-                       "à l'ellipsoïde). Fichier converti par tools/pdgrid_convert.py depuis la MSS "
-                       "CNES_CLS d'AVISO (voir docs/external-data.md)."));
+  m_mss->SetToolTip(U8("Niveau moyen au-dessus de l'ellipsoïde hors France (hauteurs GNSS, affichage à "
+                       "l'ellipsoïde). Fichier .pdgrid obtenu depuis la MSS CNES_CLS d'AVISO par « Convertir… » "
+                       "de la fenêtre Données externes."));
   m_mssBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
   r2->Add(new wxStaticText(sb, wxID_ANY, U8("MSS")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   r2->Add(m_mss, 1, wxRIGHT, 2);
@@ -545,9 +545,10 @@ wxSizer* BathyDialog::BuildDatumBox(wxWindow* p) {
                               wxTE_PROCESS_ENTER);
   m_national->SetHint(U8("dossier des fichiers officiels (NOAA VDatum…)"));
   m_national->SetToolTip(U8("Zéro des cartes officiel des autres pays : déposer dans ce dossier les fichiers "
-                            "téléchargés (régions NOAA VDatum des États-Unis…), le plugin les reconnaît et "
-                            "les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. "
-                            "Liens et licences : docs/external-data.md."));
+                            "téléchargés (régions NOAA VDatum des États-Unis…) ou les grilles converties par « "
+                            "Convertir… » de la fenêtre Données externes (VORF, HyVSEPs…) ; le plugin les reconnaît "
+                            "et les utilise là où ils existent ; ailleurs, plus basse mer de la marée FES. Liens et "
+                            "licences : docs/external-data.md."));
   m_nationalBtn = new wxButton(sb, wxID_ANY, U8("…"), wxDefaultPosition, wxSize(FromDIP(28), -1));
   r4->Add(new wxStaticText(sb, wxID_ANY, U8("Pays")), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 4);
   r4->Add(m_national, 1, wxRIGHT, 2);

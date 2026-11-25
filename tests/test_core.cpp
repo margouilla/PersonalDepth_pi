@@ -62,6 +62,11 @@
 #include "../src/core/NoaaCoops.h"
 #include "../src/core/Catalog.h"
 #include "test_archives.inc"
+#include "../src/core/NetCdf.h"
+#include "../src/core/NcConvert.h"
+#include "../src/core/Datum.h"
+#include "../src/core/TideUnits.h"
+#include "../src/core/FileUtil.h"
 #include <cstring>
 #include "../src/core/Projection.h"
 
@@ -222,8 +227,12 @@ static bool write(const std::string& path, const Img& m) {
 }
 }  // namespace tiffw
 
+#include "test_netcdf.inc"
+
 
 int main(int argc, char** argv) {
+  if (TestNetCdf()) return 1;
+  std::printf("netCDF / HDF5 : lecture et conversions OK\n");
   {  // base d'imagerie (.pdi) : mosaïque 8 bits à fond blanc, étirement, moyenne, valeurs d'origine
     std::string err;
     const std::string folder = Tmp("pd_test_img");

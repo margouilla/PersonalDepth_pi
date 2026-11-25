@@ -17,10 +17,15 @@ its producer, licence and whether it is installed.
   unpacks it (`.7z` archives of the Shom) into the reference folder, then
   offers to update the database surfaces. No Python, nothing else to install.
 - **Data needing an account** (FES2022, MSS — AVISO): **Open the page** leads
-  to the steps below; once converted, **Choose the file…** sets it in the
-  plugin. Direct download of these two is waiting for AVISO's agreement.
+  to the download steps below; **Convert…** then turns the downloaded
+  netCDF files into the plugin's compact format and sets them (no Python).
+  An already converted file is set with **Choose the file…**. Direct
+  download of these two is waiting for AVISO's agreement.
 - **NOAA VDatum**: opens NOAA's download page (agreement to accept);
   **Choose the folder…** sets the *Countries* folder.
+- **Chart datum of another country** (VORF, HyVSEPs…): **Convert…** turns
+  the official grid (GeoTIFF, netCDF, `.gtx`, `.asc`) into a `.pdgrid` saved
+  in the *Countries* folder (section 5).
 - **Check the files** checks again the SHA-256 fingerprints of the installed
   files (damaged file, or another version).
 - **Update the list** fetches the up-to-date catalogue (addresses, new data)
@@ -45,11 +50,15 @@ la liste donne chaque fichier, son producteur, sa licence et s'il est installé.
   propose de mettre à jour les surfaces de la base. Ni Python ni autre
   logiciel à installer.
 - **Données à compte** (FES2022, MSS — AVISO) : **Ouvrir la page** mène aux
-  étapes ci-dessous ; une fois converti, **Choisir le fichier…** le règle dans
-  le plugin. Le téléchargement direct de ces deux données attend l'accord
-  d'AVISO.
+  étapes de téléchargement ci-dessous ; **Convertir…** transforme ensuite les
+  fichiers netCDF téléchargés au format compact du plugin et les règle (sans
+  Python). Un fichier déjà converti se règle par **Choisir le fichier…**. Le
+  téléchargement direct de ces deux données attend l'accord d'AVISO.
 - **NOAA VDatum** : ouvre la page de téléchargement de la NOAA (accord à
   accepter) ; **Choisir le dossier…** règle le dossier *Pays*.
+- **Zéro des cartes d'un autre pays** (VORF, HyVSEPs…) : **Convertir…**
+  transforme la grille officielle (GeoTIFF, netCDF, `.gtx`, `.asc`) en un
+  `.pdgrid` rangé dans le dossier *Pays* (section 5).
 - **Vérifier les fichiers** recontrôle les empreintes SHA-256 des fichiers
   installés (fichier abîmé, ou autre version).
 - **Mettre à jour la liste** récupère le catalogue à jour (adresses, nouvelles
@@ -140,14 +149,21 @@ according to AVISO, but redistribution is not allowed by PersonalDepth):
    ```
 
 **Convert** to the compact `.pdtide` format (≈ 230 MB, worldwide, full
-resolution), once:
+resolution), once, in the plugin: *External data* window, line
+**FES2022b tide**, **Convert…**, then choose the `fes2022b` folder (or
+`ocean_tide_extrapolated`). The conversion takes a few minutes (about
+500 MB free are needed during the conversion) and the plugin then uses
+`FES2022b_ocean.pdtide`, written in the external data folder. Cancelled, it
+resumes where it stopped at the next *Convert…* (finished constituents are
+kept in `FES2022b_ocean.pdtide.parts`).
+
+Without the plugin (same result), with Python:
 ```
 pip install numpy netCDF4
 python tools/pdtide_convert.py <...>\fes2022b\ocean_tide_extrapolated FES2022b_ocean.pdtide
 ```
-The conversion takes a long time but can be resumed. Add
-`--max-seconds=1800` to work in batches and run the same command again to
-continue: finished constituents are kept in `FES2022b_ocean.pdtide.parts`.
+Add `--max-seconds=1800` to work in batches and run the same command again
+to continue.
 
 **In PersonalDepth**, *Tide* section:
 1. Source: **Gridded FES2022**.
@@ -181,7 +197,12 @@ not allowed by PersonalDepth):
    describes the product.
 
 **Convert** to the compact `.pdgrid` format (≈ 124 MB, no loss at the
-millimetre, about one minute), once:
+millimetre, under a minute), once, in the plugin: *External data* window,
+line **CNES_CLS 2025 mean sea surface**, **Convert…**, then choose
+`mss_cnes_cls_2025.nc`. The plugin then uses the `.pdgrid` written in the
+external data folder.
+
+Without the plugin (same result), with Python:
 ```
 pip install numpy netCDF4
 python tools/pdgrid_convert.py mss_cnes_cls_2025.nc MSS_CNES_CLS_2025.pdgrid
@@ -267,9 +288,9 @@ folder recomputes the surfaces of the database.
 | Country | Chart datum | File | Access | In the plugin |
 |---|---|---|---|---|
 | United States | MLLW | NOAA VDatum regional grids | Free | Read directly (`mllw.gtx`) |
-| Netherlands | LAT (NLLAT2018) | NLLAT2018 | Free, "not for navigation" | After conversion (below); LAT FES is already close |
-| United Kingdom | CD ≈ LAT (VORF) | VORF | On request to the UKHO, licence | After conversion |
-| Canada | LLWLT (HyVSEPs) | CHS HyVSEPs | On request to the CHS | After conversion |
+| Netherlands | LAT (NLLAT2018) | NLLAT2018 | Free, "not for navigation" | After *Convert…* (below); LAT FES is already close |
+| United Kingdom | CD ≈ LAT (VORF) | VORF | On request to the UKHO, licence | After *Convert…* (below) |
+| Canada | LLWLT (HyVSEPs) | CHS HyVSEPs | On request to the CHS | After *Convert…* (below) |
 
 **United States (NOAA VDatum)**
 
@@ -280,21 +301,31 @@ folder recomputes the surfaces of the database.
    `mllw.gtx` (MLLW relative to local mean sea level): it is the only file
    the plugin reads. Neighbouring regions may overlap: they are averaged.
 
-**Other countries** — a file giving the chart datum relative to mean sea
-level, or above the ellipsoid, is converted once to `.pdgrid` (GDAL, then
-`tools/pdgrid_convert.py`):
+**Other countries** — a grid giving the chart datum relative to mean sea
+level, or above the ellipsoid, is converted once to `.pdgrid`, in the plugin:
+*External data* window, line **Chart datum of another country (official
+grid)**, **Convert…**:
+1. choose the grid supplied by the hydrographic office: GeoTIFF, netCDF,
+   `.gtx` or `.asc`, in longitude / latitude (a projected grid must first be
+   reprojected, e.g. with QGIS);
+2. give the name shown in the box and under the cursor (e.g. *VORF CD*) and
+   what the values are:
+   - *chart datum relative to mean sea level*: chart datum − mean sea level
+     (negative, a few metres) — quantity `CD/MSL`;
+   - *height of chart datum above the ellipsoid* — quantity `CD/WGS84`; mean
+     sea level then comes from BathyElli or from the MSS (section 3);
+   - *Reverse the sign* when the grid gives mean sea level above chart datum
+     (positive values);
+3. the `.pdgrid` is saved in the *Countries* folder (asked for if not set
+   yet) and the database surfaces are updated.
+
+Any `.pdgrid` of quantity `CD/MSL` or `CD/WGS84` in the *Countries* folder is
+used. Without the plugin, the Python script gives the same file:
 
 ```
 gdal_translate -of netCDF chart_datum_grid.tif cd.nc
 python tools/pdgrid_convert.py cd.nc CD_country.pdgrid --var=Band1 --quantity=CD/WGS84 --name="VORF CD"
 ```
-
-- `--quantity=CD/MSL`: values = chart datum − mean sea level (negative);
-- `--quantity=CD/WGS84`: chart datum height above the ellipsoid; mean sea
-  level then comes from BathyElli or from the MSS (section 3).
-
-Any `.pdgrid` of quantity `CD/MSL` or `CD/WGS84` in the *Countries* folder is
-used; its name (`--name`) is shown in the box and under the cursor.
 
 ### 6. Observed water levels of online tide gauges (REFMAR, NOAA)
 
@@ -401,14 +432,21 @@ usage » selon AVISO, mais PersonalDepth ne le redistribue pas) :
    ```
 
 **Conversion** au format compact `.pdtide` (≈ 230 Mo, monde entier, pleine
-résolution), une seule fois :
+résolution), une seule fois, dans le plugin : fenêtre *Données externes*,
+ligne **Marée FES2022b**, **Convertir…**, puis choisir le dossier `fes2022b`
+(ou `ocean_tide_extrapolated`). La conversion dure quelques minutes (il faut
+environ 500 Mo libres pendant la conversion) ; le plugin utilise ensuite
+`FES2022b_ocean.pdtide`, écrit dans le dossier des données externes.
+Annulée, elle reprend où elle s'était arrêtée au *Convertir…* suivant (les
+ondes terminées sont gardées dans `FES2022b_ocean.pdtide.parts`).
+
+Sans le plugin (même résultat), avec Python :
 ```
 pip install numpy netCDF4
 python tools/pdtide_convert.py <...>\fes2022b\ocean_tide_extrapolated FES2022b_ocean.pdtide
 ```
-La conversion est longue mais reprend là où elle s'est arrêtée : ajouter
-`--max-seconds=1800` pour travailler par tranches et relancer la même
-commande. Les ondes terminées sont gardées dans `FES2022b_ocean.pdtide.parts`.
+Ajouter `--max-seconds=1800` pour travailler par tranches et relancer la même
+commande pour continuer.
 
 **Dans PersonalDepth**, cadre *Marée* :
 1. Source : **FES2022 maillé**.
@@ -444,7 +482,12 @@ PersonalDepth ne le redistribue pas) :
    décrit le produit.
 
 **Conversion** au format compact `.pdgrid` (≈ 124 Mo, sans perte au
-millimètre, une minute environ), une seule fois :
+millimètre, moins d'une minute), une seule fois, dans le plugin : fenêtre
+*Données externes*, ligne **Surface moyenne océanique CNES_CLS 2025**,
+**Convertir…**, puis choisir `mss_cnes_cls_2025.nc`. Le plugin utilise
+ensuite le `.pdgrid` écrit dans le dossier des données externes.
+
+Sans le plugin (même résultat), avec Python :
 ```
 pip install numpy netCDF4
 python tools/pdgrid_convert.py mss_cnes_cls_2025.nc MSS_CNES_CLS_2025.pdgrid
@@ -532,9 +575,9 @@ Changer de dossier recalcule les surfaces de la base.
 | Pays | Zéro des cartes | Fichier | Accès | Dans le plugin |
 |---|---|---|---|---|
 | États-Unis | MLLW | Grilles régionales NOAA VDatum | Gratuit | Lu directement (`mllw.gtx`) |
-| Pays-Bas | LAT (NLLAT2018) | NLLAT2018 | Gratuit, « pas pour la navigation » | Après conversion (ci-dessous) ; le LAT FES en est déjà proche |
-| Royaume-Uni | CD ≈ LAT (VORF) | VORF | Sur demande à l'UKHO, licence | Après conversion |
-| Canada | LLWLT (HyVSEPs) | HyVSEPs du SHC | Sur demande au SHC | Après conversion |
+| Pays-Bas | LAT (NLLAT2018) | NLLAT2018 | Gratuit, « pas pour la navigation » | Après *Convertir…* (ci-dessous) ; le LAT FES en est déjà proche |
+| Royaume-Uni | CD ≈ LAT (VORF) | VORF | Sur demande à l'UKHO, licence | Après *Convertir…* (ci-dessous) |
+| Canada | LLWLT (HyVSEPs) | HyVSEPs du SHC | Sur demande au SHC | Après *Convertir…* (ci-dessous) |
 
 **États-Unis (NOAA VDatum)**
 
@@ -546,22 +589,32 @@ Changer de dossier recalcule les surfaces de la base.
    fichier que lit le plugin. Les régions voisines peuvent se chevaucher :
    elles sont moyennées.
 
-**Autres pays** — un fichier donnant le zéro des cartes par rapport au niveau
-moyen, ou au-dessus de l'ellipsoïde, est converti une fois en `.pdgrid` (GDAL,
-puis `tools/pdgrid_convert.py`) :
+**Autres pays** — une grille donnant le zéro des cartes par rapport au niveau
+moyen, ou au-dessus de l'ellipsoïde, est convertie une fois en `.pdgrid`, dans
+le plugin : fenêtre *Données externes*, ligne **Zéro des cartes d'un autre
+pays (grille officielle)**, **Convertir…** :
+1. choisir la grille fournie par le service hydrographique : GeoTIFF,
+   netCDF, `.gtx` ou `.asc`, en longitude / latitude (une grille en
+   projection se reprojette d'abord, par exemple avec QGIS) ;
+2. donner le nom affiché dans le cadre et sous le curseur (ex. *VORF CD*) et
+   ce que donnent les valeurs :
+   - *zéro des cartes par rapport au niveau moyen* : zéro des cartes − niveau
+     moyen (négatif, quelques mètres) — grandeur `CD/MSL` ;
+   - *hauteur du zéro des cartes au-dessus de l'ellipsoïde* — grandeur
+     `CD/WGS84` ; le niveau moyen vient alors de BathyElli ou de la MSS
+     (section 3) ;
+   - *Inverser le signe* quand la grille donne le niveau moyen au-dessus du
+     zéro des cartes (valeurs positives) ;
+3. le `.pdgrid` est rangé dans le dossier *Pays* (demandé s'il n'est pas
+   encore choisi) et les surfaces de la base sont mises à jour.
+
+Tout `.pdgrid` de grandeur `CD/MSL` ou `CD/WGS84` du dossier *Pays* est
+utilisé. Sans le plugin, le script Python donne le même fichier :
 
 ```
 gdal_translate -of netCDF grille_zero_des_cartes.tif cd.nc
 python tools/pdgrid_convert.py cd.nc CD_pays.pdgrid --var=Band1 --quantity=CD/WGS84 --name="VORF CD"
 ```
-
-- `--quantity=CD/MSL` : valeurs = zéro des cartes − niveau moyen (négatives) ;
-- `--quantity=CD/WGS84` : hauteur du zéro des cartes au-dessus de
-  l'ellipsoïde ; le niveau moyen vient alors de BathyElli ou de la MSS
-  (section 3).
-
-Tout `.pdgrid` de grandeur `CD/MSL` ou `CD/WGS84` du dossier *Pays* est
-utilisé ; son nom (`--name`) s'affiche dans le cadre et sous le curseur.
 
 ### 6. Hauteurs d'eau observées des marégraphes en ligne (REFMAR, NOAA)
 

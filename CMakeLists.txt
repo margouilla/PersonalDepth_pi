@@ -99,7 +99,8 @@ add_library(pd_core STATIC
   src/core/WebMerc.cpp src/core/TileCodec.cpp src/core/BathyDb.cpp src/core/Lang.cpp src/core/FileUtil.cpp
   src/core/WaterLevel.cpp src/core/SurveyShape.cpp src/core/Tracks.cpp src/core/Shoreline.cpp
   src/core/GeoTiff.cpp src/core/Imagery.cpp src/core/SideScan.cpp
-  src/core/Json.cpp src/core/Sha256.cpp src/core/Archive.cpp src/core/Refmar.cpp src/core/TideGauge.cpp src/core/NoaaCoops.cpp src/core/Catalog.cpp)
+  src/core/Json.cpp src/core/Sha256.cpp src/core/Archive.cpp src/core/Refmar.cpp src/core/TideGauge.cpp src/core/NoaaCoops.cpp src/core/Catalog.cpp
+  src/core/NetCdf.cpp src/core/NcConvert.cpp src/core/TideUnits.cpp)
 target_include_directories(pd_core PUBLIC src third_party)
 # catalogue des données externes intégré (data/catalog.json -> tableau d'octets)
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/data/catalog.json PD_CATALOG_HEX HEX)
@@ -108,9 +109,10 @@ file(WRITE ${CMAKE_BINARY_DIR}/generated/CatalogBuiltin.inc "${PD_CATALOG_HEX}\n
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/data/catalog.json)
 target_include_directories(pd_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
 # Triangulation (delaunator) : pas de fusion multiplication-addition (FMA,
-# active par défaut sur ARM) dans les tests géométriques
+# active par défaut sur ARM) dans les tests géométriques ; conversions netCDF :
+# mêmes arrondis que les scripts Python (numpy)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set_source_files_properties(src/core/Triangulate.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  set_source_files_properties(src/core/Triangulate.cpp src/core/NcConvert.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 set_target_properties(pd_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 find_package(Threads REQUIRED)
@@ -131,6 +133,7 @@ if(PD_BUILD_TESTS)
   enable_testing()
   add_executable(test_core tests/test_core.cpp)
   target_link_libraries(test_core PRIVATE pd_core)
+  target_compile_definitions(test_core PRIVATE PD_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
   add_test(NAME core COMMAND test_core 400000)
   # un blocage (ex. boucle sans fin de la triangulation) fait échouer le test
   # au lieu de tenir la compilation des heures ; PD_TEST_LIGHT=1 : version

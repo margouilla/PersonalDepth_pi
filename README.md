@@ -39,7 +39,7 @@ grids are never recomputed.
 | **Coordinates** | 300 built-in systems (WGS84, all UTM zones, Lambert-93, CC42–CC50, NTF Lambert, French overseas, many European/American/Oceanian systems, all NAD83 State Plane zones in m / US ft, polar, Web Mercator), EPSG code or PROJ string, `.prj` file; custom text formats (column choice, header, separators, date and time); projections coded in the plugin, checked against proj4js to < 1 cm |
 | **Vertical datum** | Depths stored below **mean sea level** and shown at local chart datum (default, like the charts), LAT, mean sea level or the WGS84 ellipsoid. Sources imported at chart datum, MSL (GEBCO), LAT (EMODnet), ellipsoidal heights, IGN69 / IGN78C (Corsica, with Shom BathyElli v2.1 + IGN RAF20 / RAC23), any reference surface + geoid / difference grid, or not tied (lakes). Links: BathyElli v2.1 in France, official files of other countries (NOAA VDatum MLLW in the United States…), otherwise FES2022 LAT, and the CNES_CLS 2025 mean sea surface; databases of earlier versions migrated with a backup copy |
 | **Coastline** | Interpolated surfaces stop at the coast: land polygons of OpenCPN's OSMSHP (OpenStreetMap) or GSHHG basemaps, read directly, and own shorelines (KML/KMZ, shapefile, GeoPackage); measured soundings kept. Lakes: shoreline used as the 0 m contour of the interpolation |
-| **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by `tools/pdtide_convert.py`, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
+| **Tide** | OpenCPN tide stations, or gridded **FES2022** tide (worldwide atlas converted by the plugin from AVISO's netCDF files, Schureman nodal corrections matching pyfes within ~1 cm, inferred minor constituents, chart datum from BathyElli or lowest astronomical tide over 19 years). Displayed depth = charted depth + tide height, pixel by pixel |
 | **Palette** | Continuous or stepped, editable table, presets, GMT `.cpt` import/export, automatic mode (N rounded thresholds over all data or the current view, optional fixed min/max), safety depth overlay |
 | **Grid or point cloud** | Each survey is analysed at import: regular grids (even projected with rounding noise, or written in degrees) keep their cell; point clouds (sounding lines, scattered or chart soundings, multibeam, lidar) are **interpolated** by triangulation (TIN) up to a maximum distance worked out from the survey. Measured cells always win; interpolated areas can be hidden or lightened. Survey type in simple words (single-beam, multibeam, lidar, chart soundings, lead line) |
 | **Observed water levels** | Time-stamped soundings corrected with a staff gauge or tide gauge series (text files, one file or a folder), with unit, convention, time zone and a curve window; online tide gauges (France: Shom REFMAR, United States: NOAA CO-OPS) downloaded for the survey period from the import window |
@@ -111,11 +111,16 @@ lists them, with their licence and status:
   conversions (chart datum and mean sea level in France). Open licence:
   **downloaded in one click** from the producers' websites (SHA-256 checked,
   `.7z` archives unpacked by the plugin), no Python needed.
-- **FES2022** tide atlas (AVISO): free account, then conversion with
-  `tools/pdtide_convert.py` (Python + netCDF4); *Choose the file…* sets it.
-- **MSS CNES_CLS 2025** mean sea surface (AVISO): same, with
-  `tools/pdgrid_convert.py`; links mean sea level to the ellipsoid outside
-  France.
+- **FES2022** tide atlas (AVISO): free account, then **Convert…** turns
+  the downloaded netCDF files into the plugin's `.pdtide` format (a few
+  minutes, built-in netCDF-4 / HDF5 reader, no Python) and sets it.
+- **MSS CNES_CLS 2025** mean sea surface (AVISO): same, **Convert…** gives a
+  `.pdgrid` (under a minute); links mean sea level to the ellipsoid outside
+  France. The Python scripts `tools/pdtide_convert.py` and
+  `tools/pdgrid_convert.py` give the same files.
+- **Chart datum of other countries**: NOAA VDatum grids read directly;
+  official grids of other hydrographic offices (VORF, HyVSEPs…) converted by
+  **Convert…** (GeoTIFF, netCDF, `.gtx`, `.asc`) into the *Countries* folder.
 - **Online tide gauges**: Shom REFMAR (France) and NOAA CO-OPS (United
   States), downloaded by the plugin when used (import, *Tide* tab).
 
@@ -169,6 +174,9 @@ missing line simply leaves the French text.
 - Fixed-function OpenGL: not compatible with Android / GLES.
 - Mercator screen projection assumed; antimeridian not handled.
 - Older datums (NTF, ED50, OSGB36…) use mean Helmert parameters (~1–2 m).
+- United States: OpenCPN `harmonics-dwf` tide stations predict about 1 ft
+  lower than the NOAA tide gauges on every coast (station datum under
+  investigation).
 
 ### Roadmap
 
@@ -209,7 +217,7 @@ grilles de profondeur ne sont jamais recalculées.
 | Coordonnées | 300 systèmes intégrés (WGS84, UTM tous fuseaux, Lambert-93, CC42–CC50, Lambert NTF, outre-mer, Europe — RD, BNG, ITM, LV95, Gauss-Krüger…, Amériques dont toutes les zones NAD83 State Plane en m / pieds US, Océanie, polaires, Web Mercator), code EPSG ou chaîne PROJ, `.prj` voisin ; formats texte personnalisés (choix des colonnes, entête, séparateurs, date et heure). Projections codées dans le plugin, validées contre proj4js à < 1 cm. Conversion des grilles projetées : exacte un nœud sur 32, interpolée entre les deux (< 1 mm) |
 | Référence verticale | Profondeurs rangées sous le **niveau moyen** et affichées au zéro des cartes local (par défaut, comme les cartes), au LAT, au niveau moyen ou à l'ellipsoïde WGS84. Sources importées au zéro des cartes, au niveau moyen (GEBCO), au LAT (EMODnet), en hauteurs ellipsoïdales, en IGN69 / IGN78C (Corse, par BathyElli v2.1 du Shom + RAF20 / RAC23 de l'IGN), par surface de référence + géoïde / grille d'écart, ou non rattachées (lacs). Liens : BathyElli v2.1 en France, fichiers officiels des autres pays (MLLW NOAA VDatum aux États-Unis…), sinon LAT FES2022, et surface moyenne océanique CNES_CLS 2025 ; bases des versions antérieures migrées avec copie de sauvegarde |
 | Trait de côte | Surfaces interpolées arrêtées à la côte : polygones de terre des fonds OSMSHP (OpenStreetMap) ou GSHHG d'OpenCPN, lus directement, et traits personnels (KML/KMZ, shapefile, GeoPackage) ; sondes mesurées gardées. Lacs : rivage pris comme isobathe 0 de l'interpolation |
-| Marée | Stations de marée d'OpenCPN (hauteur unique, « maintenant » ou date choisie, curseur ±12 h), ou **FES2022 maillé** : atlas mondial converti (`tools/pdtide_convert.py`, 34 ondes), prédiction Schureman identique à pyfes (~1 cm), ondes mineures déduites ; Z0 = grille fournie, sinon BathyElli NM/ell − ZH/ell, sinon plus basse mer astronomique FES sur 19 ans. Profondeur affichée = sonde ZH + hauteur d'eau, pixel par pixel (shader), aussi pour les isobathes et les sondes |
+| Marée | Stations de marée d'OpenCPN (hauteur unique, « maintenant » ou date choisie, curseur ±12 h), ou **FES2022 maillé** : atlas mondial converti par le plugin depuis les fichiers netCDF d'AVISO (34 ondes), prédiction Schureman identique à pyfes (~1 cm), ondes mineures déduites ; Z0 = grille fournie, sinon BathyElli NM/ell − ZH/ell, sinon plus basse mer astronomique FES sur 19 ans. Profondeur affichée = sonde ZH + hauteur d'eau, pixel par pixel (shader), aussi pour les isobathes et les sondes |
 | Unités | Fichiers de levé importés en mètres ou en pieds ; la base est toujours en mètres. Sondes, isobathes, légende, seuils de la palette, zone dangereuse et hauteurs de marée suivent les unités d'OpenCPN (*Options › Affichage › Unités* : mètres ou pieds — les brasses sont affichées en pieds) |
 | Palette | Dégradé continu ou paliers ; seuils et couleurs éditables ; 5 préréglages ; import/export GMT `.cpt`. Mode automatique : N seuils (valeurs rondes ou répartis) entre le min et le max de toutes les données ou de la zone affichée, bornes min/max imposables |
 | Grille ou nuage de points | Chaque levé est analysé à l'import : les grilles régulières (même projetées avec un bruit d'arrondi, ou écrites en degrés) gardent leur maille ; les nuages (lignes de sonde, sondes éparses ou de carte, multifaisceaux, lidar) sont **interpolés** par triangulation (TIN) jusqu'à une distance maximale déduite du levé. Les cases mesurées l'emportent toujours ; les zones interpolées peuvent être masquées ou éclaircies. Type de levé en termes simples (monofaisceau, multifaisceaux, lidar, sondes de carte, plomb) |
@@ -299,11 +307,19 @@ référence verticale*) les liste, avec leur licence et leur état :
   référence verticale en France (zéro hydrographique et niveau moyen).
   Licence ouverte : **téléchargées d'un clic** sur le site des producteurs
   (SHA-256 contrôlé, archives `.7z` décompressées par le plugin), sans Python.
-- Atlas de marée **FES2022** (AVISO) : compte gratuit, puis conversion avec
-  `tools/pdtide_convert.py` (Python + netCDF4) ; *Choisir le fichier…* le règle.
-- Surface moyenne océanique **MSS CNES_CLS 2025** (AVISO) : de même, avec
-  `tools/pdgrid_convert.py` ; relie le niveau moyen à l'ellipsoïde hors de
-  France.
+- Atlas de marée **FES2022** (AVISO) : compte gratuit, puis **Convertir…**
+  transforme les fichiers netCDF téléchargés au format `.pdtide` du plugin
+  (quelques minutes, lecteur netCDF-4 / HDF5 intégré, sans Python) et le
+  règle.
+- Surface moyenne océanique **MSS CNES_CLS 2025** (AVISO) : de même,
+  **Convertir…** donne un `.pdgrid` (moins d'une minute) ; relie le niveau
+  moyen à l'ellipsoïde hors de France. Les scripts Python
+  `tools/pdtide_convert.py` et `tools/pdgrid_convert.py` donnent les mêmes
+  fichiers.
+- **Zéro des cartes des autres pays** : grilles NOAA VDatum lues
+  directement ; grilles officielles des autres services hydrographiques
+  (VORF, HyVSEPs…) converties par **Convertir…** (GeoTIFF, netCDF, `.gtx`,
+  `.asc`) dans le dossier *Pays*.
 - **Marégraphes en ligne** : REFMAR du Shom (France) et NOAA CO-OPS
   (États-Unis), téléchargés par le plugin quand ils servent (import, onglet
   *Marée*).
@@ -390,6 +406,8 @@ src/core/          cœur C++17 sans wxWidgets (testable seul)
   TideGauge        marégraphes en ligne : interface des réseaux, séries de mesures
   Refmar, NoaaCoops  réseaux REFMAR (Shom) et NOAA CO-OPS
   Json, Sha256     lecture JSON, empreintes SHA-256
+  NetCdf           lecteur netCDF-3 et netCDF-4 / HDF5 sans bibliothèque externe
+  NcConvert        conversion -> .pdtide (FES2022) / .pdgrid (MSS, zéros des cartes des pays)
   Triangulate      enveloppe de delaunator
 src/PersonalDepth_pi.*   classe plugin, configuration, tâches de fond
 src/BathyRenderer.*      rendu GL / DC, sondes, bandeau de palette
@@ -397,16 +415,17 @@ src/BathyDialog.*        panneau principal
 src/DataDialog.*         fenêtre « Gestion des données »
 src/ImportDialog.*       fenêtre d'import / de modification des sources
 src/TideChart.*          fenêtre « Courbe de marée »
-src/ExternalDataDialog.* fenêtre « Données externes » (téléchargement, vérification)
+src/ExternalDataDialog.* fenêtre « Données externes » (téléchargement, conversion, vérification)
 src/GaugeDialog.*        choix d'un marégraphe en ligne ; GaugeManager.* : téléchargements en tâche de fond
 data/catalog.json        catalogue des données externes (intégré au plugin, mis à jour depuis le dépôt)
 src/core/Lang.*          langue de l'interface ; LangTable.inc : table français -> anglais
-tools/pdtide_convert.py  conversion FES2022 NetCDF -> .pdtide
+tools/pdtide_convert.py  conversion FES2022 NetCDF -> .pdtide (même résultat que « Convertir… »)
 tools/ci/                compilation Linux en conteneur (GitHub Actions)
 cmake/                   paquet OpenCPN (PdPackage), correctif wxWidgets macOS
 packaging/               modèle de metadata.xml
 .github/workflows/       compilation automatique Linux / Raspberry Pi / macOS
 tests/test_core.cpp      tests du cœur
+tests/data/netcdf/       fichiers netCDF / HDF5 d'essai (make_fixtures.c : bibliothèque HDF5, make_nc3.py : scipy)
 third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT), LZMA SDK 7z (domaine public)
 ```
 
@@ -421,6 +440,9 @@ third_party/             SQLite (domaine public), miniz (MIT), delaunator (MIT),
 - Projection écran supposée Mercator ; antiméridien non géré.
 - Datums anciens (NTF, ED50, OSGB36, DHDN, BD72…) : paramètres de Helmert
   moyens, ~1–2 m d'écart. LAEA (EPSG:3035) non pris en charge.
+- États-Unis : les stations de marée `harmonics-dwf` d'OpenCPN prédisent
+  environ 0,3 m (1 ft) plus bas que les marégraphes de la NOAA sur toutes
+  les côtes (zéro des stations en cours d'analyse).
 - Bandeau de palette et lecture curseur en ASCII en mode OpenGL.
 - Les noms de classe et libellés de référence verticale enregistrés dans la
   base restent dans la langue où ils ont été créés.
