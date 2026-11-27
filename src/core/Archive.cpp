@@ -26,9 +26,7 @@ namespace {
 bool ReadAll(const std::string& path, std::vector<uint8_t>& b, std::string& err) {
   FILE* f = OpenFile(path, "rb");
   if (!f) { err = tr("Impossible d'ouvrir ") + path; return false; }
-  std::fseek(f, 0, SEEK_END);
-  const long long n = (long long)std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
+  const long long n = FileSize(path);  // ftell : 32 bits sous Windows
   if (n < 0) { std::fclose(f); err = tr("Impossible de lire ") + path; return false; }
   b.resize((size_t)n);
   const bool ok = n == 0 || std::fread(b.data(), 1, (size_t)n, f) == (size_t)n;

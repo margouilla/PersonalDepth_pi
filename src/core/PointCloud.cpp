@@ -1095,9 +1095,7 @@ bool LoadXYZ(const std::string& path, const LoadOptions& optIn, PointCloud& pc,
   long long lineNo = 0, tMin = 0, tMax = 0;
   FILE* f = OpenFile(path, "rb");
   if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
-  std::fseek(f, 0, SEEK_END);
-  long long total = std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
+  const long long total = FileSize(path);  // ftell : 32 bits sous Windows
   pc.clear();
   if (sink && blockN < 1024) blockN = 1024;
   if (sink) pc.reserve(blockN + (blockN >> 3));

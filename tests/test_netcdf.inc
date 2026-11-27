@@ -380,6 +380,28 @@ static int TestNetCdf() {
     RemoveFile(har);
     RemoveFile(har + ".IDX");
   }
+  {  // chemins UTF-8 (accents, cyrillique) : XYZ, base .pdb / .pdi, netCDF ; tailles 64 bits
+    const std::string dir = Tmp("pd_chemin_é_ж");
+    std::filesystem::remove_all(U8Path(dir));
+    std::filesystem::create_directories(U8Path(dir));
+    const std::string xyz = dir + "/levé_Брест.xyz";
+    FILE* f = OpenFile(xyz, "wb");
+    CHECK(f);
+    std::fputs("-4.5 48.3 10.5\n-4.4999 48.3 11\n-4.4998 48.3001 12\n", f);
+    std::fclose(f);
+    CHECK(FileSize(xyz) > 20 && FileSize(dir + "/absent") == -1);
+    PointCloud pc;
+    CHECK(LoadXYZ(xyz, LoadOptions{}, pc, err) && pc.size() == 3);
+    for (DbKind k : {DbKind::Depth, DbKind::Imagery}) {
+      BathyDb db;
+      CHECK(db.open(dir, err, 0, k));
+    }
+    std::filesystem::copy_file(U8Path(NcData("nc3_classic.nc")), U8Path(dir + "/grille_é.nc"));
+    NcFile nc;
+    CHECK(nc.open(dir + "/grille_é.nc", err));
+    nc.close();
+    std::filesystem::remove_all(U8Path(dir));
+  }
   {  // catalogue : boutons « Convertir… »
     Catalog c = catalog::Load("");
     const CatalogItem* fes = c.find("fes2022b");

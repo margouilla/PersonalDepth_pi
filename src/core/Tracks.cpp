@@ -55,9 +55,7 @@ bool IsTrackFile(const std::string& path) {
 static bool ReadWhole(const std::string& path, std::string& s, std::string& err) {
   FILE* f = OpenFile(path, "rb");
   if (!f) { err = pd::tr("Impossible d'ouvrir ") + path; return false; }
-  std::fseek(f, 0, SEEK_END);
-  const long long n = std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
+  const long long n = FileSize(path);  // ftell : 32 bits sous Windows
   if (n < 0) { std::fclose(f); err = pd::tr("Impossible d'ouvrir ") + path; return false; }
   s.resize((size_t)n);
   const bool ok = n == 0 || std::fread(&s[0], 1, (size_t)n, f) == (size_t)n;

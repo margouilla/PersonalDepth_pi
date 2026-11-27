@@ -119,11 +119,7 @@ bool Exists(const std::string& p) {
   return fs::exists(U8Path(p), ec);
 }
 
-uint64_t FileSize(const std::string& p) {
-  std::error_code ec;
-  const uint64_t n = fs::file_size(U8Path(p), ec);
-  return ec ? 0 : n;
-}
+uint64_t PartSize(const std::string& p) { return (uint64_t)std::max(0LL, FileSize(p)); }
 
 // Copie de `in` à la suite de `out` (à partir de l'octet skip)
 bool AppendFile(FILE* out, const std::string& in, uint64_t skip) {
@@ -551,7 +547,7 @@ int ConvertToPdgrid(const std::string& in, const std::string& out, const PdgridO
       err = std::string(tr("Partie illisible : ")) + partPath(b);
       return -1;
     }
-    const uint64_t dsize = FileSize(partPath(b)) - 4 - n;
+    const uint64_t dsize = PartSize(partPath(b)) - 4 - n;
     for (uint32_t k = 0; k < n; k += 16) {
       uint64_t o;
       uint32_t s;
@@ -800,7 +796,7 @@ int ConvertFesToPdtide(const std::string& dir, const std::string& out, const Con
       const uint8_t t = raw[k + 12];
       PutIndex(idx, t ? base + o : 0, s, t);
     }
-    base += FileSize(Join(partDir, std::string(kNames[w]) + ".bin"));
+    base += PartSize(Join(partDir, std::string(kNames[w]) + ".bin"));
   }
   const std::string tmp = out + ".tmp";
   FILE* f = OpenFile(tmp, "wb");

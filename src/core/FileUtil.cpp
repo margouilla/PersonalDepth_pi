@@ -28,6 +28,12 @@ FILE* OpenFile(const std::string& utf8, const char* mode) {
 #endif
 }
 
+long long FileSize(const std::string& utf8) {
+  std::error_code ec;
+  const auto n = std::filesystem::file_size(U8Path(utf8), ec);
+  return ec ? -1 : (long long)n;
+}
+
 long long FileMTime(const std::string& utf8) {
 #ifdef _WIN32
   struct _stat64 st;

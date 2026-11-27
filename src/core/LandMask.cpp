@@ -102,10 +102,8 @@ bool LandMask::open(const std::string& path, std::string& err) {
     shx.replace_extension(".shx");
     FILE* fs_ = OpenFile(shx.u8string(), "rb");
     if (!fs_) { err = pd::tr("Impossible d'ouvrir ") + shx.u8string(); return false; }
-    std::fseek(fs_, 0, SEEK_END);
-    const long sz = std::ftell(fs_);
+    const long long sz = FileSize(shx.u8string());
     std::vector<uint8_t> b(sz > 100 ? (size_t)sz : 0);
-    std::fseek(fs_, 0, SEEK_SET);
     const bool rd = !b.empty() && std::fread(b.data(), 1, b.size(), fs_) == b.size();
     std::fclose(fs_);
     if (!rd || LE<int32_t>(b.data() + 32) != 5) {

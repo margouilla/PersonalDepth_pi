@@ -28,4 +28,6 @@ FILE* OpenFile(const std::string& utf8, const char* mode);
 void RemoveFile(const std::string& utf8);
 // date de modification (secondes depuis 1970), 0 si le fichier est absent
 long long FileMTime(const std::string& utf8);
+// Taille en octets (64 bits, au-delà de 2 Go aussi sous Windows), -1 si absent
+long long FileSize(const std::string& utf8);
 }  // namespace pd

@@ -4,6 +4,13 @@
 
 ## English
 
+### 0.1.0-beta.16 (unreleased)
+
+- Text files over 2 GB (XYZ, GPX) and archives: file size read in 64 bits on
+  Windows (OpenCPN 32-bit), so the import progress is shown again for these
+  files. New test: files and databases in folders with accents or Cyrillic
+  letters (XYZ, `.pdb`, `.pdi`, netCDF).
+
 ### 0.1.0-beta.15 (2026-11-25)
 
 - **External data window** (*Data* tab, *Vertical reference surfaces* box,
@@ -516,6 +523,14 @@ First public test versions (Windows, OpenCPN 5.14 32-bit). beta.2 fixes a
 crash of OpenCPN when opening the plugin panel.
 
 ## Français
+
+### 0.1.0-beta.16 (non publiée)
+
+- Fichiers texte de plus de 2 Go (XYZ, GPX) et archives : taille du fichier
+  lue sur 64 bits sous Windows (OpenCPN 32 bits), d'où la progression de
+  l'import de nouveau affichée pour ces fichiers. Nouveau test : fichiers et
+  bases dans des dossiers aux noms accentués ou en cyrillique (XYZ, `.pdb`,
+  `.pdi`, netCDF).
 
 ### 0.1.0-beta.15 (2026-11-25)
 
